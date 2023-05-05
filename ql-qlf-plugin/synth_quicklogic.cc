@@ -370,15 +370,18 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("map_bram", "(skip if -no_bram)") && (family == "qlf_k6n10" || family == "qlf_k6n10f" || family == "pp3") && inferBram) {
-            run("memory_bram -rules +/quicklogic/" + family + "/brams.txt");
+            if (help_mode || family == "qlf_k6n10f") {
+                run("memory_libmap -lib +/quicklogic/" + family + "/libmap_brams.txt", "(for qlf_k6n10f)");
+                run("ql_bram_merge", "(for qlf_k6n10f)");
+                run("techmap -map +/quicklogic/" + family + "/libmap_brams_map.v", "(for qlf_k6n10f)");
+            }
+            if (help_mode || family == "qlf_k6n10" || family == "pp3") {
+                run("memory_bram -rules +/quicklogic/" + family + "/brams.txt");
+            }
             if (family == "pp3") {
                 run("pp3_braminit");
             }
-            run("ql_bram_split                   ", "(for qlf_k6n10f if not -no_bram)");
             run("techmap -autoproc -map +/quicklogic/" + family + "/brams_map.v");
-            if (family == "qlf_k6n10f") {
-                run("techmap -map +/quicklogic/" + family + "/brams_final_map.v");
-            }
 
             // Data width to specialized cell type width map
             const std::unordered_map<int, int> dataWidth36 = {{36, 36}, {32, 36}, {18, 18}, {16, 18}, {9, 9}, {8, 9}, {4, 4}, {2, 2}, {1, 1}};
@@ -388,12 +391,6 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (bramTypes) {
                 for (const auto &ww : dataWidth18) {
                     for (const auto &rw : dataWidth18) {
-                        auto cmd =
-                          stringf("chtype -set TDP36K_BRAM_WR_X%d_RD_X%d_split t:TDP36K a:is_inferred=1 %%i a:is_split=1 %%i a:wr_data_width=%d "
-                                  "%%i a:rd_data_width=%d %%i",
-                                  ww.second, rw.second, ww.first, rw.first);
-                        run(cmd);
-
                         auto cmd1 = stringf("chtype -set TDP36K_FIFO_ASYNC_WR_X%d_RD_X%d_split t:TDP36K a:is_fifo=1 %%i a:sync_fifo=0 %%i "
                                             "a:is_split=1 %%i a:wr_data_width=%d "
                                             "%%i a:rd_data_width=%d %%i",
@@ -410,11 +407,6 @@ struct SynthQuickLogicPass : public ScriptPass {
 
                 for (const auto &ww : dataWidth36) {
                     for (const auto &rw : dataWidth36) {
-                        auto cmd = stringf(
-                          "chtype -set TDP36K_BRAM_WR_X%d_RD_X%d_nonsplit t:TDP36K a:is_inferred=1 %%i a:wr_data_width=%d %%i a:rd_data_width=%d %%i",
-                          ww.second, rw.second, ww.first, rw.first);
-                        run(cmd);
-
                         auto cmd1 = stringf("chtype -set TDP36K_FIFO_ASYNC_WR_X%d_RD_X%d_nonsplit t:TDP36K a:is_fifo=1 %%i a:sync_fifo=0 %%i "
                                             "a:wr_data_width=%d %%i a:rd_data_width=%d %%i",
                                             ww.second, rw.second, ww.first, rw.first);
@@ -426,7 +418,27 @@ struct SynthQuickLogicPass : public ScriptPass {
                         run(cmd2);
                     }
                 }
+
+
+                for (int a_width : {1, 2, 4, 9, 18, 36})
+                    for (int b_width: {1, 2, 4, 9, 18, 36}) {
+                        auto cmd = stringf(
+                          "chtype -set TDP36K_BRAM_A_X%d_B_X%d_nonsplit t:TDP36K a:is_inferred=1 %%i a:port_a_width=%d %%i a:port_b_width=%d %%i",
+                          a_width, b_width, a_width, b_width);
+                        run(cmd);
+                    }
+
+                for (int a1_width : {1, 2, 4, 9, 18})
+                    for (int b1_width: {1, 2, 4, 9, 18})
+                        for (int a2_width : {1, 2, 4, 9, 18})
+                            for (int b2_width: {1, 2, 4, 9, 18}) {
+                                auto cmd = stringf(
+                                "chtype -set TDP36K_BRAM_A1_X%d_B1_X%d_A2_X%d_B2_X%d_split t:TDP36K a:is_inferred=1 %%i a:port_a1_width=%d %%i a:port_b1_width=%d %%i a:port_a2_width=%d %%i a:port_b2_width=%d %%i",
+                                a1_width, b1_width, a2_width, b2_width, a1_width, b1_width, a2_width, b2_width);
+                                run(cmd);
+                            }
             }
+            
         }
 
         if (check_label("map_ffram")) {
