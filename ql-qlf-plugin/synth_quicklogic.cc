@@ -389,6 +389,9 @@ struct SynthQuickLogicPass : public ScriptPass {
                 run("pp3_braminit", "(for pp3)");
             }
             run("techmap -autoproc -map " + lib_path + family + "/brams_map.v", "(for pp3, qlf_k6n10)");
+            if (family == "qlf_k6n10f") {
+                run("techmap -map " + lib_path + family + "/brams_final_map.v");
+            }
 
             // Data width to specialized cell type width map
             const std::unordered_map<int, int> dataWidth36 = {{36, 36}, {32, 36}, {18, 18}, {16, 18}, {9, 9}, {8, 9}, {4, 4}, {2, 2}, {1, 1}};

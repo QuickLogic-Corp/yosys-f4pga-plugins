@@ -34,5 +34,5 @@ top.new.il
 ../../../../../qlf_k6n10f/brams_sim.v
 ../../../../../qlf_k6n10f/TDP18K_FIFO.v
 ../../../../../qlf_k6n10f/ufifo_ctl.v
-../../../../../qlf_k6n10f/sram1024x18_mem.v
+../../sram1024x18_mem.v
 pre_post_miter.sv
