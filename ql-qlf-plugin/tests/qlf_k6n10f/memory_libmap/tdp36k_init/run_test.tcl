@@ -24,7 +24,9 @@ foreach {depth_log2 width} [list 10 36 10 32 11 18 11 16 12 9 12 8 13 4 14 2 15 
 	prep
 	hierarchy -top top
 	stat
-	sim -assert -q -n [expr 2**$depth_log2+4] -clock clk
+	# The -assert flag will not be in Yosys until version 0.34, comment it out for now
+	sim -q -n [expr 2**$depth_log2+4] -clock clk
+	#sim -assert -q -n [expr 2**$depth_log2+4] -clock clk
 }
 
 foreach {depth_log2 width} [list 10 18 10 16 11 9 11 8 12 4 13 2 14 1] {
@@ -45,7 +47,8 @@ foreach {depth_log2 width} [list 10 18 10 16 11 9 11 8 12 4 13 2 14 1] {
 	prep
 	hierarchy -top top
 	stat
-	sim -assert -q -n [expr 2**$depth_log2+4] -clock clk
+	sim -q -n [expr 2**$depth_log2+4] -clock clk
+	#sim -assert -q -n [expr 2**$depth_log2+4] -clock clk
 }
 
 design -reset
@@ -68,4 +71,5 @@ read_verilog {*}$tdp36k_simsource
 prep
 hierarchy -top merged_top
 stat
-sim -assert -q -n [expr 2**11+4] -clock clk
+sim -q -n [expr 2**11+4] -clock clk
+#sim -assert -q -n [expr 2**11+4] -clock clk
