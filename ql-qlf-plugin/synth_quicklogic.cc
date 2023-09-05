@@ -294,7 +294,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             run("share");
         }
 
-        if (check_label("map_dsp"), "(skip if -no_dsp)") {
+        if (check_label("map_dsp", "(skip if -no_dsp)")) {
             if (help_mode || family == "qlf_k6n10") {
                 if (help_mode || !nodsp) {
                     run("memory_dff", "                      (for qlf_k6n10)");
