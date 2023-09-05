@@ -590,7 +590,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (help_mode || abcOpt) {
                 if (help_mode || family == "qlf_k6n10" || family == "qlf_k6n10f") {
                     if (abc9) {
-                        run("read_verilog -lib -specify -icells +/quicklogic/pp3/abc9_model.v");
+                        run("read_verilog -lib -specify -icells " + lib_path + "/pp3/abc9_model.v");
                         //run("techmap -map +/quicklogic/pp3/abc9_map.v");
                         //run("abc9 -maxlut 6 -dff");
                         run("abc9 -maxlut 6");
