@@ -69,6 +69,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        write the design to the specified verilog file. Writing of an output\n");
         log("        file is omitted if this parameter is not specified.\n");
         log("\n");
+        log("    -meminit <dir-path>\n");
+        log("        write block memory initialization data into files created below\n");
+        log("        the specified path (qlf_k6n10f only).\n");
+        log("\n");
         log("    -no_dsp\n");
         log("        By default use DSP blocks in output netlist.\n");
         log("        do not use DSP blocks to implement multipliers and associated logic\n");
@@ -103,7 +107,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("\n");
     }
 
-    string top_opt, edif_file, blif_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path;
+    string top_opt, edif_file, blif_file, meminit_dir, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -119,6 +123,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         edif_file = "";
         blif_file = "";
         verilog_file = "";
+        meminit_dir = "";
         currmodule = "";
         family = "qlf_k4n8";
         inferAdder = true;
@@ -170,6 +175,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (args[argidx] == "-verilog" && argidx + 1 < args.size()) {
                 verilog_file = args[++argidx];
+                continue;
+            }
+            if (args[argidx] == "-meminit" && argidx + 1 < args.size()) {
+                meminit_dir = args[++argidx];
                 continue;
             }
             if (args[argidx] == "-no_dsp") {
@@ -595,6 +604,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             run("opt_clean -purge");
             run("check");
             run("blackbox =A:whitebox");
+        }
+
+        if (check_label("meminit", "(if -meminit, for qlf_k6n10f)") && (help_mode || (family == "qlf_k6n10f" && !meminit_dir.empty()))) {
+            run("ql_bram_initfile -write -path " + (help_mode ? "<dir-path>" : meminit_dir));
         }
 
         if (check_label("blif", "(if -blif)")) {
