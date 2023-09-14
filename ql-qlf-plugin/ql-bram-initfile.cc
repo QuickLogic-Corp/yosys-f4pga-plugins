@@ -144,6 +144,12 @@ struct QlBramInitfilePass : Pass {
                 if (!cell->type.in(ID(TDP36K)))
                     continue;
 
+                if (!cell->hasParam(ID(RAM_INIT))) {
+                    log_warning("%s cell %s lacks RAM_DATA parameter, cell skipped.\n",
+                                log_id(cell->type), log_id(cell));
+                    continue;
+                }
+
                 if (write && !cell->hasParam(ID(RAM_INIT_FILE))) {
                     std::string fn = RTLIL::unescape_id(cell->name.str());
                     std::replace(fn.begin(), fn.end(), '\\', '_');
