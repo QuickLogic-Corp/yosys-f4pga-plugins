@@ -554,7 +554,8 @@ struct SynthQuickLogicPass : public ScriptPass {
                 // FIXME: dfflegalize seems to leave $_DLATCH_[NP]_ even if it
                 // is not allowed. So we allow them and map them later to
                 // $_DLATCHSR_[NP]NN_.
-                std::string legalizeArgs = " -cell $_DFFSRE_?NNP_ 0 -cell $_DLATCHSR_?NN_ 0 -cell $_DLATCH_?_ 0";
+                //std::string legalizeArgs = " -cell $_DFFSRE_?NNP_ 0 -cell $_DLATCHSR_?NN_ 0 -cell $_DLATCH_?_ 0";
+                std::string legalizeArgs = " -cell $_DFFE_?N?P_ 0";
                 if (!nosdff) {
                     legalizeArgs += " -cell $_SDFFE_?N?P_ 0";
                 }

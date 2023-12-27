@@ -185,90 +185,76 @@ module dffn(
 endmodule
 
 (* abc9_flop, lib_whitebox *)
-module dffsre(
+module dffre(
     output reg Q,
     input wire D,
     (* clkbuf_sink *)
     input wire C,
     input wire E,
-    input wire R,
-    input wire S
+    input wire R
 );
     initial Q <= 1'b0;
 
-    always @(posedge C or negedge S or negedge R)
+    always @(posedge C or negedge R)
       if (!R)
         Q <= 1'b0;
-      else if (!S)
-        Q <= 1'b1;
       else if (E)
         Q <= D;
 
     specify
       (posedge C => (Q +: D)) = 280;
       (R => Q) = 0;
-      (S => Q) = 0;
       $setuphold(posedge C, D, 56, 0);
       $setuphold(posedge C, E, 32, 0);
       $setuphold(posedge C, R, 0, 0);
-      $setuphold(posedge C, S, 0, 0);
       $recrem(posedge R, posedge C, 0, 0);
-      $recrem(posedge S, posedge C, 0, 0);
     endspecify
 
 endmodule
 
+
 (* abc9_flop, lib_whitebox *)
-module dffnsre(
+module dffnre(
     output reg Q,
     input wire D,
     (* clkbuf_sink *)
     input wire C,
     input wire E,
-    input wire R,
-    input wire S
+    input wire R
 );
     initial Q <= 1'b0;
 
-    always @(negedge C or negedge S or negedge R)
+    always @(negedge C or negedge R)
       if (!R)
         Q <= 1'b0;
-      else if (!S)
-        Q <= 1'b1;
       else if (E)
         Q <= D;
 		
     specify
       (negedge C => (Q +: D)) = 280;
       (R => Q) = 0;
-      (S => Q) = 0;
       $setuphold(negedge C, D, 56, 0);
       $setuphold(negedge C, E, 32, 0);
       $setuphold(negedge C, R, 0, 0);
-      $setuphold(negedge C, S, 0, 0);
       $recrem(posedge R, negedge C, 0, 0);
-      $recrem(posedge S, negedge C, 0, 0);
     endspecify
 
 endmodule
 
 (* abc9_flop, lib_whitebox *)
-module sdffsre(
+module sdffre(
     output reg Q,
     input wire D,
     (* clkbuf_sink *)
     input wire C,
     input wire E,
-    input wire R,
-    input wire S
+    input wire R
 );
     initial Q <= 1'b0;
 
     always @(posedge C)
       if (!R)
         Q <= 1'b0;
-      else if (!S)
-        Q <= 1'b1;
       else if (E)
         Q <= D;
 		
@@ -276,29 +262,25 @@ module sdffsre(
         (posedge C => (Q +: D)) = 280;
         $setuphold(posedge C, D, 56, 0);
         $setuphold(posedge C, R, 32, 0);
-        $setuphold(posedge C, S, 0, 0);
         $setuphold(posedge C, E, 0, 0);
     endspecify
 
 endmodule
 
 (* abc9_flop, lib_whitebox *)
-module sdffnsre(
+module sdffnre(
     output reg Q,
     input wire D,
     (* clkbuf_sink *)
     input wire C,
     input wire E,
-    input wire R,
-    input wire S
+    input wire R
 );
     initial Q <= 1'b0;
 
     always @(negedge C)
       if (!R)
         Q <= 1'b0;
-      else if (!S)
-        Q <= 1'b1;
       else if (E)
         Q <= D;
 		
@@ -306,71 +288,7 @@ module sdffnsre(
         (negedge C => (Q +: D)) = 280;
         $setuphold(negedge C, D, 56, 0);
         $setuphold(negedge C, R, 32, 0);
-        $setuphold(negedge C, S, 0, 0);
         $setuphold(negedge C, E, 0, 0);
     endspecify
 
 endmodule
-
-(* abc9_flop, lib_whitebox *)
-module latchsre (
-    output reg Q,
-    input wire S,
-    input wire R,
-    input wire D,
-    input wire G,
-    input wire E
-);
-    initial Q <= 1'b0;
-
-    always @*
-      begin
-        if (!R)
-          Q <= 1'b0;
-        else if (!S)
-          Q <= 1'b1;
-        else if (E && G)
-          Q <= D;
-      end
-	  
-    specify
-      (posedge G => (Q +: D)) = 0;
-      $setuphold(posedge G, D, 0, 0);
-      $setuphold(posedge G, E, 0, 0);
-      $setuphold(posedge G, R, 0, 0);
-      $setuphold(posedge G, S, 0, 0);
-    endspecify      
-
-endmodule
-
-(* abc9_flop, lib_whitebox *)
-module latchnsre (
-    output reg Q,
-    input wire S,
-    input wire R,
-    input wire D,
-    input wire G,
-    input wire E
-);
-    initial Q <= 1'b0;
-
-    always @*
-      begin
-        if (!R)
-          Q <= 1'b0;
-        else if (!S)
-          Q <= 1'b1;
-        else if (E && !G)
-          Q <= D;
-      end
-	  
-    specify
-      (negedge G => (Q +: D)) = 0;
-      $setuphold(negedge G, D, 0, 0);
-      $setuphold(negedge G, E, 0, 0);
-      $setuphold(negedge G, R, 0, 0);
-      $setuphold(negedge G, S, 0, 0);
-    endspecify 
-
-endmodule
-

@@ -14,25 +14,54 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// DFF, asynchronous set/reset, enable
-module \$_DFFSRE_PNNP_ (C, S, R, E, D, Q);
+// DFF, asynchronous reset, enable
+module \$_DFFE_PN0P_ (C, R, E, D, Q);
     input  C;
-    input  S;
     input  R;
     input  E;
     input  D;
     output Q;
-    dffsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R), .S(S));
+    dffre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R));
 endmodule
 
-module \$_DFFSRE_NNNP_ (C, S, R, E, D, Q);
+
+module \$_DFFE_PN1P_ (C, R, E, D, Q);
     input  C;
-    input  S;
     input  R;
     input  E;
     input  D;
     output Q;
-    dffnsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R), .S(S));
+	
+	reg  Q_int;
+	
+    dffre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D), .C(C), .E(E), .R(R));
+	
+	assign Q = (R)? Q_int: ~Q_int;	
+	
+endmodule
+
+module \$_DFFE_NN0P_ (C, R, E, D, Q);
+    input  C;
+    input  R;
+    input  E;
+    input  D;
+    output Q;
+    dffnre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R));
+endmodule
+
+module \$_DFFE_NN1P_ (C, R, E, D, Q);
+    input  C;
+    input  R;
+    input  E;
+    input  D;
+    output Q;
+	
+	reg  Q_int;
+	
+    dffnre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D), .C(C), .E(E), .R(R));
+	
+	assign Q = ~Q_int;	
+	
 endmodule
 
 // DFF, synchronous set or reset, enable
@@ -42,7 +71,7 @@ module \$_SDFFE_PN0P_ (D, C, R, E, Q);
     input  R;
     input  E;
     output Q;
-    sdffsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R), .S(1'b1));
+    sdffre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R));
 endmodule
 
 module \$_SDFFE_PN1P_ (D, C, R, E, Q);
@@ -51,7 +80,12 @@ module \$_SDFFE_PN1P_ (D, C, R, E, Q);
     input  R;
     input  E;
     output Q;
-    sdffsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(1'b1), .S(R));
+	
+	reg  Q_int;
+	
+    sdffre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D), .C(C), .E(E), .R(R));
+	
+	assign Q = (R)? Q_int: ~Q_int;
 endmodule
 
 module \$_SDFFE_NN0P_ (D, C, R, E, Q);
@@ -60,7 +94,7 @@ module \$_SDFFE_NN0P_ (D, C, R, E, Q);
     input  R;
     input  E;
     output Q;
-    sdffnsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R), .S(1'b1));
+    sdffnre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R));
 endmodule
 
 module \$_SDFFE_NN1P_ (D, C, R, E, Q);
@@ -69,25 +103,12 @@ module \$_SDFFE_NN1P_ (D, C, R, E, Q);
     input  R;
     input  E;
     output Q;
-    sdffnsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(1'b1), .S(R));
-endmodule
-
-// Latch, no set/reset, no enable
-module  \$_DLATCH_P_ (input E, D, output Q);
-    latchsre  _TECHMAP_REPLACE_ (.D(D), .Q(Q), .E(1'b1), .G(E), .R(1'b1), .S(1'b1));
-endmodule
-
-module  \$_DLATCH_N_ (input E, D, output Q);
-    latchnsre _TECHMAP_REPLACE_ (.D(D), .Q(Q), .E(1'b1), .G(E), .R(1'b1), .S(1'b1));
-endmodule
-
-// Latch with async set and reset and enable
-module  \$_DLATCHSR_PPP_ (input E, S, R, D, output Q);
-    latchsre  _TECHMAP_REPLACE_ (.D(D), .Q(Q), .E(1'b1), .G(E),  .R(!R), .S(!S));
-endmodule
-
-module  \$_DLATCHSR_NPP_ (input E, S, R, D, output Q);
-    latchnsre _TECHMAP_REPLACE_ (.D(D), .Q(Q), .E(1'b1), .G(E),  .R(!R), .S(!S));
+	
+	reg  Q_int;
+	
+    sdffnre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D), .C(C), .E(E), .R(R));
+	
+	assign Q = (R)? Q_int: ~Q_int;	
 endmodule
 
 module \$__SHREG_DFF_P_ (D, Q, C);
