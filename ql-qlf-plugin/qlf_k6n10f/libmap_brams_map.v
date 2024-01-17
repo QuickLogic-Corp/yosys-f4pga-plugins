@@ -1,31 +1,31 @@
-module \$__QLF_TDP36K (PORT_A_CLK, PORT_A_ADDR, PORT_A_WR_DATA, PORT_A_WR_EN, PORT_A_WR_BE, PORT_A_CLK_EN, PORT_A_RD_DATA,
-					   PORT_B_CLK, PORT_B_ADDR, PORT_B_WR_DATA, PORT_B_WR_EN, PORT_B_WR_BE, PORT_B_CLK_EN, PORT_B_RD_DATA);  
+module \$__QLF_SDP36K (PORT_W_CLK, PORT_W_ADDR, PORT_W_WR_DATA, PORT_W_WR_EN, PORT_W_WR_BE, PORT_W_CLK_EN, 
+					   PORT_R_CLK, PORT_R_ADDR, PORT_R_CLK_EN, PORT_R_RD_DATA);  
 
 parameter INIT = 0;
 
 parameter OPTION_SPLIT = 0;
 
-parameter PORT_A_WIDTH = 1;
-parameter PORT_A_WR_BE_WIDTH = 1;
+parameter PORT_W_WIDTH = 1;
+parameter PORT_W_WR_BE_WIDTH = 1;
 
-parameter PORT_B_WIDTH = 1;
-parameter PORT_B_WR_BE_WIDTH = 1;
+parameter PORT_R_WIDTH = 1;
+//parameter PORT_R_WR_BE_WIDTH = 1;
 
-input PORT_A_CLK;
-input [14:0] PORT_A_ADDR;
-input [PORT_A_WIDTH-1:0] PORT_A_WR_DATA;
-input PORT_A_WR_EN;
-input [PORT_A_WR_BE_WIDTH-1:0] PORT_A_WR_BE;
-input PORT_A_CLK_EN;
-output [PORT_A_WIDTH-1:0] PORT_A_RD_DATA;
+input PORT_W_CLK;
+input [14:0] PORT_W_ADDR;
+input [PORT_W_WIDTH-1:0] PORT_W_WR_DATA;
+input PORT_W_WR_EN;
+input [PORT_W_WR_BE_WIDTH-1:0] PORT_W_WR_BE;
+input PORT_W_CLK_EN;
+//output [PORT_W_WIDTH-1:0] PORT_W_RD_DATA;
 
-input PORT_B_CLK;
-input [14:0] PORT_B_ADDR;
-input [PORT_B_WIDTH-1:0] PORT_B_WR_DATA;
-input PORT_B_WR_EN;
-input [PORT_B_WR_BE_WIDTH-1:0] PORT_B_WR_BE;
-input PORT_B_CLK_EN;
-output [PORT_B_WIDTH-1:0] PORT_B_RD_DATA;
+input PORT_R_CLK;
+input [14:0] PORT_R_ADDR;
+//input [PORT_R_WIDTH-1:0] PORT_R_WR_DATA;
+//input PORT_R_WR_EN;
+//input [PORT_R_WR_BE_WIDTH-1:0] PORT_R_WR_BE;
+input PORT_R_CLK_EN;
+output [PORT_R_WIDTH-1:0] PORT_R_RD_DATA;
 
 
 // Fixed mode settings
@@ -97,50 +97,50 @@ wire [17:0] RDATA_B2_o;
 
 
 // Set port width mode (In non-split mode A2/B2 is not active. Set same values anyway to match previous behavior.)
-localparam [ 2:0] RMODE_A1_i    = mode(PORT_A_WIDTH);
-localparam [ 2:0] WMODE_A1_i    = mode(PORT_A_WIDTH);
-localparam [ 2:0] RMODE_A2_i    = mode(PORT_A_WIDTH);
-localparam [ 2:0] WMODE_A2_i    = mode(PORT_A_WIDTH);
+localparam [ 2:0] RMODE_A1_i    = mode(PORT_W_WIDTH);
+localparam [ 2:0] WMODE_A1_i    = mode(PORT_W_WIDTH);
+localparam [ 2:0] RMODE_A2_i    = mode(PORT_W_WIDTH);
+localparam [ 2:0] WMODE_A2_i    = mode(PORT_W_WIDTH);
 
-localparam [ 2:0] RMODE_B1_i    = mode(PORT_B_WIDTH);
-localparam [ 2:0] WMODE_B1_i    = mode(PORT_B_WIDTH);
-localparam [ 2:0] RMODE_B2_i    = mode(PORT_B_WIDTH);
-localparam [ 2:0] WMODE_B2_i    = mode(PORT_B_WIDTH);
+localparam [ 2:0] RMODE_B1_i    = mode(PORT_R_WIDTH);
+localparam [ 2:0] WMODE_B1_i    = mode(PORT_R_WIDTH);
+localparam [ 2:0] RMODE_B2_i    = mode(PORT_R_WIDTH);
+localparam [ 2:0] WMODE_B2_i    = mode(PORT_R_WIDTH);
 
-assign REN_A1_i = PORT_A_CLK_EN;
-assign WEN_A1_i = PORT_A_CLK_EN & PORT_A_WR_EN;
-assign {BE_A2_i, BE_A1_i} = PORT_A_WR_BE;
+//assign REN_A1_i = PORT_W_CLK_EN;
+assign WEN_A1_i = PORT_W_CLK_EN & PORT_W_WR_EN;
+assign {BE_A2_i, BE_A1_i} = PORT_W_WR_BE;
 
-assign REN_B1_i = PORT_B_CLK_EN;
-assign WEN_B1_i = PORT_B_CLK_EN & PORT_B_WR_EN;
-assign {BE_B2_i, BE_B1_i} = PORT_B_WR_BE;
+assign REN_B1_i = PORT_R_CLK_EN;
+//assign WEN_B1_i = PORT_R_CLK_EN & PORT_R_WR_EN;
+//assign {BE_B2_i, BE_B1_i} = PORT_R_WR_BE;
 
-case (PORT_A_WIDTH)
-9: assign { WDATA_A1_i[16], WDATA_A1_i[7:0] } = PORT_A_WR_DATA;
-18: assign { WDATA_A1_i[17], WDATA_A1_i[15:8], WDATA_A1_i[16], WDATA_A1_i[7:0] } = PORT_A_WR_DATA;
-36: assign { WDATA_A2_i[17], WDATA_A2_i[15:8], WDATA_A2_i[16], WDATA_A2_i[7:0], WDATA_A1_i[17], WDATA_A1_i[15:8], WDATA_A1_i[16], WDATA_A1_i[7:0]} = PORT_A_WR_DATA;
-default: assign WDATA_A1_i = PORT_A_WR_DATA; // 1,2,4
+case (PORT_W_WIDTH)
+9: assign { WDATA_A1_i[16], WDATA_A1_i[7:0] } = PORT_W_WR_DATA;
+18: assign { WDATA_A1_i[17], WDATA_A1_i[15:8], WDATA_A1_i[16], WDATA_A1_i[7:0] } = PORT_W_WR_DATA;
+36: assign { WDATA_A2_i[17], WDATA_A2_i[15:8], WDATA_A2_i[16], WDATA_A2_i[7:0], WDATA_A1_i[17], WDATA_A1_i[15:8], WDATA_A1_i[16], WDATA_A1_i[7:0]} = PORT_W_WR_DATA;
+default: assign WDATA_A1_i = PORT_W_WR_DATA; // 1,2,4
 endcase
 
-case (PORT_B_WIDTH)
-9: assign { WDATA_B1_i[16], WDATA_B1_i[7:0] } = PORT_B_WR_DATA;
-18: assign { WDATA_B1_i[17], WDATA_B1_i[15:8], WDATA_B1_i[16], WDATA_B1_i[7:0] } = PORT_B_WR_DATA;
-36: assign { WDATA_B2_i[17], WDATA_B2_i[15:8], WDATA_B2_i[16], WDATA_B2_i[7:0], WDATA_B1_i[17], WDATA_B1_i[15:8], WDATA_B1_i[16], WDATA_B1_i[7:0]} = PORT_B_WR_DATA;
-default: assign WDATA_B1_i = PORT_B_WR_DATA; // 1,2,4
-endcase
+//case (PORT_R_WIDTH)
+//9: assign { WDATA_B1_i[16], WDATA_B1_i[7:0] } = PORT_R_WR_DATA;
+//18: assign { WDATA_B1_i[17], WDATA_B1_i[15:8], WDATA_B1_i[16], WDATA_B1_i[7:0] } = PORT_R_WR_DATA;
+//36: assign { WDATA_B2_i[17], WDATA_B2_i[15:8], WDATA_B2_i[16], WDATA_B2_i[7:0], WDATA_B1_i[17], WDATA_B1_i[15:8], WDATA_B1_i[16], WDATA_B1_i[7:0]} = PORT_R_WR_DATA;
+//default: assign WDATA_B1_i = PORT_R_WR_DATA; // 1,2,4
+//endcase
 
-case (PORT_A_WIDTH)
-9: assign PORT_A_RD_DATA = { RDATA_A1_o[16], RDATA_A1_o[7:0] };
-18: assign PORT_A_RD_DATA = { RDATA_A1_o[17], RDATA_A1_o[15:8], RDATA_A1_o[16], RDATA_A1_o[7:0] };
-36: assign PORT_A_RD_DATA = { RDATA_A2_o[17], RDATA_A2_o[15:8], RDATA_A2_o[16], RDATA_A2_o[7:0], RDATA_A1_o[17], RDATA_A1_o[15:8], RDATA_A1_o[16], RDATA_A1_o[7:0]};
-default: assign PORT_A_RD_DATA = RDATA_A1_o; // 1,2,4
-endcase
+//case (PORT_W_WIDTH)
+//9: assign PORT_W_RD_DATA = { RDATA_A1_o[16], RDATA_A1_o[7:0] };
+//18: assign PORT_W_RD_DATA = { RDATA_A1_o[17], RDATA_A1_o[15:8], RDATA_A1_o[16], RDATA_A1_o[7:0] };
+//36: assign PORT_W_RD_DATA = { RDATA_A2_o[17], RDATA_A2_o[15:8], RDATA_A2_o[16], RDATA_A2_o[7:0], RDATA_A1_o[17], RDATA_A1_o[15:8], RDATA_A1_o[16], RDATA_A1_o[7:0]};
+//default: assign PORT_W_RD_DATA = RDATA_A1_o; // 1,2,4
+//endcase
 
-case (PORT_B_WIDTH)
-9: assign PORT_B_RD_DATA = { RDATA_B1_o[16], RDATA_B1_o[7:0] };
-18: assign PORT_B_RD_DATA = { RDATA_B1_o[17], RDATA_B1_o[15:8], RDATA_B1_o[16], RDATA_B1_o[7:0] };
-36: assign PORT_B_RD_DATA = { RDATA_B2_o[17], RDATA_B2_o[15:8], RDATA_B2_o[16], RDATA_B2_o[7:0], RDATA_B1_o[17], RDATA_B1_o[15:8], RDATA_B1_o[16], RDATA_B1_o[7:0]};
-default: assign PORT_B_RD_DATA = RDATA_B1_o; // 1,2,4
+case (PORT_R_WIDTH)
+9: assign PORT_R_RD_DATA = { RDATA_B1_o[16], RDATA_B1_o[7:0] };
+18: assign PORT_R_RD_DATA = { RDATA_B1_o[17], RDATA_B1_o[15:8], RDATA_B1_o[16], RDATA_B1_o[7:0] };
+36: assign PORT_R_RD_DATA = { RDATA_B2_o[17], RDATA_B2_o[15:8], RDATA_B2_o[16], RDATA_B2_o[7:0], RDATA_B1_o[17], RDATA_B1_o[15:8], RDATA_B1_o[16], RDATA_B1_o[7:0]};
+default: assign PORT_R_RD_DATA = RDATA_B1_o; // 1,2,4
 endcase
 
 defparam _TECHMAP_REPLACE_.MODE_BITS = { 1'b0,
@@ -150,40 +150,40 @@ defparam _TECHMAP_REPLACE_.MODE_BITS = { 1'b0,
 
 (* is_inferred = 1 *)
 (* is_split = 0 *)
-(* port_a_width = PORT_A_WIDTH *)
-(* port_b_width = PORT_B_WIDTH *)
+(* port_a_width = PORT_W_WIDTH *)
+(* port_b_width = PORT_R_WIDTH *)
 TDP36K _TECHMAP_REPLACE_ (
 	.RESET_ni(1'b1),
 
-	.CLK_A1_i(PORT_A_CLK),
-	.ADDR_A1_i(PORT_A_ADDR),
+	.CLK_A1_i(PORT_W_CLK),
+	.ADDR_A1_i(PORT_W_ADDR),
 	.WEN_A1_i(WEN_A1_i),
 	.BE_A1_i(BE_A1_i),
 	.WDATA_A1_i(WDATA_A1_i),
-	.REN_A1_i(REN_A1_i),
-	.RDATA_A1_o(RDATA_A1_o),
+	.REN_A1_i(1'b0),
+	.RDATA_A1_o(),
 
-	.CLK_A2_i(PORT_A_CLK),
-	.ADDR_A2_i(PORT_A_ADDR[13:0]),
+	.CLK_A2_i(PORT_W_CLK),
+	.ADDR_A2_i(PORT_W_ADDR[13:0]),
 	.WEN_A2_i(WEN_A1_i),
 	.BE_A2_i(BE_A2_i),
 	.WDATA_A2_i(WDATA_A2_i),
-	.REN_A2_i(REN_A1_i),
-	.RDATA_A2_o(RDATA_A2_o),
+	.REN_A2_i(1'b0),
+	.RDATA_A2_o(),
 
-	.CLK_B1_i(PORT_B_CLK),
-	.ADDR_B1_i(PORT_B_ADDR),
-	.WEN_B1_i(WEN_B1_i),
-	.BE_B1_i(BE_B1_i),
-	.WDATA_B1_i(WDATA_B1_i),
+	.CLK_B1_i(PORT_R_CLK),
+	.ADDR_B1_i(PORT_R_ADDR),
+	.WEN_B1_i(1'b0),
+	.BE_B1_i(2'b00),
+	.WDATA_B1_i(18'h0),
 	.REN_B1_i(REN_B1_i),
 	.RDATA_B1_o(RDATA_B1_o),
 
-	.CLK_B2_i(PORT_B_CLK),
-	.ADDR_B2_i(PORT_B_ADDR[13:0]),
-	.WEN_B2_i(WEN_B1_i),
-	.BE_B2_i(BE_B2_i),
-	.WDATA_B2_i(WDATA_B2_i),
+	.CLK_B2_i(PORT_R_CLK),
+	.ADDR_B2_i(PORT_R_ADDR[13:0]),
+	.WEN_B2_i(1'b0),
+	.BE_B2_i(2'b00),
+	.WDATA_B2_i(18'h0),
 	.REN_B2_i(REN_B1_i),
 	.RDATA_B2_o(RDATA_B2_o),
 
@@ -194,7 +194,7 @@ TDP36K _TECHMAP_REPLACE_ (
 endmodule
 
 
-module \$__QLF_TDP36K_MERGED (...);
+module \$__QLF_SDP36K_MERGED (...);
 
 parameter INIT1 = 0;
 
@@ -202,7 +202,7 @@ parameter PORT_A1_WIDTH = 1;
 parameter PORT_B1_WIDTH = 1;
 
 parameter PORT_A1_WR_BE_WIDTH = 1;
-parameter PORT_B1_WR_BE_WIDTH = 1;
+//parameter PORT_B1_WR_BE_WIDTH = 1;
 
 input PORT_A1_CLK;
 input [14:0] PORT_A1_ADDR;
@@ -210,13 +210,13 @@ input [PORT_A1_WIDTH-1:0] PORT_A1_WR_DATA;
 input PORT_A1_WR_EN;
 input [PORT_A1_WR_BE_WIDTH-1:0] PORT_A1_WR_BE;
 input PORT_A1_CLK_EN;
-output [PORT_A1_WIDTH-1:0] PORT_A1_RD_DATA;
+//output [PORT_A1_WIDTH-1:0] PORT_A1_RD_DATA;
 
 input PORT_B1_CLK;
 input [14:0] PORT_B1_ADDR;
-input [PORT_B1_WIDTH-1:0] PORT_B1_WR_DATA;
-input PORT_B1_WR_EN;
-input [PORT_B1_WR_BE_WIDTH-1:0] PORT_B1_WR_BE;
+//input [PORT_B1_WIDTH-1:0] PORT_B1_WR_DATA;
+//input PORT_B1_WR_EN;
+//input [PORT_B1_WR_BE_WIDTH-1:0] PORT_B1_WR_BE;
 input PORT_B1_CLK_EN;
 output [PORT_B1_WIDTH-1:0] PORT_B1_RD_DATA;
 
@@ -225,7 +225,7 @@ parameter INIT2 = 0;
 parameter PORT_A2_WIDTH = 1;
 parameter PORT_B2_WIDTH = 1;
 parameter PORT_A2_WR_BE_WIDTH = 1;
-parameter PORT_B2_WR_BE_WIDTH = 1;
+//parameter PORT_B2_WR_BE_WIDTH = 1;
 
 input PORT_A2_CLK;
 input [14:0] PORT_A2_ADDR;
@@ -233,13 +233,13 @@ input [PORT_A2_WIDTH-1:0] PORT_A2_WR_DATA;
 input PORT_A2_WR_EN;
 input [PORT_A2_WR_BE_WIDTH-1:0] PORT_A2_WR_BE;
 input PORT_A2_CLK_EN;
-output [PORT_A2_WIDTH-1:0] PORT_A2_RD_DATA;
+//output [PORT_A2_WIDTH-1:0] PORT_A2_RD_DATA;
 
 input PORT_B2_CLK;
 input [14:0] PORT_B2_ADDR;
-input [PORT_B2_WIDTH-1:0] PORT_B2_WR_DATA;
-input PORT_B2_WR_EN;
-input [PORT_B2_WR_BE_WIDTH-1:0] PORT_B2_WR_BE;
+//input [PORT_B2_WIDTH-1:0] PORT_B2_WR_DATA;
+//input PORT_B2_WR_EN;
+//input [PORT_B2_WR_BE_WIDTH-1:0] PORT_B2_WR_BE;
 input PORT_B2_CLK_EN;
 output [PORT_B2_WIDTH-1:0] PORT_B2_RD_DATA;
 
@@ -322,21 +322,21 @@ localparam [ 2:0] WMODE_A2_i    = mode(PORT_A2_WIDTH);
 localparam [ 2:0] RMODE_B2_i    = mode(PORT_B2_WIDTH);
 localparam [ 2:0] WMODE_B2_i    = mode(PORT_B2_WIDTH);
 
-assign REN_A1_i = PORT_A1_CLK_EN;
+//assign REN_A1_i = PORT_A1_CLK_EN;
 assign WEN_A1_i = PORT_A1_CLK_EN & PORT_A1_WR_EN;
 assign BE_A1_i = PORT_A1_WR_BE;
 
 assign REN_B1_i = PORT_B1_CLK_EN;
-assign WEN_B1_i = PORT_B1_CLK_EN & PORT_B1_WR_EN;
-assign BE_B1_i = PORT_B1_WR_BE;
+//assign WEN_B1_i = PORT_B1_CLK_EN & PORT_B1_WR_EN;
+//assign BE_B1_i = PORT_B1_WR_BE;
 
-assign REN_A2_i = PORT_A2_CLK_EN;
+//assign REN_A2_i = PORT_A2_CLK_EN;
 assign WEN_A2_i = PORT_A2_CLK_EN & PORT_A2_WR_EN;
 assign BE_A2_i = PORT_A2_WR_BE;
 
 assign REN_B2_i = PORT_B2_CLK_EN;
-assign WEN_B2_i = PORT_B2_CLK_EN & PORT_B2_WR_EN;
-assign BE_B2_i = PORT_B2_WR_BE;
+//assign WEN_B2_i = PORT_B2_CLK_EN & PORT_B2_WR_EN;
+//assign BE_B2_i = PORT_B2_WR_BE;
 
 assign ADDR_A1_i = PORT_A1_ADDR;
 assign ADDR_B1_i = PORT_B1_ADDR;
@@ -349,17 +349,17 @@ case (PORT_A1_WIDTH)
 default: assign WDATA_A1_i = PORT_A1_WR_DATA; // 1,2,4,8,16
 endcase
 
-case (PORT_B1_WIDTH)
-9: assign { WDATA_B1_i[16], WDATA_B1_i[7:0] } = PORT_B1_WR_DATA;
-18: assign { WDATA_B1_i[17], WDATA_B1_i[15:8], WDATA_B1_i[16], WDATA_B1_i[7:0] } = PORT_B1_WR_DATA;
-default: assign WDATA_B1_i = PORT_B1_WR_DATA; // 1,2,4,8,16
-endcase
+//case (PORT_B1_WIDTH)
+//9: assign { WDATA_B1_i[16], WDATA_B1_i[7:0] } = PORT_B1_WR_DATA;
+//18: assign { WDATA_B1_i[17], WDATA_B1_i[15:8], WDATA_B1_i[16], WDATA_B1_i[7:0] } = PORT_B1_WR_DATA;
+//default: assign WDATA_B1_i = PORT_B1_WR_DATA; // 1,2,4,8,16
+//endcase
 
-case (PORT_A1_WIDTH)
-9: assign PORT_A1_RD_DATA = { RDATA_A1_o[16], RDATA_A1_o[7:0] };
-18: assign PORT_A1_RD_DATA = { RDATA_A1_o[17], RDATA_A1_o[15:8], RDATA_A1_o[16], RDATA_A1_o[7:0] };
-default: assign PORT_A1_RD_DATA = RDATA_A1_o; // 1,2,4,8,16
-endcase
+//case (PORT_A1_WIDTH)
+//9: assign PORT_A1_RD_DATA = { RDATA_A1_o[16], RDATA_A1_o[7:0] };
+//18: assign PORT_A1_RD_DATA = { RDATA_A1_o[17], RDATA_A1_o[15:8], RDATA_A1_o[16], RDATA_A1_o[7:0] };
+//default: assign PORT_A1_RD_DATA = RDATA_A1_o; // 1,2,4,8,16
+//endcase
 
 case (PORT_B1_WIDTH)
 9: assign PORT_B1_RD_DATA = { RDATA_B1_o[16], RDATA_B1_o[7:0] };
@@ -373,17 +373,17 @@ case (PORT_A2_WIDTH)
 default: assign WDATA_A2_i = PORT_A2_WR_DATA; // 1,2,4,8,16
 endcase
 
-case (PORT_B2_WIDTH)
-9: assign { WDATA_B2_i[16], WDATA_B2_i[7:0] } = PORT_B2_WR_DATA;
-18: assign { WDATA_B2_i[17], WDATA_B2_i[15:8], WDATA_B2_i[16], WDATA_B2_i[7:0] } = PORT_B2_WR_DATA;
-default: assign WDATA_B2_i = PORT_B2_WR_DATA; // 1,2,4,8,16
-endcase
+//case (PORT_B2_WIDTH)
+//9: assign { WDATA_B2_i[16], WDATA_B2_i[7:0] } = PORT_B2_WR_DATA;
+//18: assign { WDATA_B2_i[17], WDATA_B2_i[15:8], WDATA_B2_i[16], WDATA_B2_i[7:0] } = PORT_B2_WR_DATA;
+//default: assign WDATA_B2_i = PORT_B2_WR_DATA; // 1,2,4,8,16
+//endcase
 
-case (PORT_A2_WIDTH)
-9: assign PORT_A2_RD_DATA = { RDATA_A2_o[16], RDATA_A2_o[7:0] };
-18: assign PORT_A2_RD_DATA = { RDATA_A2_o[17], RDATA_A2_o[15:8], RDATA_A2_o[16], RDATA_A2_o[7:0] };
-default: assign PORT_A2_RD_DATA = RDATA_A2_o; // 1,2,4,8,16
-endcase
+//case (PORT_A2_WIDTH)
+//9: assign PORT_A2_RD_DATA = { RDATA_A2_o[16], RDATA_A2_o[7:0] };
+//18: assign PORT_A2_RD_DATA = { RDATA_A2_o[17], RDATA_A2_o[15:8], RDATA_A2_o[16], RDATA_A2_o[7:0] };
+//default: assign PORT_A2_RD_DATA = RDATA_A2_o; // 1,2,4,8,16
+//endcase
 
 case (PORT_B2_WIDTH)
 9: assign PORT_B2_RD_DATA = { RDATA_B2_o[16], RDATA_B2_o[7:0] };
@@ -406,21 +406,21 @@ TDP36K _TECHMAP_REPLACE_ (
 	.RESET_ni(1'b1),
 	.WDATA_A1_i(WDATA_A1_i),
 	.WDATA_A2_i(WDATA_A2_i),
-	.RDATA_A1_o(RDATA_A1_o),
-	.RDATA_A2_o(RDATA_A2_o),
+	.RDATA_A1_o(),
+	.RDATA_A2_o(),
 	.ADDR_A1_i(ADDR_A1_i),
 	.ADDR_A2_i(ADDR_A2_i),
 	.CLK_A1_i(PORT_A1_CLK),
 	.CLK_A2_i(PORT_A2_CLK),
-	.REN_A1_i(REN_A1_i),
-	.REN_A2_i(REN_A2_i),
+	.REN_A1_i(1'b0),
+	.REN_A2_i(1'b0),
 	.WEN_A1_i(WEN_A1_i),
 	.WEN_A2_i(WEN_A2_i),
 	.BE_A1_i(BE_A1_i),
 	.BE_A2_i(BE_A2_i),
 
-	.WDATA_B1_i(WDATA_B1_i),
-	.WDATA_B2_i(WDATA_B2_i),
+	.WDATA_B1_i(18'h0),
+	.WDATA_B2_i(18'h0),
 	.RDATA_B1_o(RDATA_B1_o),
 	.RDATA_B2_o(RDATA_B2_o),
 	.ADDR_B1_i(ADDR_B1_i),
@@ -429,10 +429,10 @@ TDP36K _TECHMAP_REPLACE_ (
 	.CLK_B2_i(PORT_B2_CLK),
 	.REN_B1_i(REN_B1_i),
 	.REN_B2_i(REN_B2_i),
-	.WEN_B1_i(WEN_B1_i),
-	.WEN_B2_i(WEN_B2_i),
-	.BE_B1_i(BE_B1_i),
-	.BE_B2_i(BE_B2_i),
+	.WEN_B1_i(1'b0),
+	.WEN_B2_i(1'b0),
+	.BE_B1_i(2'b00),
+	.BE_B2_i(2'b00),
 
 	.FLUSH1_i(1'b0),
 	.FLUSH2_i(1'b0)
