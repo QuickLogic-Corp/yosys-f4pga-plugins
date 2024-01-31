@@ -69,6 +69,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        write the design to the specified verilog file. Writing of an output\n");
         log("        file is omitted if this parameter is not specified.\n");
         log("\n");
+        log("    -meminit <dir-path>\n");
+        log("        write block memory initialization data into files created below\n");
+        log("        the specified path (qlf_k6n10f only).\n");
+        log("\n");
         log("    -no_dsp\n");
         log("        By default use DSP blocks in output netlist.\n");
         log("        do not use DSP blocks to implement multipliers and associated logic\n");
@@ -107,7 +111,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("\n");
     }
 
-    string top_opt, edif_file, blif_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path;
+    string top_opt, edif_file, blif_file, meminit_dir, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -124,6 +128,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         edif_file = "";
         blif_file = "";
         verilog_file = "";
+        meminit_dir = "";
         currmodule = "";
         family = "qlf_k4n8";
         inferAdder = true;
@@ -176,6 +181,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (args[argidx] == "-verilog" && argidx + 1 < args.size()) {
                 verilog_file = args[++argidx];
+                continue;
+            }
+            if (args[argidx] == "-meminit" && argidx + 1 < args.size()) {
+                meminit_dir = args[++argidx];
                 continue;
             }
             if (args[argidx] == "-no_dsp") {
@@ -314,7 +323,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
         }
 
-        if (check_label("map_dsp"), "(skip if -no_dsp)") {
+        if (check_label("map_dsp", "(skip if -no_dsp)")) {
             if (help_mode || family == "qlf_k6n10") {
                 if (help_mode || !nodsp) {
                     run("memory_dff", "                      (for qlf_k6n10)");
@@ -581,7 +590,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (help_mode || abcOpt) {
                 if (help_mode || family == "qlf_k6n10" || family == "qlf_k6n10f") {
                     if (abc9) {
-                        run("read_verilog -lib -specify -icells +/quicklogic/pp3/abc9_model.v");
+                        run("read_verilog -lib -specify -icells " + lib_path + "/pp3/abc9_model.v");
                         //run("techmap -map +/quicklogic/pp3/abc9_map.v");
                         //run("abc9 -maxlut 6 -dff");
                         run("abc9 -maxlut 6");
@@ -653,6 +662,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             run("check");
             run("blackbox =A:whitebox");
+        }
+
+        if (check_label("meminit", "(if -meminit, for qlf_k6n10f)") && (help_mode || (family == "qlf_k6n10f" && !meminit_dir.empty()))) {
+            run("ql_bram_initfile -write -path " + (help_mode ? "<dir-path>" : meminit_dir));
         }
 
         if (check_label("blif", "(if -blif)")) {
