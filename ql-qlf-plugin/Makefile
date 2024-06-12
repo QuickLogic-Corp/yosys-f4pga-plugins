@@ -24,6 +24,7 @@ SOURCES = synth_quicklogic.cc \
           ql-edif.cc \
           ql-dsp-simd.cc \
           ql-dsp-macc.cc \
+          ql-bram-initfile.cc \
           ql-bram-split.cc \
           ql-bram-merge.cc \
           ql-dsp-io-regs.cc \
