@@ -43,6 +43,11 @@ struct QlDspSimdPass : public Pass {
         log("    perform SIMD operation.\n");
     }
 
+    bool replace_existing_pass() const override
+    {
+        return true;
+    }
+
     // ..........................................
 
     /// Describes DSP config unique to a whole DSP cell

@@ -182,7 +182,10 @@ struct QlSDPBramMergePass : public Pass {
         log("\n");
     }
 
-
+    bool replace_existing_pass() const override
+    {
+        return true;
+    }
 
     void execute(std::vector<std::string> args, RTLIL::Design *design) override
     {
@@ -366,7 +369,10 @@ struct QlTDPBramMergePass : public Pass {
         log("\n");
     }
 
-
+    bool replace_existing_pass() const override
+    {
+        return true;
+    }
 
     void execute(std::vector<std::string> args, RTLIL::Design *design) override
     {

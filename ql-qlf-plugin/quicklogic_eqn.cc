@@ -25,6 +25,7 @@ PRIVATE_NAMESPACE_BEGIN
 
 struct QuicklogicEqnPass : public Pass {
     QuicklogicEqnPass() : Pass("quicklogic_eqn", "Quicklogic: Calculate equations for luts") {}
+
     void help() override
     {
         log("\n");
@@ -32,6 +33,11 @@ struct QuicklogicEqnPass : public Pass {
         log("\n");
         log("Calculate equations for luts since bitstream generator depends on it.\n");
         log("\n");
+    }
+
+    bool replace_existing_pass() const override
+    {
+        return true;
     }
 
     Const init2eqn(Const init, int inputs)

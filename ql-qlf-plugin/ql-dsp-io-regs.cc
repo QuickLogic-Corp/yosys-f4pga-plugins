@@ -33,6 +33,11 @@ struct QlDspIORegs : public Pass {
         log("on their configuration.\n");
     }
 
+    bool replace_existing_pass() const override
+    {
+        return true;
+    }
+
     void execute(std::vector<std::string> a_Args, RTLIL::Design *a_Design) override
     {
         log_header(a_Design, "Executing QL_DSP_IO_REGS pass.\n");

@@ -30,6 +30,11 @@ struct QlBramSplitPass : public Pass {
         log("    be split into 2x18K BRAMs.\n");
     }
 
+    bool replace_existing_pass() const override
+    {
+        return true;
+    }
+
     // ..........................................
 
     /// Describes BRAM config unique to a whole BRAM cell

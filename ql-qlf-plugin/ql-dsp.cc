@@ -129,6 +129,7 @@ void create_ql_dsp(ql_dsp_pm &pm)
 
 struct QlDspPass : public Pass {
     QlDspPass() : Pass("ql_dsp", "ql: map multipliers") {}
+
     void help() override
     {
         //   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
@@ -146,6 +147,12 @@ struct QlDspPass : public Pass {
         log("the accumulator to an arbitrary value can be inferred to use the {C,D} input.\n");
         log("\n");
     }
+
+    bool replace_existing_pass() const override
+    {
+        return true;
+    }
+
     void execute(std::vector<std::string> args, RTLIL::Design *design) override
     {
         log_header(design, "Executing ql_DSP pass (map multipliers).\n");
