@@ -52,6 +52,8 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        - qlf_k4n8\n");
         log("        - qlf_k6n10\n");
         log("        - qlf_k6n10f\n");
+        log("    -lib_path <lib_path>\n");
+        log("        Specify the library files directory (device data)\n");
         log("\n");
         log("    -no_abc_opt\n");
         log("        By default most of ABC logic optimization features is\n");
@@ -160,7 +162,6 @@ struct SynthQuickLogicPass : public ScriptPass {
     {
         string run_from, run_to;
         clear_flags();
-        lib_path = design->scratchpad_get_string("ql.lib_path", lib_path);
         size_t argidx;
         for (argidx = 1; argidx < args.size(); argidx++) {
             if (args[argidx] == "-run" && argidx + 1 < args.size()) {
@@ -185,6 +186,10 @@ struct SynthQuickLogicPass : public ScriptPass {
 
             if (args[argidx] == "-family" && argidx + 1 < args.size()) {
                 family = args[++argidx];
+                continue;
+            }
+            if (args[argidx] == "-lib_path" && argidx + 1 < args.size()) {
+                lib_path = args[++argidx];
                 continue;
             }
             if (args[argidx] == "-blif" && argidx + 1 < args.size()) {
@@ -251,6 +256,8 @@ struct SynthQuickLogicPass : public ScriptPass {
 
             break;
         }
+        if(lib_path == "+/quicklogic/")
+            lib_path = design->scratchpad_get_string("ql.lib_path", lib_path);
         extra_args(args, argidx, design);
 
         if (!design->full_selection())
@@ -311,7 +318,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             // Use -nomem2reg here to prevent Yosys from complaining about
             // some block ram cell models. After all the only part of the cells
             // library required here is cell port definitions plus specify blocks.
-            run("read_verilog -lib -specify -nomem2reg " + lib_path + "common/cells_sim.v" + readVelArgs);
+            run("read_verilog -lib -specify -nomem2reg " + readVelArgs);
             run(stringf("hierarchy -check %s", help_mode ? "-top <top>" : top_opt.c_str()));
         }
 
