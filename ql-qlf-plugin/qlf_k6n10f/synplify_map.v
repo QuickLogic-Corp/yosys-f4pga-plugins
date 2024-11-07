@@ -67,3 +67,21 @@ module GND(output G);
   assign G = 0;
 endmodule
 
+module IBUF (I, O);
+  input I;
+  output O;
+  assign O = I;
+endmodule
+
+module OBUF (I, O);
+  input I;
+  output O;
+  assign O = I;
+endmodule
+
+module dff (C, D, Q);
+    input  C;
+    input  D;
+    output Q;
+    dffre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(1'b1), .R(1'b0));
+endmodule
