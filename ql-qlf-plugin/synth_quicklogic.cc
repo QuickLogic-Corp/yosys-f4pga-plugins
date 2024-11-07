@@ -316,7 +316,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("prepare")) {
-            if (!synplify) {
+            if (synplify) {
+                run("flatten");
+            }
+            else{
                 run("proc");
                 run("flatten");
                 if (help_mode || family == "pp3") {
