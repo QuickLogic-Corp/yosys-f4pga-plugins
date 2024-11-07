@@ -81,8 +81,6 @@ endmodule
 
 module dff (C, D, Q);
     input  C;
-    input  R;
-    input  E;
     input  D;
     output Q;
     dffre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(1'b1), .R(1'b0));
