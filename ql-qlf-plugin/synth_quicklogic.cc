@@ -307,12 +307,15 @@ struct SynthQuickLogicPass : public ScriptPass {
             readVelArgs = family_path + "/cells_sim.v";
             if (family == "qlf_k6n10f") {
                 readVelArgs += family_path + "/dsp_sim.v";
-                readVelArgs += family_path + "/brams_sim.v";
+                if(inferBram) {
+                    readVelArgs += family_path + "/brams_sim.v";
+                    if (bramTypes) {
+                        readVelArgs += family_path + "/bram_types_sim.v";
+                    }
+                }
                 if (synplify) {
                     readVelArgs += family_path + "/synplify_map.v";
                 }
-                if (bramTypes)
-                    readVelArgs += family_path + "/bram_types_sim.v";
             }
 
             // Use -nomem2reg here to prevent Yosys from complaining about
