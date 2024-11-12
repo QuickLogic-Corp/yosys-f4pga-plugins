@@ -252,9 +252,9 @@ struct QlDspSimdPass : public Pass {
                             log_assert(dsp_a->getParam(RTLIL::escape_id(it)) == dsp_b->getParam(RTLIL::escape_id(it)));
                             auto param = dsp_a->getParam(RTLIL::escape_id(it));
                             if (param.size() > 1) {
-                                mode_bits.insert(mode_bits.end(), param.bits.begin(), param.bits.end());
+                                mode_bits.insert(mode_bits.end(), param.bits().begin(), param.bits().end());
                             } else {
-                                mode_bits.push_back(param.bits[0]);
+                                mode_bits.push_back(param.bits()[0]);
                             }
                         }
                         mode_bits_size += MODE_BITS_EXTENSION_SIZE;

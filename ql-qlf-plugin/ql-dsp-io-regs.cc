@@ -105,7 +105,7 @@ struct QlDspIORegs : public Pass {
                     // Read MODE_BITS at correct indexes
                     auto mode_bits = &dsp->getParam(RTLIL::escape_id("MODE_BITS"));
                     RTLIL::Const register_inputs;
-                    register_inputs = mode_bits->bits.at(MODE_BITS_REGISTER_INPUTS_ID);
+                    register_inputs = mode_bits->at(MODE_BITS_REGISTER_INPUTS_ID);
                     reg_in_i = register_inputs.as_int();
 
                     RTLIL::Const output_select;
