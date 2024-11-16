@@ -869,21 +869,21 @@ parameter PORT_B_WR_BE_WIDTH = 4;
 parameter [1024*36-1:0] INIT = 36864'b0;
 parameter OPTION_SPLIT = 0;
 
-input PORT_A_CLK_i;
-input [PORT_A_AWIDTH-1:0] PORT_A_ADDR_i;
-input [PORT_A_DWIDTH-1:0] PORT_A_WR_DATA_i;
-input PORT_A_WEN_i;
-input [PORT_A_WR_BE_WIDTH-1:0] PORT_A_WR_BE_i;
-input PORT_A_REN_i;
-output [PORT_A_DWIDTH-1:0] PORT_A_RD_DATA_o;
+input wire PORT_A_CLK_i;
+input wire [PORT_A_AWIDTH-1:0] PORT_A_ADDR_i;
+input wire [PORT_A_DWIDTH-1:0] PORT_A_WR_DATA_i;
+input wire PORT_A_WEN_i;
+input wire [PORT_A_WR_BE_WIDTH-1:0] PORT_A_WR_BE_i;
+input wire PORT_A_REN_i;
+output wire [PORT_A_DWIDTH-1:0] PORT_A_RD_DATA_o;
 
-input PORT_B_CLK_i;
-input [PORT_B_AWIDTH-1:0] PORT_B_ADDR_i;
-input [PORT_B_DWIDTH-1:0] PORT_B_WR_DATA_i;
-input PORT_B_WEN_i;
-input [PORT_B_WR_BE_WIDTH-1:0] PORT_B_WR_BE_i;
-input PORT_B_REN_i;
-output [PORT_B_DWIDTH-1:0] PORT_B_RD_DATA_o;
+input wire PORT_B_CLK_i;
+input wire [PORT_B_AWIDTH-1:0] PORT_B_ADDR_i;
+input wire [PORT_B_DWIDTH-1:0] PORT_B_WR_DATA_i;
+input wire PORT_B_WEN_i;
+input wire [PORT_B_WR_BE_WIDTH-1:0] PORT_B_WR_BE_i;
+input wire PORT_B_REN_i;
+output wire [PORT_B_DWIDTH-1:0] PORT_B_RD_DATA_o;
 
 
 // Fixed mode settings
@@ -1248,21 +1248,21 @@ parameter PORT_B_WR_BE_WIDTH = 4;
 
 parameter [1024*18-1:0] INIT = 18432'b0;
 
-input PORT_A_CLK_i;
-input [PORT_A_AWIDTH-1:0] PORT_A_ADDR_i;
-input [PORT_A_DWIDTH-1:0] PORT_A_WR_DATA_i;
-input PORT_A_WEN_i;
-input [PORT_A_WR_BE_WIDTH-1:0] PORT_A_WR_BE_i;
-input PORT_A_REN_i;
-output [PORT_A_DWIDTH-1:0] PORT_A_RD_DATA_o;
+input wire PORT_A_CLK_i;
+input wire [PORT_A_AWIDTH-1:0] PORT_A_ADDR_i;
+input wire [PORT_A_DWIDTH-1:0] PORT_A_WR_DATA_i;
+input wire PORT_A_WEN_i;
+input wire [PORT_A_WR_BE_WIDTH-1:0] PORT_A_WR_BE_i;
+input wire PORT_A_REN_i;
+output wire [PORT_A_DWIDTH-1:0] PORT_A_RD_DATA_o;
 
-input PORT_B_CLK_i;
-input [PORT_B_AWIDTH-1:0] PORT_B_ADDR_i;
-input [PORT_B_DWIDTH-1:0] PORT_B_WR_DATA_i;
-input PORT_B_WEN_i;
-input [PORT_B_WR_BE_WIDTH-1:0] PORT_B_WR_BE_i;
-input PORT_B_REN_i;
-output [PORT_B_DWIDTH-1:0] PORT_B_RD_DATA_o;
+input wire PORT_B_CLK_i;
+input wire [PORT_B_AWIDTH-1:0] PORT_B_ADDR_i;
+input wire [PORT_B_DWIDTH-1:0] PORT_B_WR_DATA_i;
+input wire PORT_B_WEN_i;
+input wire [PORT_B_WR_BE_WIDTH-1:0] PORT_B_WR_BE_i;
+input wire PORT_B_REN_i;
+output wire [PORT_B_DWIDTH-1:0] PORT_B_RD_DATA_o;
 
 
 (* is_inferred = 0 *)
@@ -1373,37 +1373,37 @@ parameter PORT_B2_WR_BE_WIDTH = 2;
 parameter [1024*18-1:0] INIT1 = 18432'b0;
 parameter [1024*18-1:0] INIT2 = 18432'b0;
 
-input PORT_A1_CLK_i;
-input [PORT_A1_AWIDTH-1:0] PORT_A1_ADDR_i;
-input [PORT_A1_DWIDTH-1:0] PORT_A1_WR_DATA_i;
-input PORT_A1_WEN_i;
-input [PORT_A1_WR_BE_WIDTH-1:0] PORT_A1_WR_BE_i;
-input PORT_A1_REN_i;
-output [PORT_A1_DWIDTH-1:0] PORT_A1_RD_DATA_o;
+input wire PORT_A1_CLK_i;
+input wire [PORT_A1_AWIDTH-1:0] PORT_A1_ADDR_i;
+input wire [PORT_A1_DWIDTH-1:0] PORT_A1_WR_DATA_i;
+input wire PORT_A1_WEN_i;
+input wire [PORT_A1_WR_BE_WIDTH-1:0] PORT_A1_WR_BE_i;
+input wire PORT_A1_REN_i;
+output wire [PORT_A1_DWIDTH-1:0] PORT_A1_RD_DATA_o;
 
-input PORT_B1_CLK_i;
-input [PORT_B1_AWIDTH-1:0] PORT_B1_ADDR_i;
-input [PORT_B1_DWIDTH-1:0] PORT_B1_WR_DATA_i;
-input PORT_B1_WEN_i;
-input [PORT_B1_WR_BE_WIDTH-1:0] PORT_B1_WR_BE_i;
-input PORT_B1_REN_i;
-output [PORT_B1_DWIDTH-1:0] PORT_B1_RD_DATA_o;
+input wire PORT_B1_CLK_i;
+input wire [PORT_B1_AWIDTH-1:0] PORT_B1_ADDR_i;
+input wire [PORT_B1_DWIDTH-1:0] PORT_B1_WR_DATA_i;
+input wire PORT_B1_WEN_i;
+input wire [PORT_B1_WR_BE_WIDTH-1:0] PORT_B1_WR_BE_i;
+input wire PORT_B1_REN_i;
+output wire [PORT_B1_DWIDTH-1:0] PORT_B1_RD_DATA_o;
 
-input PORT_A2_CLK_i;
-input [PORT_A2_AWIDTH-1:0] PORT_A2_ADDR_i;
-input [PORT_A2_DWIDTH-1:0] PORT_A2_WR_DATA_i;
-input PORT_A2_WEN_i;
-input [PORT_A2_WR_BE_WIDTH-1:0] PORT_A2_WR_BE_i;
-input PORT_A2_REN_i;
-output [PORT_A2_DWIDTH-1:0] PORT_A2_RD_DATA_o;
+input wire PORT_A2_CLK_i;
+input wire [PORT_A2_AWIDTH-1:0] PORT_A2_ADDR_i;
+input wire [PORT_A2_DWIDTH-1:0] PORT_A2_WR_DATA_i;
+input wire PORT_A2_WEN_i;
+input wire [PORT_A2_WR_BE_WIDTH-1:0] PORT_A2_WR_BE_i;
+input wire PORT_A2_REN_i;
+output wire [PORT_A2_DWIDTH-1:0] PORT_A2_RD_DATA_o;
 
-input PORT_B2_CLK_i;
-input [PORT_B2_AWIDTH-1:0] PORT_B2_ADDR_i;
-input [PORT_B2_DWIDTH-1:0] PORT_B2_WR_DATA_i;
-input PORT_B2_WEN_i;
-input [PORT_B2_WR_BE_WIDTH-1:0] PORT_B2_WR_BE_i;
-input PORT_B2_REN_i;
-output [PORT_B2_DWIDTH-1:0] PORT_B2_RD_DATA_o;
+input wire PORT_B2_CLK_i;
+input wire [PORT_B2_AWIDTH-1:0] PORT_B2_ADDR_i;
+input wire [PORT_B2_DWIDTH-1:0] PORT_B2_WR_DATA_i;
+input wire PORT_B2_WEN_i;
+input wire [PORT_B2_WR_BE_WIDTH-1:0] PORT_B2_WR_BE_i;
+input wire PORT_B2_REN_i;
+output wire [PORT_B2_DWIDTH-1:0] PORT_B2_RD_DATA_o;
 
 
 // Fixed mode settings
@@ -2367,25 +2367,25 @@ module SFIFO_18K_X2_BLK (
   parameter UPAE_DBITS2 = 11'd10;
   parameter UPAF_DBITS2 = 11'd10;
 
-  input CLK1;
-  input PUSH1, POP1;
-  input [WR1_DATA_WIDTH-1:0] DIN1;
-  input Async_Flush1;
-  output [RD1_DATA_WIDTH-1:0] DOUT1;
-  output Almost_Full1, Almost_Empty1;
-  output Full1, Empty1;
-  output Full_Watermark1, Empty_Watermark1;
-  output Overrun_Error1, Underrun_Error1;
+  input wire CLK1;
+  input wire PUSH1, POP1;
+  input wire [WR1_DATA_WIDTH-1:0] DIN1;
+  input wire Async_Flush1;
+  output wire [RD1_DATA_WIDTH-1:0] DOUT1;
+  output wire Almost_Full1, Almost_Empty1;
+  output wire Full1, Empty1;
+  output wire Full_Watermark1, Empty_Watermark1;
+  output wire Overrun_Error1, Underrun_Error1;
   
-  input CLK2;
-  input PUSH2, POP2;
-  input [WR2_DATA_WIDTH-1:0] DIN2;
-  input Async_Flush2;
-  output [RD2_DATA_WIDTH-1:0] DOUT2;
-  output Almost_Full2, Almost_Empty2;
-  output Full2, Empty2;
-  output Full_Watermark2, Empty_Watermark2;
-  output Overrun_Error2, Underrun_Error2;
+  input wire CLK2;
+  input wire PUSH2, POP2;
+  input wire [WR2_DATA_WIDTH-1:0] DIN2;
+  input wire Async_Flush2;
+  output wire [RD2_DATA_WIDTH-1:0] DOUT2;
+  output wire Almost_Full2, Almost_Empty2;
+  output wire Full2, Empty2;
+  output wire Full_Watermark2, Empty_Watermark2;
+  output wire Overrun_Error2, Underrun_Error2;
   
   // Fixed mode settings
   localparam [ 0:0] SYNC_FIFO1_i  = 1'd1;
@@ -2692,25 +2692,25 @@ module AFIFO_18K_X2_BLK (
   parameter UPAE_DBITS2 = 11'd10;
   parameter UPAF_DBITS2 = 11'd10;
 
-  input Push_Clk1, Pop_Clk1;
-  input PUSH1, POP1;
-  input [WR1_DATA_WIDTH-1:0] DIN1;
-  input Async_Flush1;
-  output [RD1_DATA_WIDTH-1:0] DOUT1;
-  output Almost_Full1, Almost_Empty1;
-  output Full1, Empty1;
-  output Full_Watermark1, Empty_Watermark1;
-  output Overrun_Error1, Underrun_Error1;
+  input wire Push_Clk1, Pop_Clk1;
+  input wire PUSH1, POP1;
+  input wire [WR1_DATA_WIDTH-1:0] DIN1;
+  input wire Async_Flush1;
+  output wire [RD1_DATA_WIDTH-1:0] DOUT1;
+  output wire Almost_Full1, Almost_Empty1;
+  output wire Full1, Empty1;
+  output wire Full_Watermark1, Empty_Watermark1;
+  output wire Overrun_Error1, Underrun_Error1;
   
-  input Push_Clk2, Pop_Clk2;
-  input PUSH2, POP2;
-  input [WR2_DATA_WIDTH-1:0] DIN2;
-  input Async_Flush2;
-  output [RD2_DATA_WIDTH-1:0] DOUT2;
-  output Almost_Full2, Almost_Empty2;
-  output Full2, Empty2;
-  output Full_Watermark2, Empty_Watermark2;
-  output Overrun_Error2, Underrun_Error2;
+  input wire Push_Clk2, Pop_Clk2;
+  input wire PUSH2, POP2;
+  input wire [WR2_DATA_WIDTH-1:0] DIN2;
+  input wire Async_Flush2;
+  output wire [RD2_DATA_WIDTH-1:0] DOUT2;
+  output wire Almost_Full2, Almost_Empty2;
+  output wire Full2, Empty2;
+  output wire Full_Watermark2, Empty_Watermark2;
+  output wire Overrun_Error2, Underrun_Error2;
   
   // Fixed mode settings
   localparam [ 0:0] SYNC_FIFO1_i  = 1'd0;
@@ -2917,20 +2917,20 @@ parameter [5:0] WRITE_WIDTH_B = 6'd36;
 parameter [1024*32-1:0] INIT = 32768'b0;
 parameter [1024*4-1:0] INIT_PARITY = 4096'b0;
 
-input [14:0] ADDR_A;
-input [14:0] ADDR_B;
-input [3:0] BE_A;
-input [3:0] BE_B;
-input CLK_A;
-input CLK_B;
-input REN_A;
-input REN_B;
-input [31:0] WDATA_A;
-input [3:0] WPARITY_A; 
-input [31:0] WDATA_B;
-input [3:0] WPARITY_B;
-input WEN_A;
-input WEN_B;
+input wire [14:0] ADDR_A;
+input wire [14:0] ADDR_B;
+input wire [3:0] BE_A;
+input wire [3:0] BE_B;
+input wire CLK_A;
+input wire CLK_B;
+input wire REN_A;
+input wire REN_B;
+input wire [31:0] WDATA_A;
+input wire [3:0] WPARITY_A; 
+input wire [31:0] WDATA_B;
+input wire [3:0] WPARITY_B;
+input wire WEN_A;
+input wire WEN_B;
 output wire [31:0] RDATA_A;
 output wire [3:0] RPARITY_A;
 output wire [31:0] RDATA_B;
