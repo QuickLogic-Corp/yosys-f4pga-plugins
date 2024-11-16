@@ -27,6 +27,8 @@ SOURCES = synth_quicklogic.cc \
           ql-bram-split.cc \
           ql-bram-merge.cc \
           ql-dsp-io-regs.cc \
+		  ql_bram_types.cc \
+		  ql_sdp_bram_types.cc \
           ql-bram-asymmetric.cc
 
 include ../Makefile_plugin.common

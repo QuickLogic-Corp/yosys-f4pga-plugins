@@ -869,21 +869,21 @@ parameter PORT_B_WR_BE_WIDTH = 4;
 parameter [1024*36-1:0] INIT = 36864'b0;
 parameter OPTION_SPLIT = 0;
 
-input PORT_A_CLK_i;
-input [PORT_A_AWIDTH-1:0] PORT_A_ADDR_i;
-input [PORT_A_DWIDTH-1:0] PORT_A_WR_DATA_i;
-input PORT_A_WEN_i;
-input [PORT_A_WR_BE_WIDTH-1:0] PORT_A_WR_BE_i;
-input PORT_A_REN_i;
-output [PORT_A_DWIDTH-1:0] PORT_A_RD_DATA_o;
+input wire PORT_A_CLK_i;
+input wire [PORT_A_AWIDTH-1:0] PORT_A_ADDR_i;
+input wire [PORT_A_DWIDTH-1:0] PORT_A_WR_DATA_i;
+input wire PORT_A_WEN_i;
+input wire [PORT_A_WR_BE_WIDTH-1:0] PORT_A_WR_BE_i;
+input wire PORT_A_REN_i;
+output wire [PORT_A_DWIDTH-1:0] PORT_A_RD_DATA_o;
 
-input PORT_B_CLK_i;
-input [PORT_B_AWIDTH-1:0] PORT_B_ADDR_i;
-input [PORT_B_DWIDTH-1:0] PORT_B_WR_DATA_i;
-input PORT_B_WEN_i;
-input [PORT_B_WR_BE_WIDTH-1:0] PORT_B_WR_BE_i;
-input PORT_B_REN_i;
-output [PORT_B_DWIDTH-1:0] PORT_B_RD_DATA_o;
+input wire PORT_B_CLK_i;
+input wire [PORT_B_AWIDTH-1:0] PORT_B_ADDR_i;
+input wire [PORT_B_DWIDTH-1:0] PORT_B_WR_DATA_i;
+input wire PORT_B_WEN_i;
+input wire [PORT_B_WR_BE_WIDTH-1:0] PORT_B_WR_BE_i;
+input wire PORT_B_REN_i;
+output wire [PORT_B_DWIDTH-1:0] PORT_B_RD_DATA_o;
 
 
 // Fixed mode settings
@@ -1248,21 +1248,21 @@ parameter PORT_B_WR_BE_WIDTH = 4;
 
 parameter [1024*18-1:0] INIT = 18432'b0;
 
-input PORT_A_CLK_i;
-input [PORT_A_AWIDTH-1:0] PORT_A_ADDR_i;
-input [PORT_A_DWIDTH-1:0] PORT_A_WR_DATA_i;
-input PORT_A_WEN_i;
-input [PORT_A_WR_BE_WIDTH-1:0] PORT_A_WR_BE_i;
-input PORT_A_REN_i;
-output [PORT_A_DWIDTH-1:0] PORT_A_RD_DATA_o;
+input wire PORT_A_CLK_i;
+input wire [PORT_A_AWIDTH-1:0] PORT_A_ADDR_i;
+input wire [PORT_A_DWIDTH-1:0] PORT_A_WR_DATA_i;
+input wire PORT_A_WEN_i;
+input wire [PORT_A_WR_BE_WIDTH-1:0] PORT_A_WR_BE_i;
+input wire PORT_A_REN_i;
+output wire [PORT_A_DWIDTH-1:0] PORT_A_RD_DATA_o;
 
-input PORT_B_CLK_i;
-input [PORT_B_AWIDTH-1:0] PORT_B_ADDR_i;
-input [PORT_B_DWIDTH-1:0] PORT_B_WR_DATA_i;
-input PORT_B_WEN_i;
-input [PORT_B_WR_BE_WIDTH-1:0] PORT_B_WR_BE_i;
-input PORT_B_REN_i;
-output [PORT_B_DWIDTH-1:0] PORT_B_RD_DATA_o;
+input wire PORT_B_CLK_i;
+input wire [PORT_B_AWIDTH-1:0] PORT_B_ADDR_i;
+input wire [PORT_B_DWIDTH-1:0] PORT_B_WR_DATA_i;
+input wire PORT_B_WEN_i;
+input wire [PORT_B_WR_BE_WIDTH-1:0] PORT_B_WR_BE_i;
+input wire PORT_B_REN_i;
+output wire [PORT_B_DWIDTH-1:0] PORT_B_RD_DATA_o;
 
 
 (* is_inferred = 0 *)
@@ -1373,37 +1373,37 @@ parameter PORT_B2_WR_BE_WIDTH = 2;
 parameter [1024*18-1:0] INIT1 = 18432'b0;
 parameter [1024*18-1:0] INIT2 = 18432'b0;
 
-input PORT_A1_CLK_i;
-input [PORT_A1_AWIDTH-1:0] PORT_A1_ADDR_i;
-input [PORT_A1_DWIDTH-1:0] PORT_A1_WR_DATA_i;
-input PORT_A1_WEN_i;
-input [PORT_A1_WR_BE_WIDTH-1:0] PORT_A1_WR_BE_i;
-input PORT_A1_REN_i;
-output [PORT_A1_DWIDTH-1:0] PORT_A1_RD_DATA_o;
+input wire PORT_A1_CLK_i;
+input wire [PORT_A1_AWIDTH-1:0] PORT_A1_ADDR_i;
+input wire [PORT_A1_DWIDTH-1:0] PORT_A1_WR_DATA_i;
+input wire PORT_A1_WEN_i;
+input wire [PORT_A1_WR_BE_WIDTH-1:0] PORT_A1_WR_BE_i;
+input wire PORT_A1_REN_i;
+output wire [PORT_A1_DWIDTH-1:0] PORT_A1_RD_DATA_o;
 
-input PORT_B1_CLK_i;
-input [PORT_B1_AWIDTH-1:0] PORT_B1_ADDR_i;
-input [PORT_B1_DWIDTH-1:0] PORT_B1_WR_DATA_i;
-input PORT_B1_WEN_i;
-input [PORT_B1_WR_BE_WIDTH-1:0] PORT_B1_WR_BE_i;
-input PORT_B1_REN_i;
-output [PORT_B1_DWIDTH-1:0] PORT_B1_RD_DATA_o;
+input wire PORT_B1_CLK_i;
+input wire [PORT_B1_AWIDTH-1:0] PORT_B1_ADDR_i;
+input wire [PORT_B1_DWIDTH-1:0] PORT_B1_WR_DATA_i;
+input wire PORT_B1_WEN_i;
+input wire [PORT_B1_WR_BE_WIDTH-1:0] PORT_B1_WR_BE_i;
+input wire PORT_B1_REN_i;
+output wire [PORT_B1_DWIDTH-1:0] PORT_B1_RD_DATA_o;
 
-input PORT_A2_CLK_i;
-input [PORT_A2_AWIDTH-1:0] PORT_A2_ADDR_i;
-input [PORT_A2_DWIDTH-1:0] PORT_A2_WR_DATA_i;
-input PORT_A2_WEN_i;
-input [PORT_A2_WR_BE_WIDTH-1:0] PORT_A2_WR_BE_i;
-input PORT_A2_REN_i;
-output [PORT_A2_DWIDTH-1:0] PORT_A2_RD_DATA_o;
+input wire PORT_A2_CLK_i;
+input wire [PORT_A2_AWIDTH-1:0] PORT_A2_ADDR_i;
+input wire [PORT_A2_DWIDTH-1:0] PORT_A2_WR_DATA_i;
+input wire PORT_A2_WEN_i;
+input wire [PORT_A2_WR_BE_WIDTH-1:0] PORT_A2_WR_BE_i;
+input wire PORT_A2_REN_i;
+output wire [PORT_A2_DWIDTH-1:0] PORT_A2_RD_DATA_o;
 
-input PORT_B2_CLK_i;
-input [PORT_B2_AWIDTH-1:0] PORT_B2_ADDR_i;
-input [PORT_B2_DWIDTH-1:0] PORT_B2_WR_DATA_i;
-input PORT_B2_WEN_i;
-input [PORT_B2_WR_BE_WIDTH-1:0] PORT_B2_WR_BE_i;
-input PORT_B2_REN_i;
-output [PORT_B2_DWIDTH-1:0] PORT_B2_RD_DATA_o;
+input wire PORT_B2_CLK_i;
+input wire [PORT_B2_AWIDTH-1:0] PORT_B2_ADDR_i;
+input wire [PORT_B2_DWIDTH-1:0] PORT_B2_WR_DATA_i;
+input wire PORT_B2_WEN_i;
+input wire [PORT_B2_WR_BE_WIDTH-1:0] PORT_B2_WR_BE_i;
+input wire PORT_B2_REN_i;
+output wire [PORT_B2_DWIDTH-1:0] PORT_B2_RD_DATA_o;
 
 
 // Fixed mode settings
@@ -1915,8 +1915,8 @@ module SFIFO_36K_BLK (
   localparam [11:0] UPAE1_i       = UPAE_DBITS;
   localparam [11:0] UPAF1_i       = UPAF_DBITS;
   
-  localparam [ 0:0] SYNC_FIFO2_i  = 1'd0;
-  localparam [ 0:0] FMODE2_i      = 1'd0;
+  localparam [ 0:0] SYNC_FIFO2_i  = 1'd1;
+  localparam [ 0:0] FMODE2_i      = 1'd1;
   localparam [ 0:0] POWERDN2_i    = 1'd0;
   localparam [ 0:0] SLEEP2_i      = 1'd0;
   localparam [ 0:0] PROTECT2_i    = 1'd0;
@@ -2028,8 +2028,8 @@ module SFIFO_36K_BLK (
 		.WDATA_A2_i(in_reg[35:18]),
 		.RDATA_A1_o(fifo_flags),
 		.RDATA_A2_o(),
-		.ADDR_A1_i(14'h0),
-		.ADDR_A2_i(14'h0),
+		.ADDR_A1_i(15'h0),
+		.ADDR_A2_i(15'h0),
 		.CLK_A1_i(Push_Clk),
 		.CLK_A2_i(1'b0),
 		.REN_A1_i(1'b1),
@@ -2105,7 +2105,7 @@ module AFIFO_36K_BLK (
   localparam [11:0] UPAF1_i       = UPAF_DBITS;
   
   localparam [ 0:0] SYNC_FIFO2_i  = 1'd0;
-  localparam [ 0:0] FMODE2_i      = 1'd0;
+  localparam [ 0:0] FMODE2_i      = 1'd1;
   localparam [ 0:0] POWERDN2_i    = 1'd0;
   localparam [ 0:0] SLEEP2_i      = 1'd0;
   localparam [ 0:0] PROTECT2_i    = 1'd0;
@@ -2213,8 +2213,8 @@ module AFIFO_36K_BLK (
 		.WDATA_A2_i(in_reg[35:18]),
 		.RDATA_A1_o(fifo_flags),
 		.RDATA_A2_o(),
-		.ADDR_A1_i(14'h0),
-		.ADDR_A2_i(14'h0),
+		.ADDR_A1_i(15'h0),
+		.ADDR_A2_i(15'h0),
 		.CLK_A1_i(Push_Clk),
 		.CLK_A2_i(1'b0),
 		.REN_A1_i(1'b1),
@@ -2367,25 +2367,25 @@ module SFIFO_18K_X2_BLK (
   parameter UPAE_DBITS2 = 11'd10;
   parameter UPAF_DBITS2 = 11'd10;
 
-  input CLK1;
-  input PUSH1, POP1;
-  input [WR1_DATA_WIDTH-1:0] DIN1;
-  input Async_Flush1;
-  output [RD1_DATA_WIDTH-1:0] DOUT1;
-  output Almost_Full1, Almost_Empty1;
-  output Full1, Empty1;
-  output Full_Watermark1, Empty_Watermark1;
-  output Overrun_Error1, Underrun_Error1;
+  input wire CLK1;
+  input wire PUSH1, POP1;
+  input wire [WR1_DATA_WIDTH-1:0] DIN1;
+  input wire Async_Flush1;
+  output wire [RD1_DATA_WIDTH-1:0] DOUT1;
+  output wire Almost_Full1, Almost_Empty1;
+  output wire Full1, Empty1;
+  output wire Full_Watermark1, Empty_Watermark1;
+  output wire Overrun_Error1, Underrun_Error1;
   
-  input CLK2;
-  input PUSH2, POP2;
-  input [WR2_DATA_WIDTH-1:0] DIN2;
-  input Async_Flush2;
-  output [RD2_DATA_WIDTH-1:0] DOUT2;
-  output Almost_Full2, Almost_Empty2;
-  output Full2, Empty2;
-  output Full_Watermark2, Empty_Watermark2;
-  output Overrun_Error2, Underrun_Error2;
+  input wire CLK2;
+  input wire PUSH2, POP2;
+  input wire [WR2_DATA_WIDTH-1:0] DIN2;
+  input wire Async_Flush2;
+  output wire [RD2_DATA_WIDTH-1:0] DOUT2;
+  output wire Almost_Full2, Almost_Empty2;
+  output wire Full2, Empty2;
+  output wire Full_Watermark2, Empty_Watermark2;
+  output wire Overrun_Error2, Underrun_Error2;
   
   // Fixed mode settings
   localparam [ 0:0] SYNC_FIFO1_i  = 1'd1;
@@ -2535,8 +2535,8 @@ module SFIFO_18K_X2_BLK (
 		.WDATA_A2_i(in_reg2[17:0]),
 		.RDATA_A1_o(fifo1_flags),
 		.RDATA_A2_o(fifo2_flags),
-		.ADDR_A1_i(14'h0),
-		.ADDR_A2_i(14'h0),
+		.ADDR_A1_i(15'h0),
+		.ADDR_A2_i(15'h0),
 		.CLK_A1_i(Push_Clk1),
 		.CLK_A2_i(Push_Clk2),
 		.REN_A1_i(1'b1),
@@ -2692,25 +2692,25 @@ module AFIFO_18K_X2_BLK (
   parameter UPAE_DBITS2 = 11'd10;
   parameter UPAF_DBITS2 = 11'd10;
 
-  input Push_Clk1, Pop_Clk1;
-  input PUSH1, POP1;
-  input [WR1_DATA_WIDTH-1:0] DIN1;
-  input Async_Flush1;
-  output [RD1_DATA_WIDTH-1:0] DOUT1;
-  output Almost_Full1, Almost_Empty1;
-  output Full1, Empty1;
-  output Full_Watermark1, Empty_Watermark1;
-  output Overrun_Error1, Underrun_Error1;
+  input wire Push_Clk1, Pop_Clk1;
+  input wire PUSH1, POP1;
+  input wire [WR1_DATA_WIDTH-1:0] DIN1;
+  input wire Async_Flush1;
+  output wire [RD1_DATA_WIDTH-1:0] DOUT1;
+  output wire Almost_Full1, Almost_Empty1;
+  output wire Full1, Empty1;
+  output wire Full_Watermark1, Empty_Watermark1;
+  output wire Overrun_Error1, Underrun_Error1;
   
-  input Push_Clk2, Pop_Clk2;
-  input PUSH2, POP2;
-  input [WR2_DATA_WIDTH-1:0] DIN2;
-  input Async_Flush2;
-  output [RD2_DATA_WIDTH-1:0] DOUT2;
-  output Almost_Full2, Almost_Empty2;
-  output Full2, Empty2;
-  output Full_Watermark2, Empty_Watermark2;
-  output Overrun_Error2, Underrun_Error2;
+  input wire Push_Clk2, Pop_Clk2;
+  input wire PUSH2, POP2;
+  input wire [WR2_DATA_WIDTH-1:0] DIN2;
+  input wire Async_Flush2;
+  output wire [RD2_DATA_WIDTH-1:0] DOUT2;
+  output wire Almost_Full2, Almost_Empty2;
+  output wire Full2, Empty2;
+  output wire Full_Watermark2, Empty_Watermark2;
+  output wire Overrun_Error2, Underrun_Error2;
   
   // Fixed mode settings
   localparam [ 0:0] SYNC_FIFO1_i  = 1'd0;
@@ -2856,8 +2856,8 @@ module AFIFO_18K_X2_BLK (
 		.WDATA_A2_i(in_reg2[17:0]),
 		.RDATA_A1_o(fifo1_flags),
 		.RDATA_A2_o(fifo2_flags),
-		.ADDR_A1_i(14'h0),
-		.ADDR_A2_i(14'h0),
+		.ADDR_A1_i(15'h0),
+		.ADDR_A2_i(15'h0),
 		.CLK_A1_i(Push_Clk1),
 		.CLK_A2_i(Push_Clk2),
 		.REN_A1_i(1'b1),
@@ -2887,3 +2887,729 @@ module AFIFO_18K_X2_BLK (
 	);
 
 endmodule
+
+module TDP_RAM36K (
+    ADDR_A,
+    ADDR_B,
+    BE_A,
+    BE_B,
+	CLK_A,
+	CLK_B,
+	REN_A,
+	REN_B,
+	WDATA_A,
+	WDATA_B,
+	WEN_A,
+	WEN_B,
+	WPARITY_A, 
+	WPARITY_B,
+	RDATA_A,
+	RDATA_B,
+	RPARITY_A,
+	RPARITY_B
+	);
+
+parameter [5:0] READ_WIDTH_A = 6'd36;
+parameter [5:0] READ_WIDTH_B = 6'd36;
+parameter [5:0] WRITE_WIDTH_A = 6'd36;
+parameter [5:0] WRITE_WIDTH_B = 6'd36;
+
+parameter [1024*32-1:0] INIT = 32768'b0;
+parameter [1024*4-1:0] INIT_PARITY = 4096'b0;
+
+input wire [14:0] ADDR_A;
+input wire [14:0] ADDR_B;
+input wire [3:0] BE_A;
+input wire [3:0] BE_B;
+input wire CLK_A;
+input wire CLK_B;
+input wire REN_A;
+input wire REN_B;
+input wire [31:0] WDATA_A;
+input wire [3:0] WPARITY_A; 
+input wire [31:0] WDATA_B;
+input wire [3:0] WPARITY_B;
+input wire WEN_A;
+input wire WEN_B;
+output wire [31:0] RDATA_A;
+output wire [3:0] RPARITY_A;
+output wire [31:0] RDATA_B;
+output wire [3:0] RPARITY_B;
+
+// Fixed mode settings
+localparam [ 0:0] SYNC_FIFO1_i  = 1'd0;
+localparam [ 0:0] FMODE1_i      = 1'd0;
+localparam [ 0:0] POWERDN1_i    = 1'd0;
+localparam [ 0:0] SLEEP1_i      = 1'd0;
+localparam [ 0:0] PROTECT1_i    = 1'd0;
+localparam [11:0] UPAE1_i       = 12'd10;
+localparam [11:0] UPAF1_i       = 12'd10;
+
+localparam [ 0:0] SYNC_FIFO2_i  = 1'd0;
+localparam [ 0:0] FMODE2_i      = 1'd0;
+localparam [ 0:0] POWERDN2_i    = 1'd0;
+localparam [ 0:0] SLEEP2_i      = 1'd0;
+localparam [ 0:0] PROTECT2_i    = 1'd0;
+localparam [10:0] UPAE2_i       = 11'd10;
+localparam [10:0] UPAF2_i       = 11'd10;
+
+// Width mode function
+function [2:0] mode;
+input [5:0] width;
+	case (width)
+		6'd1: mode = 3'b101;
+		6'd2: mode = 3'b110;
+		6'd4: mode = 3'b100;
+		6'd9: mode = 3'b001;
+		6'd18: mode = 3'b010;
+		6'd36: mode = 3'b011;
+		default: mode = 3'b000;
+	endcase
+endfunction
+
+function integer rwmode;
+input [5:0] rwwidth;
+	case (rwwidth)
+		6'd1: rwmode = 1;
+		6'd2: rwmode = 2;
+		6'd4: rwmode = 4;
+		6'd9: rwmode = 9;
+		6'd18: rwmode = 18;
+		6'd36: rwmode = 36;
+		default: rwmode = 36;
+	endcase
+endfunction
+
+function [36863:0] pack_init;
+input enable;
+	integer i;
+	reg [31:0] ri;
+	reg [3:0] rip;
+	for (i = 0; i <  1024; i = i + 1) begin
+		ri = (enable)? INIT[i*32 +: 32] : 32'h0;
+		rip = (enable)? INIT_PARITY[i*4 +: 4] : 4'h0;
+		pack_init[i*36 +: 36] = {rip[3:2], ri[31:16],
+								 rip[1:0], ri[15:0]};
+	end
+endfunction
+
+wire REN_A1_i;
+wire REN_B1_i;
+wire WEN_A1_i;
+wire WEN_B1_i;
+
+wire [1:0] BE_A1_i;
+wire [1:0] BE_A2_i;
+wire [1:0] BE_B1_i;
+wire [1:0] BE_B2_i;
+
+wire [17:0] WDATA_A1_i;
+wire [17:0] WDATA_A2_i;
+wire [17:0] WDATA_B1_i;
+wire [17:0] WDATA_B2_i;
+
+wire [17:0] RDATA_A1_o;
+wire [17:0] RDATA_A2_o;
+wire [17:0] RDATA_B1_o;
+wire [17:0] RDATA_B2_o;
+
+wire [35:0] PORT_A_RDATA;
+wire [35:0] PORT_B_RDATA;
+wire [35:0] PORT_A_WDATA;
+wire [35:0] PORT_B_WDATA;
+
+wire [14:0] PORT_A_ADDR;
+wire [14:0] PORT_B_ADDR;
+
+wire PORT_A_CLK;
+wire PORT_B_CLK;
+
+// Set port width mode (In non-split mode A2/B2 is not active. Set same values anyway to match previous behavior.)
+localparam [ 2:0] RMODE_A1_i    = mode(READ_WIDTH_A);
+localparam [ 2:0] WMODE_A1_i    = mode(WRITE_WIDTH_A);
+localparam [ 2:0] RMODE_A2_i    = mode(READ_WIDTH_A);
+localparam [ 2:0] WMODE_A2_i    = mode(WRITE_WIDTH_A);
+
+localparam [ 2:0] RMODE_B1_i    = mode(READ_WIDTH_B);
+localparam [ 2:0] WMODE_B1_i    = mode(WRITE_WIDTH_B);
+localparam [ 2:0] RMODE_B2_i    = mode(READ_WIDTH_B);
+localparam [ 2:0] WMODE_B2_i    = mode(WRITE_WIDTH_B);
+
+localparam PORT_A_WRWIDTH = rwmode(WRITE_WIDTH_A);
+localparam PORT_B_WRWIDTH = rwmode(READ_WIDTH_B);
+
+assign PORT_A_CLK = CLK_A;
+assign PORT_B_CLK = CLK_B;
+
+assign PORT_A_ADDR = ADDR_A;
+assign PORT_B_ADDR = ADDR_B;
+
+assign REN_A1_i = REN_A;
+assign WEN_A1_i = WEN_A;
+assign BE_A1_i  = BE_A[1:0];
+assign BE_A2_i  = BE_A[3:2];
+
+assign REN_B1_i = REN_B;
+assign WEN_B1_i = WEN_B;
+assign BE_B1_i  = BE_B[1:0];
+assign BE_B2_i  = BE_B[3:2];
+
+generate
+  if (PORT_A_WRWIDTH == 9) begin
+    assign PORT_A_WDATA = {19'h0, WPARITY_A[0], 8'h0, WDATA_A[7:0]};
+  end else begin
+    assign PORT_A_WDATA = {WPARITY_A[3], WDATA_A[31:24], WPARITY_A[2], WDATA_A[23:16], WPARITY_A[1], WDATA_A[15:8], WPARITY_A[0], WDATA_A[7:0]};
+  end
+endgenerate
+
+assign WDATA_A1_i = PORT_A_WDATA[17:0];
+assign WDATA_A2_i = PORT_A_WDATA[35:18];
+
+generate
+  if (PORT_B_WRWIDTH == 9) begin
+    assign PORT_B_WDATA = {19'h0, WPARITY_B[0], 8'h0, WDATA_B[7:0]};
+  end else begin
+    assign PORT_B_WDATA = {WPARITY_B[3], WDATA_B[31:24], WPARITY_B[2], WDATA_B[23:16], WPARITY_B[1], WDATA_B[15:8], WPARITY_B[0], WDATA_B[7:0]};
+  end
+endgenerate
+
+assign WDATA_B1_i = PORT_B_WDATA[17:0];
+assign WDATA_B2_i = PORT_B_WDATA[35:18];
+
+generate
+  if (PORT_A_WRWIDTH == 9) begin
+    assign PORT_A_RDATA = { 27'h0, RDATA_A1_o[16], RDATA_A1_o[7:0]};
+  end else begin
+    assign PORT_A_RDATA = {RDATA_A2_o, RDATA_A1_o};
+  end
+endgenerate
+
+assign RDATA_A = {PORT_A_RDATA[34:27], PORT_A_RDATA[25:18], PORT_A_RDATA[16:9], PORT_A_RDATA[7:0]};
+assign RPARITY_A = {PORT_A_RDATA[35], PORT_A_RDATA[26], PORT_A_RDATA[17], PORT_A_RDATA[8]};
+
+generate
+  if (PORT_B_WRWIDTH == 9) begin
+    assign PORT_B_RDATA = { 27'h0, RDATA_B1_o[16], RDATA_B1_o[7:0]};
+  end else begin
+    assign PORT_B_RDATA = {RDATA_B2_o, RDATA_B1_o};
+  end
+endgenerate
+
+assign RDATA_B = {PORT_B_RDATA[34:27], PORT_B_RDATA[25:18], PORT_B_RDATA[16:9], PORT_B_RDATA[7:0]};
+assign RPARITY_B = {PORT_B_RDATA[35], PORT_B_RDATA[26], PORT_B_RDATA[17], PORT_B_RDATA[8]};
+
+defparam _TECHMAP_REPLACE_.MODE_BITS = { 1'b0,
+	UPAF2_i, UPAE2_i, PROTECT2_i, SLEEP2_i, POWERDN2_i, FMODE2_i, WMODE_B2_i, WMODE_A2_i, RMODE_B2_i, RMODE_A2_i, SYNC_FIFO2_i,
+	UPAF1_i, UPAE1_i, PROTECT1_i, SLEEP1_i, POWERDN1_i, FMODE1_i, WMODE_B1_i, WMODE_A1_i, RMODE_B1_i, RMODE_A1_i, SYNC_FIFO1_i
+};
+
+(* is_inferred = 0 *)
+(* is_split = 0 *)
+(* is_fifo = 0 *)
+(* port_a_dwidth = PORT_A_WRWIDTH *)
+(* port_b_dwidth = PORT_B_WRWIDTH *)
+TDP36K #(.RAM_INIT(pack_init(1))
+		) 
+_TECHMAP_REPLACE_ (
+	.RESET_ni(1'b1),
+
+	.CLK_A1_i(PORT_A_CLK),
+	.ADDR_A1_i(PORT_A_ADDR),
+	.WEN_A1_i(WEN_A1_i),
+	.BE_A1_i(BE_A1_i),
+	.WDATA_A1_i(WDATA_A1_i),
+	.REN_A1_i(REN_A1_i),
+	.RDATA_A1_o(RDATA_A1_o),
+
+	.CLK_A2_i(PORT_A_CLK),
+	.ADDR_A2_i(14'h0),
+	.WEN_A2_i(1'b0),
+	.BE_A2_i(BE_A2_i),
+	.WDATA_A2_i(WDATA_A2_i),
+	.REN_A2_i(1'b0),
+	.RDATA_A2_o(RDATA_A2_o),
+
+	.CLK_B1_i(PORT_B_CLK),
+	.ADDR_B1_i(PORT_B_ADDR),
+	.WEN_B1_i(WEN_B1_i),
+	.BE_B1_i(BE_B1_i),
+	.WDATA_B1_i(WDATA_B1_i),
+	.REN_B1_i(REN_B1_i),
+	.RDATA_B1_o(RDATA_B1_o),
+
+	.CLK_B2_i(PORT_B_CLK),
+	.ADDR_B2_i(14'h0),
+	.WEN_B2_i(1'b0),
+	.BE_B2_i(BE_B2_i),
+	.WDATA_B2_i(WDATA_B2_i),
+	.REN_B2_i(1'b0),
+	.RDATA_B2_o(RDATA_B2_o),
+
+	.FLUSH1_i(1'b0),
+	.FLUSH2_i(1'b0)
+);
+
+endmodule
+
+module FIFO36K (
+    RD_CLK,
+    WR_CLK,
+    RESET,
+    RD_EN,
+    WR_EN,
+    WR_DATA,
+    RD_DATA,
+    ALMOST_FULL,
+	ALMOST_EMPTY,
+    FULL,
+    EMPTY,
+    PROG_FULL,
+    PROG_EMPTY,
+    OVERFLOW,
+    UNDERFLOW
+);
+  
+parameter [5:0] DATA_READ_WIDTH = 6'd36;
+parameter [5:0] DATA_WRITE_WIDTH = 6'd36;
+parameter [11:0] PROG_EMPTY_THRESH = 12'd20;
+parameter [11:0] PROG_FULL_THRESH = 12'd24;
+
+parameter FIFO_TYPE = "SYNCHRONOUS";
+
+input wire RD_CLK, WR_CLK;
+input wire RESET;
+input wire RD_EN, WR_EN;
+input wire [35:0] WR_DATA;
+
+output wire [35:0] RD_DATA;
+output wire ALMOST_FULL, ALMOST_EMPTY;
+output wire FULL, EMPTY;
+output wire PROG_FULL, PROG_EMPTY;
+output wire OVERFLOW, UNDERFLOW;
+  
+// Fixed mode settings
+localparam [ 0:0] SYNC_FIFO1_i  = (FIFO_TYPE == "SYNCHRONOUS"); 
+localparam [ 0:0] FMODE1_i      = 1'd1;
+localparam [ 0:0] POWERDN1_i    = 1'd0;
+localparam [ 0:0] SLEEP1_i      = 1'd0;
+localparam [ 0:0] PROTECT1_i    = 1'd0;
+localparam [11:0] UPAE1_i       = PROG_EMPTY_THRESH;
+localparam [11:0] UPAF1_i       = PROG_FULL_THRESH;
+
+localparam [ 0:0] SYNC_FIFO2_i  = (FIFO_TYPE == "SYNCHRONOUS");
+localparam [ 0:0] FMODE2_i      = 1'd1;
+localparam [ 0:0] POWERDN2_i    = 1'd0;
+localparam [ 0:0] SLEEP2_i      = 1'd0;
+localparam [ 0:0] PROTECT2_i    = 1'd0;
+localparam [10:0] UPAE2_i       = 11'd10;
+localparam [10:0] UPAF2_i       = 11'd10;
+
+// Width mode function
+function [2:0] mode;
+input [5:0] width;
+	case (width)
+		6'd1: mode = 3'b101;
+		6'd2: mode = 3'b110;
+		6'd4: mode = 3'b100;
+		6'd9: mode = 3'b001;
+		6'd18: mode = 3'b010;
+		6'd36: mode = 3'b011;
+		default: mode = 3'b000;
+	endcase
+endfunction
+  
+function integer rwmode;
+input [5:0] rwwidth;
+	case (rwwidth)
+		6'd1: rwmode = 1;
+		6'd2: rwmode = 2;
+		6'd4: rwmode = 4;
+		6'd9: rwmode = 9;
+		6'd18: rwmode = 18;
+		6'd36: rwmode = 36;
+		default: rwmode = 36;
+	endcase
+endfunction
+  
+wire [35:0] in_reg;
+wire [35:0] out_reg;
+wire [17:0] fifo_flags;
+
+wire [35:0] RD_DATA_INT;
+
+wire Push_Clk, Pop_Clk;
+wire Push, Pop;
+
+wire Async_Flush;
+
+assign Push_Clk = WR_CLK;
+assign Pop_Clk = RD_CLK;
+
+assign Push = WR_EN;
+assign Pop = RD_EN;
+
+assign Async_Flush = RESET;
+
+assign OVERFLOW = fifo_flags[0];
+assign PROG_FULL = fifo_flags[1];
+assign ALMOST_FULL = fifo_flags[2];
+assign FULL = fifo_flags[3];
+assign UNDERFLOW = fifo_flags[4];
+assign PROG_EMPTY = fifo_flags[5];
+assign ALMOST_EMPTY = fifo_flags[6];
+assign EMPTY = fifo_flags[7];
+
+localparam [ 2:0] RMODE_A1_i    = mode(DATA_WRITE_WIDTH);
+localparam [ 2:0] WMODE_A1_i    = mode(DATA_WRITE_WIDTH);
+localparam [ 2:0] RMODE_A2_i    = mode(DATA_WRITE_WIDTH);
+localparam [ 2:0] WMODE_A2_i    = mode(DATA_WRITE_WIDTH);
+
+localparam [ 2:0] RMODE_B1_i    = mode(DATA_READ_WIDTH);
+localparam [ 2:0] WMODE_B1_i    = mode(DATA_READ_WIDTH);
+localparam [ 2:0] RMODE_B2_i    = mode(DATA_READ_WIDTH);
+localparam [ 2:0] WMODE_B2_i    = mode(DATA_READ_WIDTH);
+
+localparam PORT_A_WRWIDTH = rwmode(DATA_WRITE_WIDTH);
+localparam PORT_B_WRWIDTH = rwmode(DATA_READ_WIDTH);
+ 
+generate
+  if (PORT_A_WRWIDTH == 36) begin
+    assign in_reg[PORT_A_WRWIDTH-1:0] = WR_DATA[PORT_A_WRWIDTH-1:0];
+  end else if (PORT_A_WRWIDTH == 9) begin
+    assign in_reg[35:0] = {19'h0, WR_DATA[8], 8'h0, WR_DATA[7:0]};
+  end else begin
+    assign in_reg[35:PORT_A_WRWIDTH]  = 0;
+    assign in_reg[PORT_A_WRWIDTH-1:0] = WR_DATA[PORT_A_WRWIDTH-1:0];
+  end
+endgenerate
+ 
+ generate
+   if (PORT_B_WRWIDTH == 36) begin
+     assign RD_DATA_INT = out_reg;
+   end else if (PORT_B_WRWIDTH == 9) begin
+     assign RD_DATA_INT = { 27'h0, out_reg[16], out_reg[7:0]};
+   end else begin
+     assign RD_DATA_INT[35:PORT_B_WRWIDTH]  = 0;
+     assign RD_DATA_INT[PORT_B_WRWIDTH-1:0] = out_reg[PORT_B_WRWIDTH-1:0];
+   end
+ endgenerate
+ 
+ assign RD_DATA = RD_DATA_INT;
+ 
+ defparam _TECHMAP_REPLACE_.MODE_BITS = { 1'b0,
+UPAF2_i, UPAE2_i, PROTECT2_i, SLEEP2_i, POWERDN2_i, FMODE2_i, WMODE_B2_i, WMODE_A2_i, RMODE_B2_i, RMODE_A2_i, SYNC_FIFO2_i,
+UPAF1_i, UPAE1_i, PROTECT1_i, SLEEP1_i, POWERDN1_i, FMODE1_i, WMODE_B1_i, WMODE_A1_i, RMODE_B1_i, RMODE_A1_i, SYNC_FIFO1_i
+};
+
+ (* is_fifo = FMODE1_i *)
+ (* sync_fifo = SYNC_FIFO1_i *) 
+ (* is_inferred = 0 *)
+ (* is_split = 0 *)
+ (* port_a_dwidth = PORT_A_WRWIDTH *)
+ (* port_b_dwidth = PORT_B_WRWIDTH *)
+  TDP36K _TECHMAP_REPLACE_ (
+	.RESET_ni(1'b1),
+	.WDATA_A1_i(in_reg[17:0]),
+	.WDATA_A2_i(in_reg[35:18]),
+	.RDATA_A1_o(fifo_flags),
+	.RDATA_A2_o(),
+	.ADDR_A1_i(15'h0),
+	.ADDR_A2_i(15'h0),
+	.CLK_A1_i(Push_Clk),
+	.CLK_A2_i(1'b0),
+	.REN_A1_i(1'b1),
+	.REN_A2_i(1'b0),
+	.WEN_A1_i(Push),
+	.WEN_A2_i(1'b0),
+	.BE_A1_i(2'b11),
+	.BE_A2_i(2'b11),
+
+	.WDATA_B1_i(18'h0),
+	.WDATA_B2_i(18'h0),
+	.RDATA_B1_o(out_reg[17:0]),
+	.RDATA_B2_o(out_reg[35:18]),
+	.ADDR_B1_i(14'h0),
+	.ADDR_B2_i(14'h0),
+	.CLK_B1_i(Pop_Clk),
+	.CLK_B2_i(1'b0),
+	.REN_B1_i(Pop),
+	.REN_B2_i(1'b0),
+	.WEN_B1_i(1'b0),
+	.WEN_B2_i(1'b0),
+	.BE_B1_i(2'b11),
+	.BE_B2_i(2'b11),
+
+	.FLUSH1_i(Async_Flush),
+	.FLUSH2_i(1'b0)
+);
+
+endmodule 
+
+
+module FIFO18KX2 (
+    RD_CLK1,
+    WR_CLK1,
+    RESET1,
+    RD_EN1,
+    WR_EN1,
+    WR_DATA1,
+    RD_DATA1,
+    ALMOST_FULL1,
+	ALMOST_EMPTY1,
+    FULL1,
+    EMPTY1,
+    PROG_FULL1,
+    PROG_EMPTY1,
+    OVERFLOW1,
+    UNDERFLOW1,
+	
+    RD_CLK2,
+    WR_CLK2,
+    RESET2,
+    RD_EN2,
+    WR_EN2,
+    WR_DATA2,
+    RD_DATA2,
+    ALMOST_FULL2,
+	ALMOST_EMPTY2,
+    FULL2,
+    EMPTY2,
+    PROG_FULL2,
+    PROG_EMPTY2,
+    OVERFLOW2,
+    UNDERFLOW2
+);
+  
+parameter [4:0] DATA_READ_WIDTH1 = 5'd18;
+parameter [4:0] DATA_READ_WIDTH2 = 5'd18;
+parameter [4:0] DATA_WRITE_WIDTH1 = 5'd18;
+parameter [4:0] DATA_WRITE_WIDTH2 = 5'd18;
+parameter [11:0] PROG_EMPTY_THRESH1 = 12'd20;
+parameter [10:0] PROG_EMPTY_THRESH2 = 11'd20;
+parameter [11:0] PROG_FULL_THRESH1 = 12'd24;
+parameter [10:0] PROG_FULL_THRESH2 = 11'd24;
+
+parameter FIFO_TYPE1 = "SYNCHRONOUS";
+parameter FIFO_TYPE2 = "SYNCHRONOUS";
+
+input wire RD_CLK1, WR_CLK1, RD_CLK2, WR_CLK2;
+input wire RESET1, RESET2;
+input wire RD_EN1, WR_EN1, RD_EN2, WR_EN2;
+input wire [17:0] WR_DATA1;
+input wire [17:0] WR_DATA2;
+
+output wire [17:0] RD_DATA1;
+output wire [17:0] RD_DATA2;
+output wire ALMOST_FULL1, ALMOST_EMPTY1, ALMOST_FULL2, ALMOST_EMPTY2;
+output wire FULL1, EMPTY1, FULL2, EMPTY2;
+output wire PROG_FULL1, PROG_EMPTY1, PROG_FULL2, PROG_EMPTY2;
+output wire OVERFLOW1, UNDERFLOW1, OVERFLOW2, UNDERFLOW2;
+
+ // Fixed mode settings
+localparam [ 0:0] SYNC_FIFO1_i  = (FIFO_TYPE1 == "SYNCHRONOUS");
+localparam [ 0:0] FMODE1_i      = 1'd1;
+localparam [ 0:0] POWERDN1_i    = 1'd0;
+localparam [ 0:0] SLEEP1_i      = 1'd0;
+localparam [ 0:0] PROTECT1_i    = 1'd0;
+localparam [11:0] UPAE1_i       = PROG_EMPTY_THRESH1;
+localparam [11:0] UPAF1_i       = PROG_FULL_THRESH1;
+
+localparam [ 0:0] SYNC_FIFO2_i  = (FIFO_TYPE2 == "SYNCHRONOUS");
+localparam [ 0:0] FMODE2_i      = 1'd1;
+localparam [ 0:0] POWERDN2_i    = 1'd0;
+localparam [ 0:0] SLEEP2_i      = 1'd0;
+localparam [ 0:0] PROTECT2_i    = 1'd0;
+localparam [10:0] UPAE2_i       = PROG_EMPTY_THRESH2;
+localparam [10:0] UPAF2_i       = PROG_FULL_THRESH2;
+
+// Width mode function
+function [2:0] mode;
+input [4:0] width;
+	case (width)
+		5'd1: mode = 3'b101;
+		5'd2: mode = 3'b110;
+		5'd4: mode = 3'b100;
+		5'd9: mode = 3'b001;
+		5'd18: mode = 3'b010;
+		5'd36: mode = 3'b011;
+		default: mode = 3'b000;
+	endcase
+endfunction
+  
+function integer rwmode;
+input [4:0] rwwidth;
+	case (rwwidth)
+		5'd1: rwmode = 1;
+		5'd2: rwmode = 2;
+		5'd4: rwmode = 4;
+		5'd9: rwmode = 9;
+		5'd18: rwmode = 18;
+		5'd36: rwmode = 36;
+		default: rwmode = 36;
+	endcase
+endfunction
+  
+wire [17:0] in_reg1;
+wire [17:0] in_reg2;
+wire [17:0] out_reg1;
+wire [17:0] out_reg2;
+wire [17:0] fifo_flags1;
+wire [17:0] fifo_flags2;
+
+wire [17:0] RD_DATA_INT1;
+wire [17:0] RD_DATA_INT2;
+
+wire Push_Clk1, Pop_Clk1;
+wire Push_Clk2, Pop_Clk2;
+wire Push1, Pop1;
+wire Push2, Pop2;
+
+wire Async_Flush1;
+wire Async_Flush2;
+
+assign Push_Clk1 = WR_CLK1;
+assign Pop_Clk1 = RD_CLK1;
+
+assign Push_Clk2 = WR_CLK2;
+assign Pop_Clk2 = RD_CLK2;
+
+assign Push1 = WR_EN1;
+assign Pop1 = RD_EN1;
+
+assign Push2 = WR_EN2; 
+assign Pop2 = RD_EN2;
+
+assign Async_Flush1 = RESET1;
+assign Async_Flush2 = RESET2;
+
+assign OVERFLOW1 = fifo_flags1[0];
+assign PROG_FULL1 = fifo_flags1[1];
+assign ALMOST_FULL1 = fifo_flags1[2];
+assign FULL1 = fifo_flags1[3];
+assign UNDERFLOW1 = fifo_flags1[4];
+assign PROG_EMPTY1 = fifo_flags1[5];
+assign ALMOST_EMPTY1 = fifo_flags1[6];
+assign EMPTY1 = fifo_flags1[7];
+
+assign OVERFLOW2 = fifo_flags2[0];
+assign PROG_FULL2 = fifo_flags2[1];
+assign ALMOST_FULL2 = fifo_flags2[2];
+assign FULL2 = fifo_flags2[3];
+assign UNDERFLOW2 = fifo_flags2[4];
+assign PROG_EMPTY2 = fifo_flags2[5];
+assign ALMOST_EMPTY2 = fifo_flags2[6];
+assign EMPTY2 = fifo_flags2[7];
+
+localparam [ 2:0] RMODE_A1_i    = mode(DATA_WRITE_WIDTH1);
+localparam [ 2:0] WMODE_A1_i    = mode(DATA_WRITE_WIDTH1);
+localparam [ 2:0] RMODE_A2_i    = mode(DATA_WRITE_WIDTH2);
+localparam [ 2:0] WMODE_A2_i    = mode(DATA_WRITE_WIDTH2);
+
+localparam [ 2:0] RMODE_B1_i    = mode(DATA_READ_WIDTH1);
+localparam [ 2:0] WMODE_B1_i    = mode(DATA_READ_WIDTH1);
+localparam [ 2:0] RMODE_B2_i    = mode(DATA_READ_WIDTH2);
+localparam [ 2:0] WMODE_B2_i    = mode(DATA_READ_WIDTH2);
+
+localparam PORT_A_WRWIDTH1 = rwmode(DATA_WRITE_WIDTH1);
+localparam PORT_B_WRWIDTH1 = rwmode(DATA_READ_WIDTH1);
+localparam PORT_A_WRWIDTH2 = rwmode(DATA_WRITE_WIDTH2);
+localparam PORT_B_WRWIDTH2 = rwmode(DATA_READ_WIDTH2);
+ 
+generate
+  if (PORT_A_WRWIDTH1 == 18) begin
+    assign in_reg1[PORT_A_WRWIDTH1-1:0] = WR_DATA1[PORT_A_WRWIDTH1-1:0];
+  end else if (PORT_A_WRWIDTH1 == 9) begin
+    assign in_reg1[17:0] = {1'b0, WR_DATA1[8], 8'h0, WR_DATA1[7:0]};
+  end else begin
+    assign in_reg1[17:PORT_A_WRWIDTH1]  = 0;
+    assign in_reg1[PORT_A_WRWIDTH1-1:0] = WR_DATA1[PORT_A_WRWIDTH1-1:0];
+  end
+endgenerate
+ 
+generate
+  if (PORT_B_WRWIDTH1 == 18) begin
+    assign RD_DATA_INT1 = out_reg1;
+  end else if (PORT_B_WRWIDTH1 == 9) begin
+    assign RD_DATA_INT1 = {1'b0, out_reg1[16], out_reg1[7:0]};
+  end else begin
+    assign RD_DATA_INT1[17:PORT_B_WRWIDTH1]  = 0;
+    assign RD_DATA_INT1[PORT_B_WRWIDTH1-1:0] = out_reg1[PORT_B_WRWIDTH1-1:0];
+  end
+endgenerate
+ 
+assign RD_DATA1 = RD_DATA_INT1;
+
+generate
+  if (PORT_A_WRWIDTH2 == 18) begin
+    assign in_reg2[PORT_A_WRWIDTH2-1:0] = WR_DATA2[PORT_A_WRWIDTH2-1:0];
+  end else if (PORT_A_WRWIDTH2 == 9) begin
+    assign in_reg2[17:0] = {1'b0, WR_DATA2[8], 8'h0, WR_DATA2[7:0]};
+  end else begin
+    assign in_reg2[17:PORT_A_WRWIDTH2]  = 0;
+    assign in_reg2[PORT_A_WRWIDTH2-1:0] = WR_DATA2[PORT_A_WRWIDTH2-1:0];
+  end
+endgenerate
+ 
+generate
+  if (PORT_B_WRWIDTH2 == 18) begin
+    assign RD_DATA_INT2 = out_reg2;
+  end else if (PORT_B_WRWIDTH2 == 9) begin
+    assign RD_DATA_INT2 = {1'b0, out_reg2[16], out_reg2[7:0]};
+  end else begin
+    assign RD_DATA_INT2[17:PORT_B_WRWIDTH2]  = 0;
+    assign RD_DATA_INT2[PORT_B_WRWIDTH2-1:0] = out_reg2[PORT_B_WRWIDTH2-1:0];
+  end
+endgenerate
+ 
+assign RD_DATA2 = RD_DATA_INT2;
+ 
+defparam _TECHMAP_REPLACE_.MODE_BITS = { 1'b0,
+UPAF2_i, UPAE2_i, PROTECT2_i, SLEEP2_i, POWERDN2_i, FMODE2_i, WMODE_B2_i, WMODE_A2_i, RMODE_B2_i, RMODE_A2_i, SYNC_FIFO2_i,
+UPAF1_i, UPAE1_i, PROTECT1_i, SLEEP1_i, POWERDN1_i, FMODE1_i, WMODE_B1_i, WMODE_A1_i, RMODE_B1_i, RMODE_A1_i, SYNC_FIFO1_i
+};
+
+  (* is_fifo = FMODE1_i *)
+  (* sync_fifo = SYNC_FIFO1_i *) 
+  (* is_split = 0 *)
+  (* is_inferred = 0 *)
+  (* port_a1_dwidth = PORT_A_WRWIDTH1 *)
+  (* port_b1_dwidth = PORT_B_WRWIDTH1 *)
+  (* port_a2_dwidth = PORT_A_WRWIDTH2 *)
+  (* port_b2_dwidth = PORT_B_WRWIDTH2 *)
+   TDP36K _TECHMAP_REPLACE_ (
+      .RESET_ni(1'b1),
+      .WDATA_A1_i(in_reg1[17:0]),
+      .WDATA_A2_i(in_reg2[17:0]),
+      .RDATA_A1_o(fifo_flags1),
+      .RDATA_A2_o(fifo_flags2),
+      .ADDR_A1_i(15'h0),
+      .ADDR_A2_i(15'h0),
+      .CLK_A1_i(Push_Clk1),
+      .CLK_A2_i(Push_Clk2),
+      .REN_A1_i(1'b1),
+      .REN_A2_i(1'b0),
+      .WEN_A1_i(Push1),
+      .WEN_A2_i(Push2),
+      .BE_A1_i(2'b11),
+      .BE_A2_i(2'b11),
+      
+      .WDATA_B1_i(18'h0),
+      .WDATA_B2_i(18'h0),
+      .RDATA_B1_o(out_reg1[17:0]),
+      .RDATA_B2_o(out_reg2[17:0]),
+      .ADDR_B1_i(14'h0),
+      .ADDR_B2_i(14'h0),
+      .CLK_B1_i(Pop_Clk1),
+      .CLK_B2_i(Pop_Clk2),
+      .REN_B1_i(Pop1),
+      .REN_B2_i(Pop2),
+      .WEN_B1_i(1'b0),
+      .WEN_B2_i(1'b0),
+      .BE_B1_i(2'b11),
+      .BE_B2_i(2'b11),
+      
+      .FLUSH1_i(Async_Flush1),
+      .FLUSH2_i(Async_Flush2)
+);
+
+endmodule 
