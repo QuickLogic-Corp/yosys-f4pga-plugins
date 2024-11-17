@@ -479,12 +479,13 @@ struct SynthQuickLogicPass : public ScriptPass {
                 run("techmap -map " + lib_path + family + "/brams_final_map.v");
             }
 
-			if (bramTypes || help_mode)
+            if (bramTypes || help_mode) {
                 if (notdpram) {
                     run("ql_sdp_bram_types", "(if -bramtypes)");
                 } else {
                     run("ql_bram_types", "(if -bramtypes)");
-                }			
+                }
+            }
         }
 
         if (check_label("map_ffram")) {
