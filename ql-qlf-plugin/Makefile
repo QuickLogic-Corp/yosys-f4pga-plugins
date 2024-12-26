@@ -65,7 +65,6 @@ VERILOG_MODULES = $(COMMON)/cells_sim.v         \
                   $(QLF_K6N10F_DIR)/TDP18K_FIFO.v \
                   $(QLF_K6N10F_DIR)/ufifo_ctl.v \
                   $(QLF_K6N10F_DIR)/ffs_map.v   \
-				  $(QLF_K6N10F_DIR)/ffs_map_noaset.v   \
                   $(QLF_K6N10F_DIR)/dsp_map.v   \
                   $(QLF_K6N10F_DIR)/dsp_final_map.v \
 				  $(QLF_K6N10F_DIR)/libmap_brams_map_tdp.v \
