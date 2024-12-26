@@ -14,24 +14,158 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-module \$_DFFSRE_PNNP_ (C, S, R, E, D, Q);
+module \$_DFF_PN0_ (C, R, D, Q);
     input  C;
-    input  S;
     input  R;
-    input  E;
     input  D;
     output Q;
-    dffsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R), .S(S));
+    dffre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(1'b1), .R(R));
 endmodule
 
-module \$_DFFSRE_NNNP_ (C, S, R, E, D, Q);
+module \$_DFF_PN1_ (C, R, D, Q);
     input  C;
-    input  S;
+    input  R;
+    input  D;
+    output Q;
+	
+	reg  D_int;
+	reg  Q_int;
+	
+	assign D_int = ~D;
+	
+    dffre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D_int), .C(C), .E(1'b1), .R(R));
+	
+	assign Q = ~Q_int;	
+	
+endmodule
+
+module \$_DFF_NN0_ (C, R, D, Q);
+    input  C;
+    input  R;
+    input  D;
+    output Q;
+    dffnre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(1'b1), .R(R));
+endmodule
+
+module \$_DFF_NN1_ (C, R, D, Q);
+    input  C;
+    input  R;
+    input  D;
+    output Q;
+	
+	reg  D_int;
+	reg  Q_int;
+	
+	assign D_int = ~D;
+	
+    dffnre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D_int), .C(C), .E(1'b1), .R(R));
+	
+	assign Q = ~Q_int;	
+	
+endmodule
+
+module \$_SDFF_PN0_ (D, C, R, Q);
+    input  D;
+    input  C;
+    input  R;
+    output Q;
+    sdffre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(1'b1), .R(R));
+endmodule
+
+module \$_SDFF_PN1_ (D, C, R, Q);
+    input  D;
+    input  C;
+    input  R;
+    output Q;
+	
+	reg  D_int;
+	reg  Q_int;
+	
+	assign D_int = ~D;
+	
+    sdffre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D_int), .C(C), .E(1'b1), .R(R));
+	
+	assign Q = ~Q_int;
+endmodule
+
+module \$_SDFF_NN0_ (D, C, R, Q);
+    input  D;
+    input  C;
+    input  R;
+    output Q;
+    sdffnre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(1'b1), .R(R));
+endmodule
+
+module \$_SDFF_NN1_ (D, C, R, Q);
+    input  D;
+    input  C;
+    input  R;
+    output Q;
+	
+	reg  D_int;
+	reg  Q_int;
+	
+	assign D_int = ~D;
+	
+    sdffnre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D_int), .C(C), .E(1'b1), .R(R));
+	
+	assign Q = ~Q_int;	
+endmodule
+
+// DFF, asynchronous reset, enable
+module \$_DFFE_PN0P_ (C, R, E, D, Q);
+    input  C;
     input  R;
     input  E;
     input  D;
     output Q;
-    dffnsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R), .S(S));
+    dffre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R));
+endmodule
+
+
+module \$_DFFE_PN1P_ (C, R, E, D, Q);
+    input  C;
+    input  R;
+    input  E;
+    input  D;
+    output Q;
+	
+	reg  D_int;
+	reg  Q_int;
+	
+	assign D_int = ~D;
+	
+    dffre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D_int), .C(C), .E(E), .R(R));
+	
+	assign Q = ~Q_int;	
+	
+endmodule
+
+module \$_DFFE_NN0P_ (C, R, E, D, Q);
+    input  C;
+    input  R;
+    input  E;
+    input  D;
+    output Q;
+    dffnre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R));
+endmodule
+
+module \$_DFFE_NN1P_ (C, R, E, D, Q);
+    input  C;
+    input  R;
+    input  E;
+    input  D;
+    output Q;
+	
+	reg  D_int;
+	reg  Q_int;
+	
+	assign D_int = ~D;
+	
+    dffnre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D_int), .C(C), .E(E), .R(R));
+	
+	assign Q = ~Q_int;	
+	
 endmodule
 
 // DFF, synchronous set or reset, enable
@@ -41,7 +175,7 @@ module \$_SDFFE_PN0P_ (D, C, R, E, Q);
     input  R;
     input  E;
     output Q;
-    sdffsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R), .S(1'b1));
+    sdffre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R));
 endmodule
 
 module \$_SDFFE_PN1P_ (D, C, R, E, Q);
@@ -50,7 +184,15 @@ module \$_SDFFE_PN1P_ (D, C, R, E, Q);
     input  R;
     input  E;
     output Q;
-    sdffsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(1'b1), .S(R));
+	
+	reg  D_int;
+	reg  Q_int;
+	
+	assign D_int = ~D;
+	
+    sdffre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D_int), .C(C), .E(E), .R(R));
+	
+	assign Q = ~Q_int;
 endmodule
 
 module \$_SDFFE_NN0P_ (D, C, R, E, Q);
@@ -59,7 +201,7 @@ module \$_SDFFE_NN0P_ (D, C, R, E, Q);
     input  R;
     input  E;
     output Q;
-    sdffnsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R), .S(1'b1));
+    sdffnre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(R));
 endmodule
 
 module \$_SDFFE_NN1P_ (D, C, R, E, Q);
@@ -68,25 +210,15 @@ module \$_SDFFE_NN1P_ (D, C, R, E, Q);
     input  R;
     input  E;
     output Q;
-    sdffnsre _TECHMAP_REPLACE_ (.Q(Q), .D(D), .C(C), .E(E), .R(1'b1), .S(R));
-endmodule
-
-// Latch, no set/reset, no enable
-module  \$_DLATCH_P_ (input E, D, output Q);
-    latchsre  _TECHMAP_REPLACE_ (.D(D), .Q(Q), .E(1'b1), .G(E), .R(1'b1), .S(1'b1));
-endmodule
-
-module  \$_DLATCH_N_ (input E, D, output Q);
-    latchnsre _TECHMAP_REPLACE_ (.D(D), .Q(Q), .E(1'b1), .G(E), .R(1'b1), .S(1'b1));
-endmodule
-
-// Latch with async set and reset and enable
-module  \$_DLATCHSR_PPP_ (input E, S, R, D, output Q);
-    latchsre  _TECHMAP_REPLACE_ (.D(D), .Q(Q), .E(1'b1), .G(E),  .R(!R), .S(!S));
-endmodule
-
-module  \$_DLATCHSR_NPP_ (input E, S, R, D, output Q);
-    latchnsre _TECHMAP_REPLACE_ (.D(D), .Q(Q), .E(1'b1), .G(E),  .R(!R), .S(!S));
+	
+	reg  D_int;
+	reg  Q_int;
+	
+	assign D_int = ~D;
+	
+    sdffnre _TECHMAP_REPLACE_ (.Q(Q_int), .D(D_int), .C(C), .E(E), .R(R));
+	
+	assign Q = ~Q_int;	
 endmodule
 
 module \$__SHREG_DFF_P_ (D, Q, C);
@@ -103,26 +235,79 @@ module \$__SHREG_DFF_P_ (D, Q, C);
 
         // First in chain
         generate if (i == 0) begin
-                 sh_dff #() shreg_beg (
+                 sh_dffre #() shreg_beg (
                     .Q(q[i]),
                     .D(D),
-                    .C(C)
+                    .C(C),
+					.E(1'b1),
+					.R(1'b1)
                 );
         end endgenerate
         // Middle in chain
         generate if (i > 0 && i != DEPTH-1) begin
-                 sh_dff #() shreg_mid (
+                 sh_dffre #() shreg_mid (
                     .Q(q[i]),
                     .D(q[i-1]),
-                    .C(C)
+                    .C(C),
+					.E(1'b1),
+					.R(1'b1)
                 );
         end endgenerate
         // Last in chain
         generate if (i == DEPTH-1) begin
-                 sh_dff #() shreg_end (
+                 sh_dffre #() shreg_end (
                     .Q(Q),
                     .D(q[i-1]),
-                    .C(C)
+                    .C(C),
+					.E(1'b1),
+					.R(1'b1)
+                );
+        end endgenerate
+   end: slice
+   endgenerate
+
+endmodule
+
+module \$__SHREG_DFF_N_ (D, Q, C);
+    input  D;
+    input  C;
+    output Q;
+
+    parameter DEPTH = 2;
+
+    reg [DEPTH-2:0] q;
+
+    genvar i;
+    generate for (i = 0; i < DEPTH; i = i + 1) begin: slice
+
+        // First in chain
+        generate if (i == 0) begin
+                 sh_dffnre #() shreg_beg (
+                    .Q(q[i]),
+                    .D(D),
+                    .C(C),
+					.E(1'b1),
+					.R(1'b1)
+                );
+        end endgenerate
+        // Middle in chain
+        generate if (i > 0 && i != DEPTH-1) begin
+                 sh_dffnre #() shreg_mid (
+                    .Q(q[i]),
+                    .D(q[i-1]),
+                    .C(C),
+					.E(1'b1),
+					.R(1'b1)
+                );
+        end endgenerate
+        // Last in chain
+        generate if (i == DEPTH-1) begin
+                 sh_dffnre #() shreg_end (
+                    .Q(Q),
+                    .D(q[i-1]),
+                    .C(C),
+					.E(1'b1),
+					.R(1'b1)
                 );
         end endgenerate
    end: slice
