@@ -673,7 +673,11 @@ struct SynthQuickLogicPass : public ScriptPass {
             std::string family_path = " " + lib_path + family;
             if (family == "qlf_k6n10f") {
                 if (synplify) {
+                    run("opt -fast -mux_undef -undriven -fine" + noDFFArgs);
                     run("techmap -autoproc -map" + family_path + "/synplify_map.v");
+                    run("opt_expr");
+                    run("opt_merge");
+                    run("opt_clean -purge");
                     run("stat");
                     run("clean");
                 }
