@@ -672,7 +672,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("techmap -autoproc -map" + family_path + "/synplify_map.v");
                     run("opt_expr");
                     run("opt_merge");
-                    run("opt_clean -purge");
+                    run("opt_clean");
                     run("stat");
                     run("clean");
                 }
