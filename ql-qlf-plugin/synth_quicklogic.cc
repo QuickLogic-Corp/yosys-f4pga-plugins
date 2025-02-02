@@ -103,6 +103,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        By default infer flip-flops with enable for architectures that\n");
         log("        support them. Specifying this switch infer flip-flops without enable.\n");
         log("\n");
+        log("    -noioff\n");
+        log("        By default flip-flops in the IO would be used for the designs that\n");
+        log("        are feasible. Specifying this will force synthsis not to use IOFFs.\n");
+        log("\n");
         log("    -no_tdpram\n");
         log("        By default infer TDP BRAM for architectures that support them.\n");
         log("        Specifying this switch infer SDP BRAM only.\n");
@@ -129,7 +133,8 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool abc9;
     bool noffmap;
     bool nosdff;
-    bool noffenable;
+    bool noffenable; 
+	bool ioff;
     bool notdpram;
     bool noOpt;
     bool synplify;
@@ -151,6 +156,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         nodsp = false;
         nosdff = false;
         noffenable = false;
+		ioff = true;
         notdpram = false;
         noOpt = false;
         synplify = false;
@@ -238,6 +244,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (args[argidx] == "-no_ffenable") {
                 noffenable = true;
+                continue;
+            }
+            if (args[argidx] == "-noioff") {
+                ioff = false;
                 continue;
             }
             if (args[argidx] == "-no_tdpram") {
@@ -636,6 +646,13 @@ struct SynthQuickLogicPass : public ScriptPass {
                 run("clean");
             }
         }
+		
+		if (check_label("iomap", "(for qlf_k6n10f, skip if -noioff)") && (family == "qlf_k6n10f" || help_mode)) {
+			if (ioff || help_mode) {
+				run("ql_ioff");
+				run("opt_clean");
+			}
+		}
 
         if (check_label("check")) {
             if (!synplify) {
