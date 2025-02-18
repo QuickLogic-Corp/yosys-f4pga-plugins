@@ -52,7 +52,7 @@ struct QlIoffPass : public Pass {
 
 				SigSpec d = cell->getPort(ID::D);
 				log_assert(GetSize(d) == 1);
-				if (modwalker.has_inputs(d)) {
+				if (modwalker.has_inputs(d) && !modwalker.has_outputs(d)) {
 					log_debug("Cell %s is potentially eligible for promotion to input IOFF.\n", cell->name.c_str());
 					// check that d_sig has no other consumers
 					pool<ModWalker::PortBit> portbits;
