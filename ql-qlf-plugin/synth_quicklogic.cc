@@ -103,9 +103,9 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        By default infer flip-flops with enable for architectures that\n");
         log("        support them. Specifying this switch infer flip-flops without enable.\n");
         log("\n");
-        log("    -ffenctrl\n");
+        log("    -mince_num <number>\n");
         log("        By default infer flip-flops with enable for architectures that\n");
-        log("        support them. Specifying this switch infer flip-flops enable only if its greater than mince value.\n");
+        log("        support them. Specifying this switch infer flip-flops enable only if its greater than mince_num <number> value.\n");
         log("\n");
         log("    -ioff\n");
         log("        By default flip-flops in the IO is not used for the designs that\n");
@@ -128,7 +128,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("\n");
     }
 
-    string top_opt, edif_file, blif_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path;
+    string top_opt, edif_file, blif_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -138,8 +138,7 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool noffmap;
     bool nosdff;
     bool noffenable; 
-	bool ffenctrl;
-	bool ioff;
+    bool ioff;
     bool notdpram;
     bool noOpt;
     bool synplify;
@@ -161,13 +160,13 @@ struct SynthQuickLogicPass : public ScriptPass {
         nodsp = false;
         nosdff = false;
         noffenable = false;
-		ffenctrl = false;
-		ioff = false;
+        ioff = false;
         notdpram = false;
         noOpt = false;
         synplify = false;
         use_dsp_cfg_params = "";
         lib_path = "+/quicklogic/";
+        mince_num = "";
     }
 
     void execute(std::vector<std::string> args, RTLIL::Design *design) override
@@ -252,8 +251,8 @@ struct SynthQuickLogicPass : public ScriptPass {
                 noffenable = true;
                 continue;
             }
-            if (args[argidx] == "-ffenctrl") {
-                ffenctrl = true;
+            if (args[argidx] == "-mince_num" && argidx + 1 < args.size()) {
+                mince_num = args[++argidx];
                 continue;
             }
             if (args[argidx] == "-ioff") {
@@ -565,16 +564,16 @@ struct SynthQuickLogicPass : public ScriptPass {
                     std::string legalizeArgs;
                     if (noffenable) {
                         legalizeArgs = " -cell $_DFF_?N?_ 0";
-                    } else if (ffenctrl) {
-                        legalizeArgs = " -mince 6 -cell $_DFFE_?N?P_ 0 -cell $_DFF_?N?_ 0"; 
+                    } else if (mince_num != "") {
+                        legalizeArgs = " -mince_num " + mince_num + " -cell $_DFFE_?N?P_ 0 -cell $_DFF_?N?_ 0"; 
                     } else {
 						legalizeArgs = " -cell $_DFFE_?N?P_ 0";
 					}
                     if (!nosdff) {
 						if (noffenable) {
 							legalizeArgs += " -cell $_SDFF_?N?_ 0";
-						} else if (ffenctrl) {
-							legalizeArgs += " -mince 6 -cell $_SDFFE_?N?P_ 0 -cell $_SDFF_?N?_ 0";
+						} else if (mince_num != "") {
+							legalizeArgs += " -mince_num " + mince_num + " -cell $_SDFFE_?N?P_ 0 -cell $_SDFF_?N?_ 0";
 						} else {
 							legalizeArgs += " -cell $_SDFFE_?N?P_ 0";							
 						}					
