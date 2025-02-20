@@ -103,9 +103,13 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        By default infer flip-flops with enable for architectures that\n");
         log("        support them. Specifying this switch infer flip-flops without enable.\n");
         log("\n");
-        log("    -noioff\n");
-        log("        By default flip-flops in the IO would be used for the designs that\n");
-        log("        are feasible. Specifying this will force synthsis not to use IOFFs.\n");
+        log("    -ffenctrl\n");
+        log("        By default infer flip-flops with enable for architectures that\n");
+        log("        support them. Specifying this switch infer flip-flops enable only if its greater than mince value.\n");
+        log("\n");
+        log("    -ioff\n");
+        log("        By default flip-flops in the IO is not used for the designs that\n");
+        log("        are feasible. Specifying this will force synthesis to use IOFFs.\n");
         log("\n");
         log("    -no_tdpram\n");
         log("        By default infer TDP BRAM for architectures that support them.\n");
@@ -134,6 +138,7 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool noffmap;
     bool nosdff;
     bool noffenable; 
+	bool ffenctrl;
 	bool ioff;
     bool notdpram;
     bool noOpt;
@@ -156,7 +161,8 @@ struct SynthQuickLogicPass : public ScriptPass {
         nodsp = false;
         nosdff = false;
         noffenable = false;
-		ioff = true;
+		ffenctrl = false;
+		ioff = false;
         notdpram = false;
         noOpt = false;
         synplify = false;
@@ -246,8 +252,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                 noffenable = true;
                 continue;
             }
-            if (args[argidx] == "-noioff") {
-                ioff = false;
+            if (args[argidx] == "-ffenctrl") {
+                ffenctrl = true;
+                continue;
+            }
+            if (args[argidx] == "-ioff") {
+                ioff = true;
                 continue;
             }
             if (args[argidx] == "-no_tdpram") {
@@ -555,15 +565,19 @@ struct SynthQuickLogicPass : public ScriptPass {
                     std::string legalizeArgs;
                     if (noffenable) {
                         legalizeArgs = " -cell $_DFF_?N?_ 0";
+                    } else if (ffenctrl) {
+                        legalizeArgs = " -mince 6 -cell $_DFFE_?N?P_ 0 -cell $_DFF_?N?_ 0"; 
                     } else {
-                        legalizeArgs = " -mince 6 -cell $_DFFE_?N?P_ 0 -cell $_DFF_?N?_ 0";
-                    }
+						legalizeArgs = " -cell $_DFFE_?N?P_ 0";
+					}
                     if (!nosdff) {
 						if (noffenable) {
 							legalizeArgs += " -cell $_SDFF_?N?_ 0";
-						} else {
+						} else if (ffenctrl) {
 							legalizeArgs += " -mince 6 -cell $_SDFFE_?N?P_ 0 -cell $_SDFF_?N?_ 0";
-						}
+						} else {
+							legalizeArgs += " -cell $_SDFFE_?N?P_ 0";							
+						}					
                     }
                     run("dfflegalize" + legalizeArgs);
                 } else if (family == "pp3") {
@@ -647,8 +661,8 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
         }
 		
-		if (check_label("iomap", "(for qlf_k6n10f, skip if -noioff)") && (family == "qlf_k6n10f" || help_mode)) {
-			if (ioff || help_mode) {
+		if (check_label("iomap", "(for qlf_k6n10f)") && (family == "qlf_k6n10f" || help_mode)) {
+			if (ioff ) {
 				run("ql_ioff");
 				run("opt_clean");
 			}
