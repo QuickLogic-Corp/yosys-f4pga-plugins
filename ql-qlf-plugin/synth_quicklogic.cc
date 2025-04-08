@@ -334,6 +334,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 }
                 if (synplify) {
                     readVelArgs += family_path + "/synplify_map.v";
+					readVelArgs += family_path + "/synplify_dsp_map.v";
                 }
             }
 
@@ -705,6 +706,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (synplify) {
                     run("opt -fast -mux_undef -undriven -fine" + noDFFArgs);
                     run("techmap -autoproc -map" + family_path + "/synplify_map.v");
+                    run("opt_expr");
+                    run("opt_merge");
+                    run("opt_clean -purge");
+					run("stat");
+					run("clean");
+					run("techmap -autoproc -map" + family_path + "/synplify_dsp_map.v");
                     run("opt_expr");
                     run("opt_merge");
                     run("opt_clean -purge");
