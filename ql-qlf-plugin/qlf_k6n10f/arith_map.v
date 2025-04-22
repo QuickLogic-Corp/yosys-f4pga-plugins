@@ -97,3 +97,35 @@ module _80_quicklogic_alu (A, B, CI, BI, X, Y, CO);
 	assign X = S;
 endmodule
 
+module CARRY8(
+  output [7:0] CO,
+  output [7:0] O,
+  input        CI,
+  input  [7:0] DI, S
+);
+  parameter [15:0] LOCATION = 16'b0000000000000000;
+
+  wire [8:0] C;
+  wire c_int;
+ 
+  
+  adder_carry #(.LOCATION(LOCATION)) intermediate_adder (.cin( ), .cout(C[0]), .p(1'b0), .g(CI), .sumout() );
+  adder_carry #(.LOCATION(LOCATION)) add_carry0 ( .cin(C[0]), .g(DI[0]), .p(S[0]), .cout(C[1]), .sumout(O[0]) );
+  adder_carry #(.LOCATION(LOCATION)) add_carry1 ( .cin(C[1]), .g(DI[1]), .p(S[1]), .cout(C[2]), .sumout(O[1]) );
+  adder_carry #(.LOCATION(LOCATION)) add_carry2 ( .cin(C[2]), .g(DI[2]), .p(S[2]), .cout(C[3]), .sumout(O[2]) );
+  adder_carry #(.LOCATION(LOCATION)) add_carry3 ( .cin(C[3]), .g(DI[3]), .p(S[3]), .cout(C[4]), .sumout(O[3]) );
+  adder_carry #(.LOCATION(LOCATION)) add_carry4 ( .cin(C[4]), .g(DI[4]), .p(S[4]), .cout(C[5]), .sumout(O[4]) );
+  adder_carry #(.LOCATION(LOCATION)) add_carry5 ( .cin(C[5]), .g(DI[5]), .p(S[5]), .cout(C[6]), .sumout(O[5]) );
+  adder_carry #(.LOCATION(LOCATION)) add_carry6 ( .cin(C[6]), .g(DI[6]), .p(S[6]), .cout(C[7]), .sumout(O[6]) );
+  adder_carry #(.LOCATION(LOCATION)) add_carry7 ( .cin(C[7]), .g(DI[7]), .p(S[7]), .cout(C[8]), .sumout(O[7]) );
+  adder_carry #(.LOCATION(LOCATION)) final_adder (.cin(C[8]), .cout(), .p(1'b0), .g(1'b0), .sumout(CO[7]) );
+   
+  assign CO[0] = S[0] ? CI : DI[0];
+  assign CO[1] = S[1] ? CO[0] : DI[1];
+  assign CO[2] = S[2] ? CO[1] : DI[2];
+  assign CO[3] = S[3] ? CO[2] : DI[3];
+  assign CO[4] = S[4] ? CO[3] : DI[4];
+  assign CO[5] = S[5] ? CO[4] : DI[5];
+  assign CO[6] = S[6] ? CO[5] : DI[6];
+   
+endmodule
