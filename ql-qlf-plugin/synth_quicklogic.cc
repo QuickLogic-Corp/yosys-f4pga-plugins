@@ -335,6 +335,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (synplify) {
                     readVelArgs += family_path + "/synplify_map.v";
 					readVelArgs += family_path + "/synplify_dsp_map.v";
+					readVelArgs += family_path + "/synplify_bram_map.v";
                 }
             }
 
@@ -478,6 +479,9 @@ struct SynthQuickLogicPass : public ScriptPass {
         if (check_label("map_bram", "(skip if -no_bram)") && (help_mode || family == "qlf_k6n10" || family == "qlf_k6n10f" || family == "pp3") &&
             inferBram) {
             if (help_mode || family == "qlf_k6n10f") {
+				if (synplify) {
+					run("techmap -autoproc -map " + lib_path + family + "/synplify_bram_map.v");
+				}
                 if (notdpram) {
                     run("memory_libmap -lib " + lib_path + family + "/libmap_brams_sdp.txt", "(for qlf_k6n10f)");
                     run("ql_sdpbram_merge", "(for qlf_k6n10f)");
