@@ -184,23 +184,16 @@ module dff(
     output reg Q,
     input wire D,
     (* clkbuf_sink *)
-    input wire C,
-	input wire R
+    input wire C
 );
     initial Q <= 1'b0;
 
-    always @(posedge C or negedge R)
-      if (!R)
-        Q <= 1'b0;
-      else
-        Q <= D;
+    always @(posedge C)
+      Q <= D;
 
     specify
 	    (posedge C=>(Q+:D)) = 285;
-		(R => Q) = 0;
 	    $setuphold(posedge C, D, 56, 0);
-        $setuphold(posedge C, R, 0, 0);
-        $recrem(posedge R, posedge C, 0, 0);
     endspecify
 
 endmodule
@@ -210,22 +203,16 @@ module dffn(
     output reg Q,
     input wire D,
     (* clkbuf_sink *)
-    input wire C,
-	input wire R
+    input wire C
 );
     initial Q <= 1'b0;
 
-    always @(negedge C or negedge R)
-      if (!R)
-        Q <= 1'b0;
-      else
-        Q <= D;
+    always @(negedge C)
+      Q <= D;
 	  
     specify
 	    (negedge C=>(Q+:D)) = 285;
 	    $setuphold(negedge C, D, 56, 0);
-        $setuphold(negedge C, R, 0, 0);
-        $recrem(posedge R, negedge C, 0, 0);
     endspecify
 
 endmodule
@@ -397,10 +384,10 @@ module sh_dffnre(
 endmodule
 
 module CARRY8(
-  output [7:0] CO,
-  output [7:0] O,
-  input        CI,
-  input  [7:0] DI, S
+  output wire [7:0] CO,
+  output  wire [7:0] O,
+  input   wire CI,
+  input   wire [7:0] DI, S
 );
   parameter [15:0] LOCATION = 16'b0000000000000000;
 
@@ -427,4 +414,37 @@ module CARRY8(
   assign CO[5] = S[5] ? CO[4] : DI[5];
   assign CO[6] = S[6] ? CO[5] : DI[6];
    
+endmodule
+
+(* abc9_box, lib_whitebox *)
+(* blackbox *)
+(* keep *)
+module lut6_2(output wire lut5out, output wire lut6out, input wire [5:0] in);
+  parameter [63:0] INIT = 0;
+  wire [31: 0] s5 = in[5] ? INIT[63:32] : INIT[31: 0];
+  wire [15: 0] s4 = in[4] ?   s5[31:16] :   s5[15: 0];
+  wire [ 7: 0] s3 = in[3] ?   s4[15: 8] :   s4[ 7: 0];
+  wire [ 3: 0] s2 = in[2] ?   s3[ 7: 4] :   s3[ 3: 0];
+  wire [ 1: 0] s1 = in[1] ?   s2[ 3: 2] :   s2[ 1: 0];
+  assign lut6out = in[0] ? s1[1] : s1[0];
+  wire [15: 0] s5_4 = in[4] ? INIT[31:16] : INIT[15: 0];
+  wire [ 7: 0] s5_3 = in[3] ? s5_4[15: 8] : s5_4[ 7: 0];
+  wire [ 3: 0] s5_2 = in[2] ? s5_3[ 7: 4] : s5_3[ 3: 0];
+  wire [ 1: 0] s5_1 = in[1] ? s5_2[ 3: 2] : s5_2[ 1: 0];
+  assign lut5out = in[0] ? s5_1[1] : s5_1[0];
+
+  specify
+    (in[0] => lut6out) = 251;
+    (in[1] => lut6out) = 212;
+    (in[2] => lut6out) = 166;
+    (in[3] => lut6out) = 123;
+    (in[4] => lut6out) = 77;
+    (in[5] => lut6out) = 43;
+    (in[0] => lut5out) = 251;
+    (in[1] => lut5out) = 212;
+    (in[2] => lut5out) = 166;
+    (in[3] => lut5out) = 123;
+    (in[4] => lut5out) = 77;
+  endspecify  
+
 endmodule
