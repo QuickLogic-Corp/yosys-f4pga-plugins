@@ -350,7 +350,6 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (synplify) {
                 run("flatten");
             }
-            else{
                 run("proc");
                 run("flatten");
                 if (help_mode || family == "pp3") {
@@ -379,7 +378,6 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("opt_clean");
                     run("share");
                 }
-            }
         }
 
         if (check_label("map_dsp"), "(skip if -no_dsp)") {
@@ -458,7 +456,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("coarse")) {
-            if (!synplify) {
+            // if (!synplify) {
                 run("techmap -map +/cmp2lut.v -D LUT_WIDTH=4");
                 if (!noOpt) {
                     run("opt_expr");
@@ -473,7 +471,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (!noOpt) {
                     run("opt_clean");
                 }
-            }
+            // }
         }
 
         if (check_label("map_bram", "(skip if -no_bram)") && (help_mode || family == "qlf_k6n10" || family == "qlf_k6n10f" || family == "pp3") &&
@@ -513,7 +511,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("map_ffram")) {
-            if (!synplify) {
+            // if (!synplify) {
                 if (!noOpt) {
                     run("opt -fast -mux_undef -undriven -fine" + noDFFArgs);
                 }
@@ -523,11 +521,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (!noOpt) {
                     run("opt -undriven -fine" + noDFFArgs);
                 }
-            }
+            // }
         }
 
         if (check_label("map_gates")) {
-            if (!synplify) {
+            // if (!synplify) {
                 if (help_mode || (inferAdder && (family == "qlf_k4n8" || family == "qlf_k6n10" || family == "qlf_k6n10f"))) {
                     run("techmap -map +/techmap.v -map " + lib_path + family + "/arith_map.v", "(unless -no_adder)");
                 } else {
@@ -545,11 +543,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("opt_clean");
                     run("opt" + noDFFArgs);
                 }
-            }
+            // }
         }
 
         if (check_label("map_ffs")) {
-            if (!synplify) {
+            // if (!synplify) {
                 if (!noOpt) {
                     run("opt_expr");
                 }
@@ -606,11 +604,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("opt_clean");
                     run("opt" + noDFFArgs);
                 }
-            }
+            // }
         }
 
         if (check_label("map_luts")) {
-            if (!synplify) {
+            // if (!synplify) {
                 if (help_mode || abcOpt) {
                     if (help_mode || family == "qlf_k6n10" || family == "qlf_k6n10f") {
                         if (abc9) {
@@ -653,16 +651,16 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (!noOpt) {
                     run("opt_lut");
                 }
-            }
+            // }
         }
 
         if (check_label("map_cells", "(for pp3, qlf_k6n10)") && (help_mode || family == "qlf_k6n10" || family == "pp3")) {
-            if (!synplify) {
+            // if (!synplify) {
                 std::string techMapArgs;
                 techMapArgs = "-map " + lib_path + family + "/lut_map.v";
                 run("techmap " + techMapArgs);
                 run("clean");
-            }
+            // }
         }
 		
 		if (check_label("iomap", "(for qlf_k6n10f)") && (family == "qlf_k6n10f" || help_mode)) {
@@ -673,23 +671,23 @@ struct SynthQuickLogicPass : public ScriptPass {
 		}
 
         if (check_label("check")) {
-            if (!synplify) {
+            // if (!synplify) {
                 run("autoname");
                 run("hierarchy -check");
                 run("stat");
                 run("check -noinit");
-            }
+            // }
         }
 
         if (check_label("iomap", "(for pp3)") && (family == "pp3" || help_mode)) {
-            if (!synplify) {
+            // if (!synplify) {
                 run("clkbufmap -inpad ckpad Q:P");
                 run("iopadmap -bits -outpad outpad A:P -inpad inpad Q:P -tinoutpad bipad EN:Q:A:P A:top");
-            }
+            // }
         }
 
         if (check_label("finalize")) {
-            if (!synplify) {
+            // if (!synplify) {
                 if (help_mode || family == "pp3") {
                     run("setundef -zero -params -undriven", "(for pp3)");
                 }
@@ -701,7 +699,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 }
                 run("check");
                 run("blackbox =A:whitebox");
-            }
+            // }
         }
 
         if (check_label("map_synplify", "(if -synplify)")) {
