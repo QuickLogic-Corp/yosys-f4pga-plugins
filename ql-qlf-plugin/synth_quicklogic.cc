@@ -285,10 +285,6 @@ struct SynthQuickLogicPass : public ScriptPass {
         if (family != "pp3" && family != "qlf_k4n8" && family != "qlf_k6n10" && family != "qlf_k6n10f")
             log_cmd_error("Invalid family specified: '%s'\n", family.c_str());
 
-        // if (family != "pp3") {
-        //     abc9 = false;
-        // }
-
         if (family == "qlf_k4n8") {
             nosdff = true;
         }
@@ -334,24 +330,32 @@ struct SynthQuickLogicPass : public ScriptPass {
                 }
                 if (synplify) {
                     readVelArgs += family_path + "/synplify_map.v";
-					readVelArgs += family_path + "/synplify_dsp_map.v";
 					readVelArgs += family_path + "/synplify_bram_map.v";
                 }
             }
-
             // Use -nomem2reg here to prevent Yosys from complaining about
             // some block ram cell models. After all the only part of the cells
             // library required here is cell port definitions plus specify blocks.
             run("read_verilog -lib -specify -nomem2reg " + readVelArgs);
+			if (synplify) {
+			    run("read_verilog " + family_path + "/QL_DSPV2.v");
+			}
             run(stringf("hierarchy -check %s", help_mode ? "-top <top>" : top_opt.c_str()));
         }
 
         if (check_label("prepare")) {
             if (synplify) {
-                run("flatten");
+				run("proc");
+				run("flatten");
+				run("opt -nodffe -nosdff");
+				run("fsm");
+				run("wreduce");
+				run("peepopt");
+				run("opt_clean");
+				run("share");
             }
             else{
-                run("proc");
+			    run("proc");
                 run("flatten");
                 if (help_mode || family == "pp3") {
                     run("tribuf -logic", "                   (for pp3)");
@@ -405,7 +409,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("chtype -set $mul t:$__soft_mul", "  (for qlf_k6n10)");
                 }
             }
-            if (help_mode || family == "qlf_k6n10f") {
+            if (help_mode || family == "qlf_k6n10f") {			
 
                 struct DspParams {
                     size_t a_maxwidth;
@@ -458,7 +462,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("coarse")) {
-            if (!synplify) {
+            //if (!synplify) {
                 run("techmap -map +/cmp2lut.v -D LUT_WIDTH=4");
                 if (!noOpt) {
                     run("opt_expr");
@@ -473,7 +477,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (!noOpt) {
                     run("opt_clean");
                 }
-            }
+            //}
         }
 
         if (check_label("map_bram", "(skip if -no_bram)") && (help_mode || family == "qlf_k6n10" || family == "qlf_k6n10f" || family == "pp3") &&
@@ -527,7 +531,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("map_gates")) {
-            if (!synplify) {
+            //if (!synplify) {
                 if (help_mode || (inferAdder && (family == "qlf_k4n8" || family == "qlf_k6n10" || family == "qlf_k6n10f"))) {
                     run("techmap -map +/techmap.v -map " + lib_path + family + "/arith_map.v", "(unless -no_adder)");
                 } else {
@@ -545,11 +549,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("opt_clean");
                     run("opt" + noDFFArgs);
                 }
-            }
+            //}
         }
 
         if (check_label("map_ffs")) {
-            if (!synplify) {
+            //if (!synplify) {
                 if (!noOpt) {
                     run("opt_expr");
                 }
@@ -589,12 +593,6 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("techmap -map " + lib_path + family + "/cells_map.v");
                 }
 				std::string techMapArgs = " -map +/techmap.v -map " + lib_path + family + "/ffs_map.v";
-                //std::string techMapArgs;
-                //if (nosetff) {
-                //    techMapArgs = " -map +/techmap.v -map " + lib_path + family + "/ffs_map_noaset.v";
-                //} else {
-                //    techMapArgs = " -map +/techmap.v -map " + lib_path + family + "/ffs_map.v";
-                //}
                 if (help_mode || !noffmap) {
                     run("techmap " + techMapArgs, "(unless -no_ff_map)");
                 }
@@ -606,11 +604,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("opt_clean");
                     run("opt" + noDFFArgs);
                 }
-            }
+            //}
         }
 
         if (check_label("map_luts")) {
-            if (!synplify) {
+            //if (!synplify) {
                 if (help_mode || abcOpt) {
                     if (help_mode || family == "qlf_k6n10" || family == "qlf_k6n10f") {
                         if (abc9) {
@@ -653,7 +651,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (!noOpt) {
                     run("opt_lut");
                 }
-            }
+            //}
         }
 
         if (check_label("map_cells", "(for pp3, qlf_k6n10)") && (help_mode || family == "qlf_k6n10" || family == "pp3")) {
@@ -708,12 +706,9 @@ struct SynthQuickLogicPass : public ScriptPass {
             std::string family_path = " " + lib_path + family;
             if (family == "qlf_k6n10f") {
                 if (synplify) {
-                    run("opt -fast -mux_undef -undriven -fine" + noDFFArgs);
+					run("opt -fast -mux_undef -undriven -fine" + noDFFArgs);
                     run("techmap -autoproc -map" + family_path + "/synplify_map.v");
-                    run("opt_expr");
-                    run("opt_merge");
-                    run("opt_clean -purge");
-					run("techmap -autoproc -map" + family_path + "/synplify_dsp_map.v");			
+					run("opt" + noDFFArgs);
                     run("opt_expr");
                     run("opt_merge");
                     run("opt_clean -purge");

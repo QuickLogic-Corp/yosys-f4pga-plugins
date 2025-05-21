@@ -71,7 +71,7 @@ VERILOG_MODULES = $(COMMON)/cells_sim.v         \
 				  $(QLF_K6N10F_DIR)/libmap_brams_map_tdp.v \
 				  $(QLF_K6N10F_DIR)/libmap_brams_map_sdp.v \
                   $(QLF_K6N10F_DIR)/synplify_map.v   \
-				  $(QLF_K6N10F_DIR)/synplify_dsp_map.v   \
+				  $(QLF_K6N10F_DIR)/QL_DSPV2.v   \
 				  $(QLF_K6N10F_DIR)/synplify_bram_map.v   \
 				  $(QLF_K6N10F_DIR)/libmap_brams_sdp.txt \
 				  $(QLF_K6N10F_DIR)/libmap_brams_tdp.txt \
