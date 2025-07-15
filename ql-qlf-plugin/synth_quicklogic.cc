@@ -111,6 +111,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        By default flip-flops in the IO is not used for the designs that\n");
         log("        are feasible. Specifying this will force synthesis to use IOFFs.\n");
         log("\n");
+        log("    -bramecc\n");
+        log("        By default use BRAM without ECC support for designs \n");
+        log("        Specifying this will use BRAM with ECC support.\n");
+        log("\n");
         log("    -no_tdpram\n");
         log("        By default infer TDP BRAM for architectures that support them.\n");
         log("        Specifying this switch infer SDP BRAM only.\n");
@@ -139,6 +143,7 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool nosdff;
     bool noffenable; 
     bool ioff;
+	bool bramecc;
     bool notdpram;
     bool noOpt;
     bool synplify;
@@ -161,6 +166,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         nosdff = false;
         noffenable = false;
         ioff = false;
+		bramecc = false;
         notdpram = false;
         noOpt = false;
         synplify = false;
@@ -257,6 +263,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (args[argidx] == "-ioff") {
                 ioff = true;
+                continue;
+            }
+            if (args[argidx] == "-bramecc") {
+                bramecc = true;
                 continue;
             }
             if (args[argidx] == "-no_tdpram") {
@@ -508,11 +518,19 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
 
             if (bramTypes || help_mode) {
-                if (notdpram) {
-                    run("ql_sdp_bram_types", "(if -bramtypes)");
-                } else {
-                    run("ql_bram_types", "(if -bramtypes)");
-                }
+				if (bramecc) {
+					if (notdpram) {
+						run("ql_sdp_bramecc_types", "(if -bramtypes)"); 
+					} else {
+						run("ql_bramecc_types", "(if -bramtypes)");
+					}
+			    } else {
+					if (notdpram) {
+						run("ql_sdp_bram_types", "(if -bramtypes)");
+					} else {
+						run("ql_bram_types", "(if -bramtypes)");
+					}
+				}
             }
         }
 
