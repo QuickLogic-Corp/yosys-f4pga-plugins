@@ -566,7 +566,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                     if (noffenable) {
                         legalizeArgs = " -cell $_DFF_?N?_ 0";
                     } else if (mince_num != "") {
-                        legalizeArgs = " -mince " + mince_num + " -cell $_DFFE_?N?P_ 0 -cell $_DFF_?N?_ 0"; 
+                        legalizeArgs = " -mince " + mince_num + " -cell $_DFFE_?N?P_ 0 -cell $_DFFE_?P_ 0 -cell $_DFF_?N?_ 0 -cell $_DFF_?_ 0"; 
                     } else {
 						legalizeArgs = " -cell $_DFFE_?N?P_ 0 -cell $_DFFE_?P_ 0 -cell $_DFF_?N?_ 0 -cell $_DFF_?_ 0";
 					}
@@ -574,7 +574,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 						if (noffenable) {
 							legalizeArgs += " -cell $_SDFF_?N?_ 0";
 						} else if (mince_num != "") {
-							legalizeArgs += " -mince " + mince_num + " -cell $_SDFFE_?N?P_ 0 -cell $_SDFF_?N?_ 0";
+							legalizeArgs += " -mince " + mince_num + " -cell $_SDFFE_?N?P_ 0 -cell $_DFFE_?P_ 0 -cell $_SDFF_?N?_ 0 -cell $_DFF_?_ 0";
 						} else {
 							legalizeArgs += "  -cell $_SDFFE_?N?P_ 0 -cell $_DFFE_?P_ 0 -cell $_SDFF_?N?_ 0 -cell $_DFF_?_ 0";							
 						}					
