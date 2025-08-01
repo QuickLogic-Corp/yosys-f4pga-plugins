@@ -61,6 +61,7 @@ VERILOG_MODULES = $(COMMON)/cells_sim.v         \
                   $(QLF_K6N10F_DIR)/brams.txt   \
                   $(QLF_K6N10F_DIR)/cells_sim.v \
                   $(QLF_K6N10F_DIR)/dsp_sim.v \
+				  $(QLF_K6N10F_DIR)/dspv2_sim.v \
                   $(QLF_K6N10F_DIR)/primitives_sim.v \
                   $(QLF_K6N10F_DIR)/brams_sim.v \
                   $(QLF_K6N10F_DIR)/bram_types_sim.v \

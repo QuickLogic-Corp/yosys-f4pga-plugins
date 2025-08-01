@@ -263,3 +263,439 @@ module dsp_t1_10x9x32_cfg_params (
 
 endmodule
 
+//------------------------------------------------------------------------------
+// Module
+//------------------------------------------------------------------------------
+
+module DSP38 #(
+  parameter DSP_MODE = "MULTIPLY", // DSP arithmetic mode (MULTIPLY/MULTIPLY_ADD_SUB/MULTIPLY_ACCUMULATE)
+  parameter [19:0] COEFF_0 = 20'h00000, // 20-bit A input coefficient 0
+  parameter [19:0] COEFF_1 = 20'h00000, // 20-bit A input coefficient 1
+  parameter [19:0] COEFF_2 = 20'h00000, // 20-bit A input coefficient 2
+  parameter [19:0] COEFF_3 = 20'h00000, // 20-bit A input coefficient 3
+  parameter OUTPUT_REG_EN = "TRUE", // Enable output register (TRUE/FALSE)
+  parameter INPUT_REG_EN = "TRUE" // Enable input register (TRUE/FALSE)
+)
+(
+  input wire [19:0] A, // 20-bit data input for multipluier or accumulator loading
+  input wire [17:0] B, // 18-bit data input for multiplication
+  input wire [5:0] ACC_FIR, // 6-bit left shift A input
+  output wire [37:0] Z, // 38-bit data output
+  output wire  [17:0] DLY_B, // 18-bit B registered output
+  input wire CLK, // Clock
+  input wire RESET, // Active high reset
+  input wire [2:0] FEEDBACK, // 3-bit feedback input selects coefficient
+  input wire LOAD_ACC, // Load accumulator input
+  input wire SATURATE, // Saturate enable
+  input wire [5:0] SHIFT_RIGHT, // 6-bit Shift right
+  input wire ROUND, // Round
+  input wire SUBTRACT, // Add or subtract
+  input wire UNSIGNED_A, // Selects signed or unsigned data for A input
+  input wire UNSIGNED_B // Selects signed or unsigned data for B input
+);
+
+generate
+   if (DSP_MODE == "MULTIPLY" & OUTPUT_REG_EN == "FALSE" & INPUT_REG_EN == "FALSE") begin
+
+		QL_DSP2_MULT  mult (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+			.reset(1'b0),
+	
+			.f_mode(1'b0),
+	
+			.feedback(FEEDBACK),
+			.unsigned_a(UNSIGNED_A),
+			.unsigned_b(UNSIGNED_B),
+	
+			.output_select(3'b000),      // unregistered output: a * b (0)
+			.register_inputs(1'b0)   // unregistered inputs
+		);
+   end else if (DSP_MODE == "MULTIPLY" & OUTPUT_REG_EN == "FALSE" & INPUT_REG_EN == "TRUE") begin
+
+		QL_DSP2_MULT_REGIN  mult_regin (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+	
+			.f_mode(1'b0),
+	
+			.feedback(FEEDBACK),
+			.unsigned_a(UNSIGNED_A),
+			.unsigned_b(UNSIGNED_B),
+	
+			.output_select(3'b000),      // unregistered output: a * b (0)
+			.register_inputs(1'b1)   // unregistered inputs
+		);
+   end else if (DSP_MODE == "MULTIPLY" & OUTPUT_REG_EN == "TRUE" & INPUT_REG_EN == "FALSE") begin
+
+		QL_DSP2_MULT_REGOUT  mult_regout (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+	
+			.f_mode(1'b0),
+	
+			.feedback(FEEDBACK),
+			.unsigned_a(UNSIGNED_A),
+			.unsigned_b(UNSIGNED_B),
+	
+			.output_select(3'b100),      // unregistered output: a * b (0)
+			.register_inputs(1'b0)   // unregistered inputs
+		);
+   end else if (DSP_MODE == "MULTIPLY" & OUTPUT_REG_EN == "TRUE" & INPUT_REG_EN == "TRUE") begin
+
+		QL_DSP2_MULT_REGIN_REGOUT  mult_reginout (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+	
+			.f_mode(1'b0),
+	
+			.feedback(FEEDBACK),
+			.unsigned_a(UNSIGNED_A),
+			.unsigned_b(UNSIGNED_B),
+	
+			.output_select(3'b100),      // unregistered output: a * b (0)
+			.register_inputs(1'b1)   // unregistered inputs
+		);
+   end else if (DSP_MODE == "MULTIPLY_ACCUMULATE" & OUTPUT_REG_EN == "FALSE" & INPUT_REG_EN == "FALSE") begin
+
+		QL_DSP2_MULTACC  multacc (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+	
+			.f_mode(1'b0),
+	
+	        .load_acc(LOAD_ACC),
+			.feedback(FEEDBACK),
+			.unsigned_a(UNSIGNED_A),
+			.unsigned_b(UNSIGNED_B),
+			
+			.output_select(3'b010),      // unregistered output: a * b (0)
+			.saturate_enable(SATURATE),
+			.shift_right(SHIFT_RIGHT),
+			.round(ROUND),
+			.subtract(SUBTRACT),
+			.register_inputs(1'b0)   // unregistered inputs
+		);
+   end else if (DSP_MODE == "MULTIPLY_ACCUMULATE" & OUTPUT_REG_EN == "FALSE" & INPUT_REG_EN == "TRUE") begin
+
+		QL_DSP2_MULTACC_REGIN  multacc_regin (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+	
+			.f_mode(1'b0),
+	
+	        .load_acc(LOAD_ACC),
+			.feedback(FEEDBACK),
+			.unsigned_a(UNSIGNED_A),
+			.unsigned_b(UNSIGNED_B),
+			
+			.output_select(3'b010),      // unregistered output: a * b (0)
+			.saturate_enable(SATURATE),
+			.shift_right(SHIFT_RIGHT),
+			.round(ROUND),
+			.subtract(SUBTRACT),
+			.register_inputs(1'b1)   // unregistered inputs
+		);		
+   end else if (DSP_MODE == "MULTIPLY_ACCUMULATE" & OUTPUT_REG_EN == "TRUE" & INPUT_REG_EN == "FALSE") begin
+
+		QL_DSP2_MULTACC_REGOUT  multacc_regout (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+	
+			.f_mode(1'b0),
+	
+	        .load_acc(LOAD_ACC),
+			.feedback(FEEDBACK),
+			.unsigned_a(UNSIGNED_A),
+			.unsigned_b(UNSIGNED_B),
+			
+			.output_select(3'b110),      // unregistered output: a * b (0)
+			.saturate_enable(SATURATE),
+			.shift_right(SHIFT_RIGHT),
+			.round(ROUND),
+			.subtract(SUBTRACT),
+			.register_inputs(1'b0)   // unregistered inputs
+		);
+   end else if (DSP_MODE == "MULTIPLY_ACCUMULATE" & OUTPUT_REG_EN == "TRUE" & INPUT_REG_EN == "TRUE") begin
+
+		QL_DSP2_MULTACC_REGIN_REGOUT  multacc_reginout (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+	
+			.f_mode(1'b0),
+	
+	        .load_acc(LOAD_ACC),
+			.feedback(FEEDBACK),
+			.unsigned_a(UNSIGNED_A),
+			.unsigned_b(UNSIGNED_B),
+			
+			.output_select(3'b110),      // unregistered output: a * b (0)
+			.saturate_enable(SATURATE),
+			.shift_right(SHIFT_RIGHT),
+			.round(ROUND),
+			.subtract(SUBTRACT),
+			.register_inputs(1'b1)   // unregistered inputs
+		);
+   end else begin
+   
+		QL_DSP2_MULTADD  multadd (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .reset(1'b0),
+	
+			.f_mode(1'b0),
+	
+	        .load_acc(1'b0),
+			.feedback(FEEDBACK),
+			.acc_fir(6'h0),
+			.unsigned_a(UNSIGNED_A),
+			.unsigned_b(UNSIGNED_B),
+			
+			.output_select(3'b001),      // unregistered output: a * b (0)
+			.saturate_enable(SATURATE),
+			.shift_right(SHIFT_RIGHT),
+			.round(ROUND),
+			.subtract(SUBTRACT),
+			.register_inputs(1'b0)   // unregistered inputs
+		);
+   end
+endgenerate
+
+endmodule
+
+//------------------------------------------------------------------------------
+// Module
+//------------------------------------------------------------------------------
+
+module DSPV2IPG #(
+  parameter DSP_MODE = "MULTIPLY", // DSP arithmetic mode (MULTIPLY/MULTIPLY_ADD_SUB/MULTIPLY_ACCUMULATE)
+  parameter [31:0] COEFF_0 = 32'h00000000, // 32-bit A input coefficient 0
+  parameter OUTPUT_REG_EN = "TRUE", // Enable output register (TRUE/FALSE)
+  parameter INPUT_REG_EN = "TRUE" // Enable input register (TRUE/FALSE)
+)
+(
+  input wire [31:0] A, // 32-bit data input for multipluier or accumulator loading
+  input wire [17:0] B, // 18-bit data input for multiplication
+  input wire [17:0] C, // 18-bit data input for Pre-adder
+  input wire [5:0] ACC_FIR, // 6-bit left shift A input
+  output wire [49:0] Z, // 38-bit data output
+  
+  input wire [31:0] ACIN,
+  input wire [17:0] BCIN,
+  input wire [49:0] ZCIN,
+  output wire  [31:0] ACOUT, 
+  output wire  [17:0] BCOUT, 
+  output wire  [49:0] ZCOUT, 
+  
+  input wire CLK, // Clock
+  input wire RESET, // Active high reset 
+  input wire ACC_RESET, // Active high accumulator reset
+  input wire [2:0] FEEDBACK, // 3-bit feedback input selects coefficient
+  input wire LOAD_ACC, // Load accumulator input
+  input wire SATURATE, // Saturate enable
+  input wire [5:0] SHIFT_RIGHT, // 6-bit Shift right
+  input wire [2:0] ROUND, // Round
+  input wire SUBTRACT, // Add or subtract
+  input wire UNSIGNED_A, // Selects signed or unsigned data for A input
+  input wire UNSIGNED_B // Selects signed or unsigned data for B input
+);
+
+generate
+   if (DSP_MODE == "MULTIPLY" & OUTPUT_REG_EN == "FALSE" & INPUT_REG_EN == "FALSE") begin
+
+		QL_DSPV2_MULT  #(
+		    .MODE_BITS({48'h000000000000,COEFF_0})
+			)
+			mult (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+			.feedback(FEEDBACK),
+			.output_select(3'b000)
+		);
+	
+   end else if (DSP_MODE == "MULTIPLY" & OUTPUT_REG_EN == "FALSE" & INPUT_REG_EN == "TRUE") begin
+
+		QL_DSPV2_MULT_REGIN #(
+		    .MODE_BITS({48'h000220000000,COEFF_0})
+			) 
+			mult_regin (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+		
+			.feedback(FEEDBACK),
+			.output_select(3'b000)
+		);
+		
+   end else if (DSP_MODE == "MULTIPLY" & OUTPUT_REG_EN == "TRUE" & INPUT_REG_EN == "FALSE") begin
+
+		QL_DSPV2_MULT_REGOUT #(
+		    .MODE_BITS({48'h000000000000,COEFF_0})
+			)  
+			mult_regout (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+	
+			.feedback(FEEDBACK),
+			.output_select(3'b100)
+		);
+		
+   end else if (DSP_MODE == "MULTIPLY" & OUTPUT_REG_EN == "TRUE" & INPUT_REG_EN == "TRUE") begin
+
+		QL_DSPV2_MULT_REGIN_REGOUT #(
+		    .MODE_BITS({48'h000220000000,COEFF_0})
+			)   
+			mult_reginout (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+
+			.feedback(FEEDBACK),
+			.output_select(3'b100)
+		);
+		
+   end else if (DSP_MODE == "MULTIPLY_ACCUMULATE" & OUTPUT_REG_EN == "FALSE" & INPUT_REG_EN == "FALSE") begin
+
+		QL_DSPV2_MULTACC #(
+		    .MODE_BITS({48'h000000000000,COEFF_0})
+			)   
+			multacc (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+			.acc_reset(ACC_RESET),
+	        .load_acc(LOAD_ACC),
+			
+			.feedback(FEEDBACK),
+			.output_select(3'b010)
+		);
+		
+   end else if (DSP_MODE == "MULTIPLY_ACCUMULATE" & OUTPUT_REG_EN == "FALSE" & INPUT_REG_EN == "TRUE") begin
+
+		QL_DSPV2_MULTACC_REGIN #(
+		    .MODE_BITS({48'h000220000000,COEFF_0})
+			)   
+			multacc_regin (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+			.acc_reset(ACC_RESET),
+	        .load_acc(LOAD_ACC),
+			
+			.feedback(FEEDBACK),
+			.output_select(3'b010)
+		);
+		
+   end else if (DSP_MODE == "MULTIPLY_ACCUMULATE" & OUTPUT_REG_EN == "TRUE" & INPUT_REG_EN == "FALSE") begin
+
+		QL_DSPV2_MULTACC_REGOUT #(
+		    .MODE_BITS({48'h000000000000,COEFF_0})
+			)     
+			multacc_regout (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+	        .acc_reset(ACC_RESET),
+	        .load_acc(LOAD_ACC),
+			
+			.feedback(FEEDBACK),
+			.output_select(3'b110)
+		);
+		
+   end else if (DSP_MODE == "MULTIPLY_ACCUMULATE" & OUTPUT_REG_EN == "TRUE" & INPUT_REG_EN == "TRUE") begin
+
+		QL_DSPV2_MULTACC_REGIN_REGOUT #(
+		    .MODE_BITS({48'h000220000000,COEFF_0})
+			)    
+			multacc_reginout (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(CLK),
+			.reset(RESET),
+			.acc_reset(ACC_RESET),
+	        .load_acc(LOAD_ACC),
+			
+			.feedback(FEEDBACK),
+			.output_select(3'b110)
+		);
+		
+   end else begin
+   
+		QL_DSPV2_MULTADD #(
+		    .MODE_BITS({48'h000000000000,COEFF_0})
+			)    
+			multadd (
+			.a(A),
+			.b(B),
+			.z(Z),
+	
+	        .clk(),
+			.reset(),
+			.acc_reset(),
+	        .load_acc(),
+			
+			.z_cin(ZCIN),
+			.z_cout(ZCOUT),
+			
+			.feedback(FEEDBACK),
+			.output_select(3'b001)
+		);
+   end
+endgenerate
+
+endmodule
