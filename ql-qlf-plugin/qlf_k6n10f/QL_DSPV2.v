@@ -6,7 +6,7 @@ module GND(output G);
   assign G = 1'b0;
 endmodule
 
-module QL_DSPV2 #(parameter [71:0] MODE_BITS= 72'h000000000000000000)
+module QL_DSPV2 #(parameter [79:0] MODE_BITS= 80'h00000000000000000000)
 ( 
     input  wire [31:0] a,
     input  wire [17:0] b,
@@ -29,8 +29,6 @@ module QL_DSPV2 #(parameter [71:0] MODE_BITS= 72'h000000000000000000)
 	output wire [17:0] 	b_cout
 );
 
-    //parameter [71:0] MODE_BITS = 72'h000000000000000000;
-
     localparam [31:0] COEFF_0 	= MODE_BITS[31:0];
 	localparam [5:0]  ACC_FIR   = MODE_BITS[37:32];
     localparam [2:0]  ROUND 	= MODE_BITS[40:38];
@@ -40,15 +38,26 @@ module QL_DSPV2 #(parameter [71:0] MODE_BITS= 72'h000000000000000000)
 	localparam  SATURATE  = MODE_BITS[57];
 	localparam  SUBTRACT  = MODE_BITS[58];
 	localparam  PRE_ADD   = MODE_BITS[59];
+	
 	localparam  A_SEL     = MODE_BITS[60];
 	localparam  A_REG     = MODE_BITS[61];
-	localparam  B_SEL     = MODE_BITS[62];
-	localparam  B_REG     = MODE_BITS[63];
-	localparam  C_REG     = MODE_BITS[64];
-	localparam  BC_REG    = MODE_BITS[65];
-	localparam  M_REG     = MODE_BITS[66];
-	localparam  ZCIN_REG  = MODE_BITS[67];
-	localparam  FRAC_MODE = MODE_BITS[71];
+	localparam  A1_REG    = MODE_BITS[62];
+	localparam  A2_REG    = MODE_BITS[63];
+	
+	localparam  B_SEL     = MODE_BITS[64];
+	localparam  B_REG     = MODE_BITS[65];
+	localparam  B1_REG    = MODE_BITS[66];
+	localparam  B2_REG    = MODE_BITS[67];	
+	
+	localparam  C_REG     = MODE_BITS[68];
+	localparam  BC_REG    = MODE_BITS[69];
+	localparam  M_REG     = MODE_BITS[70];
+	localparam  ZCIN_REG  = MODE_BITS[71];
+	
+	localparam  ACOUT_SEL = MODE_BITS[72];
+	localparam  BCOUT_SEL = MODE_BITS[73];
+	
+	localparam  FRAC_MODE = MODE_BITS[79];
 	
     localparam NBITS_ACC = 64;
     localparam NBITS_A  = 32;
@@ -115,19 +124,23 @@ generate
 		.zreg_shift_i   ( ZREG_SHIFT  ),
 		.acc_shift_i    ( SHIFT_REG   ),
 		.saturate_i     ( SATURATE    ),
-		.padd_sel_i     ( PRE_ADD    ),
+		.padd_sel_i     ( PRE_ADD     ),
 		.a_sel_i        ( A_SEL       ),
-		.a_reg_i        ( A_REG         ),
+		.a_reg_i        ( A_REG       ),
+		.a1_reg_i       ( A1_REG      ),
+		.a2_reg_i       ( A2_REG      ),
+		.acout_sel_i    ( ACOUT_SEL   ),
 		.b_sel_i        ( B_SEL       ),
-		.b_reg_i        ( B_REG         ),
-		.c_reg_i        ( C_REG         ),
-		.bc_reg_i       ( BC_REG        ),
-		.m_reg_i        ( M_REG         ),
+		.b_reg_i        ( B_REG       ),
+		.b1_reg_i       ( B1_REG      ),
+		.b2_reg_i       ( B2_REG      ),
+		.bcout_sel_i    ( BCOUT_SEL   ),
+		.c_reg_i        ( C_REG       ),
+		.bc_reg_i       ( BC_REG      ),
+		.m_reg_i        ( M_REG       ),
 		.subtract_i     ( SUBTRACT    ),
-		.z_cin_sel_i    ( ZCIN_REG   )
+		.z_cin_sel_i    ( ZCIN_REG    )
 	); // dspf0 
-
-
 
     // Output used when fmode == 1        
 	// half DSP block #2
@@ -165,16 +178,22 @@ generate
 		.zreg_shift_i   ( ZREG_SHIFT  ),
 		.acc_shift_i    ( SHIFT_REG   ),
 		.saturate_i     ( SATURATE    ),
-		.padd_sel_i     ( PRE_ADD    ),
+		.padd_sel_i     ( PRE_ADD     ),
 		.a_sel_i        ( A_SEL       ),
-		.a_reg_i        ( A_REG         ),
+		.a_reg_i        ( A_REG       ),
+		.a1_reg_i       ( A1_REG      ),
+		.a2_reg_i       ( A2_REG      ),
+		.acout_sel_i    ( ACOUT_SEL   ),
 		.b_sel_i        ( B_SEL       ),
-		.b_reg_i        ( B_REG         ),
-		.c_reg_i        ( C_REG         ),
-		.bc_reg_i       ( BC_REG        ),
-		.m_reg_i        ( M_REG         ),
+		.b_reg_i        ( B_REG       ),
+		.b1_reg_i       ( B1_REG      ),
+		.b2_reg_i       ( B2_REG      ),
+		.bcout_sel_i    ( BCOUT_SEL   ),
+		.c_reg_i        ( C_REG       ),
+		.bc_reg_i       ( BC_REG      ),
+		.m_reg_i        ( M_REG       ),
 		.subtract_i     ( SUBTRACT    ),
-		.z_cin_sel_i    ( ZCIN_REG   )
+		.z_cin_sel_i    ( ZCIN_REG    )
 	); // dspf1 
 
   end else begin
@@ -208,21 +227,27 @@ generate
 		// configuration ports (tie-offs)
 		.round_i        ( ROUND       ),
 		.acc_fir_i      ( ACC_FIR     ),
-		.coeff_i        ( COEFF_0       ),
+		.coeff_i        ( COEFF_0     ),
 		.zc_shift_i     ( ZC_SHIFT    ),
 		.zreg_shift_i   ( ZREG_SHIFT  ),
 		.acc_shift_i    ( SHIFT_REG   ),
 		.saturate_i     ( SATURATE    ),
-		.padd_sel_i     ( PRE_ADD    ),
+		.padd_sel_i     ( PRE_ADD     ),
 		.a_sel_i        ( A_SEL       ),
-		.a_reg_i        ( A_REG         ),
+		.a_reg_i        ( A_REG       ),
+		.a1_reg_i       ( A1_REG      ),
+		.a2_reg_i       ( A2_REG      ),
+		.acout_sel_i    ( ACOUT_SEL   ),
 		.b_sel_i        ( B_SEL       ),
-		.b_reg_i        ( B_REG         ),
-		.c_reg_i        ( C_REG         ),
-		.bc_reg_i       ( BC_REG        ),
-		.m_reg_i        ( M_REG         ),
+		.b_reg_i        ( B_REG       ),
+		.b1_reg_i       ( B1_REG      ),
+		.b2_reg_i       ( B2_REG      ),
+		.bcout_sel_i    ( BCOUT_SEL   ),
+		.c_reg_i        ( C_REG       ),
+		.bc_reg_i       ( BC_REG      ),
+		.m_reg_i        ( M_REG       ),
 		.subtract_i     ( SUBTRACT    ),
-		.z_cin_sel_i    ( ZCIN_REG   )
+		.z_cin_sel_i    ( ZCIN_REG    )
 	); // dsp0 
 	
   end
@@ -267,8 +292,14 @@ module dsp_type2_bw #(
     input   wire                       padd_sel_i  , // PADD_sel
     input   wire                       a_sel_i     , // A_sel
     input   wire                       a_reg_i     , // A_reg
+    input   wire                       a1_reg_i    , // A1_reg
+    input   wire                       a2_reg_i    , // A2_reg
+    input   wire                       acout_sel_i , // 
     input   wire                       b_sel_i     , // B_sel
     input   wire                       b_reg_i     , // B_reg
+    input   wire                       b1_reg_i    , // B1_reg
+    input   wire                       b2_reg_i    , // B2_reg
+    input   wire                       bcout_sel_i , //
     input   wire                       c_reg_i     , // C_reg
     input   wire                       bc_reg_i    , // BC_reg
     input   wire                       m_reg_i     , // M_reg
@@ -276,15 +307,16 @@ module dsp_type2_bw #(
     input   wire                       z_cin_sel_i
 );
 
-
 wire   clk     ;
 wire   rst     ;
 
 
-reg   signed  [(NBITS_A-1):0]              a_r;
+reg   signed  [(NBITS_A-1):0]              a1_r,a2_r;
 wire   signed  [(NBITS_A-1):0]             a_acin_sel, a;
-reg   signed  [(NBITS_BC-1):0]             b_r;
+wire   signed  [(NBITS_A-1):0]             a_int1,a_int2;
+reg   signed  [(NBITS_BC-1):0]             b1_r,b2_r;
 wire   signed  [(NBITS_BC-1):0]            b_bcin_sel,b;
+wire   signed  [(NBITS_BC-1):0]            b_int1,b_int2;
 wire   signed  [(NBITS_BC-1):0]            c;
 reg   signed  [(NBITS_BC-1):0]             c_r;
 wire   signed  [(NBITS_Z-1):0]             zcin_0_sel;
@@ -318,17 +350,33 @@ assign b_bcin_sel = b_sel_i ? b_cin_i : b_i;
 
 always @(posedge rst or posedge clk)
     if (rst) begin
-        a_r <= {NBITS_A{1'b0}};
-        b_r <= {NBITS_BC{1'b0}};
+        a1_r <= {NBITS_A{1'b0}};
+        b1_r <= {NBITS_BC{1'b0}};
         c_r <= {NBITS_BC{1'b0}};
     end else begin
-        a_r <= a_acin_sel;
-        b_r <= b_bcin_sel;
+        a1_r <= a_acin_sel;
+        b1_r <= b_bcin_sel;
         c_r <= c_i;
     end
+	
+assign a_int1 = (a1_reg_i) ? a1_r : a_acin_sel;
+assign b_int1 = (b1_reg_i) ? b1_r : b_bcin_sel;
 
-assign a = a_reg_i ? a_r : a_acin_sel;
-assign b = b_reg_i ? b_r : b_bcin_sel;
+always @(posedge rst or posedge clk) begin
+    if (rst) begin
+        a2_r <= 0;
+        b2_r <= 0;
+    end else begin
+		a2_r <= a_int1;
+		b2_r <= b_int1;
+    end
+end
+
+assign a_int2 = (a2_reg_i) ? a2_r : a_acin_sel;
+assign b_int2 = (b2_reg_i) ? b2_r : b_bcin_sel;
+
+assign a = a_reg_i ? a1_r : a_int2;
+assign b = b_reg_i ? b1_r : b_int2;
 assign c = c_reg_i ? c_r : c_i;
 assign preadd_raw = b + c;
 
@@ -487,10 +535,9 @@ always @(*) begin
     endcase
 end
 
-
 assign z_cout_o = z_o;
-assign a_cout_o = a_r;
-assign b_cout_o = b_r;
+assign a_cout_o = (acout_sel_i) ? a1_r : a_int2;
+assign b_cout_o = (bcout_sel_i) ? b1_r : b_int2;
 
 endmodule // dsp_type2_bw
 

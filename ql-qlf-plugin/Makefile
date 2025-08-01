@@ -29,7 +29,9 @@ SOURCES = synth_quicklogic.cc \
           ql-bram-merge.cc \
           ql-dsp-io-regs.cc \
 		  ql_bram_types.cc \
+		  ql_bramecc_types.cc \
 		  ql_sdp_bram_types.cc \
+		  ql_sdp_bramecc_types.cc \
           ql-bram-asymmetric.cc
 
 include ../Makefile_plugin.common
@@ -59,6 +61,7 @@ VERILOG_MODULES = $(COMMON)/cells_sim.v         \
                   $(QLF_K6N10F_DIR)/brams.txt   \
                   $(QLF_K6N10F_DIR)/cells_sim.v \
                   $(QLF_K6N10F_DIR)/dsp_sim.v \
+				  $(QLF_K6N10F_DIR)/dspv2_sim.v \
                   $(QLF_K6N10F_DIR)/primitives_sim.v \
                   $(QLF_K6N10F_DIR)/brams_sim.v \
                   $(QLF_K6N10F_DIR)/bram_types_sim.v \
