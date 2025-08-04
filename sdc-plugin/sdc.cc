@@ -35,6 +35,9 @@
 #include "set_clock_groups.h"
 #include "set_false_path.h"
 #include "set_max_delay.h"
+#ifdef YOSYS_ENABLE_TCL
+#  include <tcl.h>
+#endif
 
 USING_YOSYS_NAMESPACE
 
