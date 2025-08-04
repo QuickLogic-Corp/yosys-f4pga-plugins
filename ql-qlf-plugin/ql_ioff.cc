@@ -20,6 +20,11 @@ struct QlIoffPass : public Pass {
 		log("\n");
 	}
 
+	bool replace_existing_pass() const override
+	{
+		return true;
+	}
+
 	void execute(std::vector<std::string>, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing QL_IOFF pass.\n");
