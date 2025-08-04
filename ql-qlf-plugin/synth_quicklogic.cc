@@ -115,6 +115,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        By default use BRAM without ECC support for designs \n");
         log("        Specifying this will use BRAM with ECC support.\n");
         log("\n");
+        log("    -dspv2\n");
+        log("        By default use dsp version1 support for designs \n");
+        log("        Specifying this will use dsp version2 support.\n");
+        log("\n");
         log("    -no_tdpram\n");
         log("        By default infer TDP BRAM for architectures that support them.\n");
         log("        Specifying this switch infer SDP BRAM only.\n");
@@ -144,6 +148,7 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool noffenable; 
     bool ioff;
 	bool bramecc;
+	bool dspv2;
     bool notdpram;
     bool noOpt;
     bool synplify;
@@ -167,6 +172,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         noffenable = false;
         ioff = false;
 		bramecc = false;
+		dspv2 = false;
         notdpram = false;
         noOpt = false;
         synplify = false;
@@ -268,6 +274,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (args[argidx] == "-bramecc") {
                 bramecc = true;
                 continue;
+            } 
+            if (args[argidx] == "-dspv2") {
+                dspv2 = true;
+                continue;
             }
             if (args[argidx] == "-no_tdpram") {
                 notdpram = true;
@@ -331,7 +341,12 @@ struct SynthQuickLogicPass : public ScriptPass {
             // Read simulation library
             readVelArgs = family_path + "/cells_sim.v";
             if (family == "qlf_k6n10f") {
-                readVelArgs += family_path + "/dsp_sim.v";
+				if (dspv2) {
+					readVelArgs += family_path + "/dspv2_sim.v";
+				}
+				else {
+					readVelArgs += family_path + "/dsp_sim.v";
+				}
                 if(inferBram) {
                     readVelArgs += family_path + "/brams_sim.v";
                     if (bramTypes) {
