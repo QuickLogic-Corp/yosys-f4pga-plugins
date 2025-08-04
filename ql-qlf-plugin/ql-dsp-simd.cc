@@ -67,7 +67,14 @@ struct QlDspSimdPass : public Pass {
         DspConfig(const DspConfig &ref) = default;
         DspConfig(DspConfig &&ref) = default;
 
-        unsigned int hash() const { return connections.hash(); }
+        #if defined YS_HASHING_VERSION && YS_HASHING_VERSION == 1
+                Hasher hash_into(Hasher h) const {
+                h.eat(connections);
+                return h;
+                }
+        #else
+            #error "This version of Yosys uses an unsupported hashing interface"
+        #endif
 
         bool operator==(const DspConfig &ref) const { return connections == ref.connections && use_cfg_params == ref.use_cfg_params; }
     };
