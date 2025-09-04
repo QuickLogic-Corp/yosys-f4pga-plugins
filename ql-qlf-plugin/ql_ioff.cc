@@ -49,9 +49,10 @@ struct QlIoffPass : public Pass {
 			if (cell->type.in(ID(dffre), ID(sdffre), ID(dffnre), ID(sdffnre))) {
 				log_debug("Checking cell %s.\n", cell->name.c_str());
 				bool e_const = cell->getPort(ID::E).is_fully_ones();
+				bool r_const = cell->getPort(ID::R).is_fully_ones();
 				
-				if (!e_const) {
-					log_debug("not promoting: E is used\n");
+				if (!(e_const && r_const)) {
+					log_debug("not promoting: E or R is used\n");
 					continue;
 				}
 
@@ -92,7 +93,7 @@ struct QlIoffPass : public Pass {
 				cell->type = ID(dffn);
 			}
 			cell->unsetPort(ID::E);
-			//cell->unsetPort(ID::R);
+			cell->unsetPort(ID::R);
 		}
 		for (auto & [old_port_output, ioff_cells] : output_ffs) {
 			if (std::any_of(ioff_cells.begin(), ioff_cells.end(), [](Cell * c) { return c != nullptr; }))
@@ -123,7 +124,6 @@ struct QlIoffPass : public Pass {
 						}
 						new_cell->setPort(ID::C, ioff_cells[i]->getPort(ID::C));
 						new_cell->setPort(ID::D, ioff_cells[i]->getPort(ID::D));
-						new_cell->setPort(ID::R, ioff_cells[i]->getPort(ID::R));
 						new_cell->setPort(ID::Q, sig_n[i]);
 						new_cell->set_bool_attribute(ID::keep);
 					} else {
