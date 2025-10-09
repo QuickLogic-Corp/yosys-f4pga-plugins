@@ -651,7 +651,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                             run("abc9 -maxlut 6");
                             // run("techmap -map +/quicklogic/pp3/abc9_unmap.v");
                         } else {
-                            run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
+                            run("abc -script /home/smahmoudi/Desktop/mince_num/aurora2/device_data/QLF_K6N10/GF/12nm/TURNKEYCRR-FPGA3030-2024Q3/aurora/abc.script ", "(for qlf_k6n10, qlf_k6n10f)");
                         }
                     }
                     if (help_mode || family == "qlf_k4n8") {
