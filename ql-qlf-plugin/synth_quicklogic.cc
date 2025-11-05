@@ -59,6 +59,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        By default most of ABC logic optimization features is\n");
         log("        enabled. Specifying this switch turns them off.\n");
         log("\n");
+        log("    -custom_abc_script\n");
+        log("        This path specifies the custom ABC script passing to Yosys.\n");
+        log("        The default Yosys script for ABC will be running if this parameter is not specified.\n");
+        log("\n");
         log("    -edif <file>\n");
         log("        write the design to the specified edif file. Writing of an output file\n");
         log("        is omitted if this parameter is not specified.\n");
@@ -136,7 +140,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("\n");
     }
 
-    string top_opt, edif_file, blif_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num;
+    string top_opt, edif_file, blif_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -155,6 +159,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
     void clear_flags() override
     {
+        custom_abc_script = "";
         top_opt = "-auto-top";
         edif_file = "";
         blif_file = "";
@@ -249,6 +254,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (args[argidx] == "-no_abc9") {
                 abc9 = false;
+                continue;
+            }
+            if (args[argidx] == "-custom_abc_script" && argidx + 1 < args.size()) {
+                custom_abc_script = args[++argidx];
                 continue;
             }
             if (args[argidx] == "-no_ff_map") {
@@ -651,7 +660,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                             run("abc9 -maxlut 6");
                             // run("techmap -map +/quicklogic/pp3/abc9_unmap.v");
                         } else {
-                            run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
+                            if(custom_abc_script == ""){
+                                run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
+                            }
+                            else{
+                                run("abc -script " + custom_abc_script + " ", "(for qlf_k6n10, qlf_k6n10f)");
+                            }
                         }
                     }
                     if (help_mode || family == "qlf_k4n8") {
