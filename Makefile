@@ -60,7 +60,7 @@ endef
 $(foreach plugin,$(PLUGIN_LIST),$(eval $(call install_plugin,$(plugin))))
 
 pmgen.py:
-	wget -nc -O $@ https://raw.githubusercontent.com/YosysHQ/yosys/tree/v0.55/passes/pmgen/pmgen.py
+	wget -nc -O $@ https://raw.githubusercontent.com/YosysHQ/yosys/refs/tags/v0.55/passes/pmgen/pmgen.py
 
 .PHONY: plugins
 plugins: $(PLUGINS)
