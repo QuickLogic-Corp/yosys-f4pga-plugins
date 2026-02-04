@@ -326,7 +326,7 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 
-					case 0b010011000000000000000: //CONCAT_CASCADE
+					case 0b010010000000000000000: //CONCAT_CASCADE
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_CONCAT_CASCADE"),
 												  pool<RTLIL::IdString>{ 
@@ -338,7 +338,7 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 					
-					case 0b010011000100010000000: //CONCAT_CASCADE_REGIN
+					case 0b010010000100010000000: //CONCAT_CASCADE_REGIN
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_CONCAT_CASCADE_REGIN"),
 												  pool<RTLIL::IdString>{ 
@@ -615,7 +615,7 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 					
-					case 0b011011010000000000000: //MULTADD
+					case 0b011010010000000000000: //MULTADD
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD"),
 												  pool<RTLIL::IdString>{ 
@@ -631,7 +631,7 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 					
-					case 0b011011010100010000000: //MULTADD_REGIN
+					case 0b011010010100010000000: //MULTADD_REGIN
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD_REGIN"),
 												  pool<RTLIL::IdString>{ 
@@ -680,7 +680,7 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 					
-					case 0b011011010000000000001: //MULTADD_NEG
+					case 0b011010010000000000001: //MULTADD_NEG
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG"),
 												  pool<RTLIL::IdString>{ 
@@ -696,7 +696,7 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 					
-					case 0b011011010100010000001: //MULTADD_NEG_REGIN
+					case 0b011010010100010000001: //MULTADD_NEG_REGIN
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG_REGIN"),
 												  pool<RTLIL::IdString>{ 
