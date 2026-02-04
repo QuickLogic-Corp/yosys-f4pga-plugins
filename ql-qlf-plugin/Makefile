@@ -29,6 +29,7 @@ SOURCES = synth_quicklogic.cc \
           ql-bram-merge.cc \
           ql-dsp-io-regs.cc \
 		  ql_bram_types.cc \
+          ql_dspv2_types.cc \
 		  ql_bramecc_types.cc \
 		  ql_sdp_bram_types.cc \
 		  ql_sdp_bramecc_types.cc \

@@ -420,6 +420,8 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
         }
 
+        run("ql_dspv2_types");
+
         if (check_label("map_dsp"), "(skip if -no_dsp)") {
             if (help_mode || family == "qlf_k6n10") {
                 if (help_mode || !nodsp) {
