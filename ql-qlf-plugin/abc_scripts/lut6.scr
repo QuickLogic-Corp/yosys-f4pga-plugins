@@ -1,0 +1,19 @@
+echo ""
+echo "** Starting lut6"
+echo ""
+strash 
+&get -n 
+&fraig -x 
+&put 
+scorr
+dc2 
+dretime 
+strash 
+dch -f 
+if 
+mfs2 
+lutpack -S 1 
+print_stats
+echo ""
+echo "** Finishing lut6"
+echo ""

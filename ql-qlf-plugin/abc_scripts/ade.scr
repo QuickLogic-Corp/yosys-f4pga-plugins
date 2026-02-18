@@ -1,0 +1,22 @@
+echo ""
+echo "** Starting DE"
+echo ""
+
+echo "write_blif de_netlist_input.blif"
+write_blif de_netlist_input.blif
+
+echo "!de de_netlist_input.blif de_netlist_output.blif 0 -1 1 1 . 5"
+!de de_netlist_input.blif de_netlist_output.blif 0 -1 1 1 . 5
+
+echo "read_blif de_netlist_output.blif"
+read_blif de_netlist_output.blif
+
+echo "print_stats"
+print_stats
+
+echo "cec de_netlist_input.blif de_netlist_output.blif"
+cec de_netlist_input.blif de_netlist_output.blif
+
+echo ""
+echo "** Finishing DE"
+echo ""
