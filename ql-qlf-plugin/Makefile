@@ -22,16 +22,16 @@ SOURCES = synth_quicklogic.cc \
           pp3_braminit.cc \
           quicklogic_eqn.cc \
           ql-edif.cc \
-		  ql_ioff.cc \
+          ql_ioff.cc \
           ql-dsp-simd.cc \
           ql-dsp-macc.cc \
           ql-bram-split.cc \
           ql-bram-merge.cc \
           ql-dsp-io-regs.cc \
-		  ql_bram_types.cc \
-		  ql_bramecc_types.cc \
-		  ql_sdp_bram_types.cc \
-		  ql_sdp_bramecc_types.cc \
+          ql_bram_types.cc \
+          ql_bramecc_types.cc \
+          ql_sdp_bram_types.cc \
+          ql_sdp_bramecc_types.cc \
           ql-bram-asymmetric.cc
 
 include ../Makefile_plugin.common
@@ -44,6 +44,8 @@ QLF_K4N8_DIR    = qlf_k4n8
 QLF_K6N10_DIR   = qlf_k6n10
 QLF_K6N10F_DIR  = qlf_k6n10f
 PP3_DIR         = pp3
+ABC_SCRIPTS_DIR = abc_scripts
+DE_BIN_DIR      = de_bin
 VERILOG_MODULES = $(COMMON)/cells_sim.v         \
                   $(QLF_K4N8_DIR)/arith_map.v   \
                   $(QLF_K4N8_DIR)/cells_sim.v   \
@@ -61,7 +63,7 @@ VERILOG_MODULES = $(COMMON)/cells_sim.v         \
                   $(QLF_K6N10F_DIR)/brams.txt   \
                   $(QLF_K6N10F_DIR)/cells_sim.v \
                   $(QLF_K6N10F_DIR)/dsp_sim.v \
-				  $(QLF_K6N10F_DIR)/dspv2_sim.v \
+                  $(QLF_K6N10F_DIR)/dspv2_sim.v \
                   $(QLF_K6N10F_DIR)/primitives_sim.v \
                   $(QLF_K6N10F_DIR)/brams_sim.v \
                   $(QLF_K6N10F_DIR)/bram_types_sim.v \
@@ -71,13 +73,13 @@ VERILOG_MODULES = $(COMMON)/cells_sim.v         \
                   $(QLF_K6N10F_DIR)/ffs_map.v   \
                   $(QLF_K6N10F_DIR)/dsp_map.v   \
                   $(QLF_K6N10F_DIR)/dsp_final_map.v \
-				  $(QLF_K6N10F_DIR)/libmap_brams_map_tdp.v \
-				  $(QLF_K6N10F_DIR)/libmap_brams_map_sdp.v \
+                  $(QLF_K6N10F_DIR)/libmap_brams_map_tdp.v \
+                  $(QLF_K6N10F_DIR)/libmap_brams_map_sdp.v \
                   $(QLF_K6N10F_DIR)/synplify_map.v   \
-				  $(QLF_K6N10F_DIR)/QL_DSPV2.v   \
-				  $(QLF_K6N10F_DIR)/synplify_bram_map.v   \
-				  $(QLF_K6N10F_DIR)/libmap_brams_sdp.txt \
-				  $(QLF_K6N10F_DIR)/libmap_brams_tdp.txt \
+                  $(QLF_K6N10F_DIR)/QL_DSPV2.v   \
+                  $(QLF_K6N10F_DIR)/synplify_bram_map.v   \
+                  $(QLF_K6N10F_DIR)/libmap_brams_sdp.txt \
+                  $(QLF_K6N10F_DIR)/libmap_brams_tdp.txt \
                   $(PP3_DIR)/abc9_map.v    \
                   $(PP3_DIR)/abc9_model.v  \
                   $(PP3_DIR)/abc9_unmap.v  \
@@ -95,6 +97,17 @@ VERILOG_MODULES = $(COMMON)/cells_sim.v         \
                   $(PP3_DIR)/qlal4s3b_sim.v    \
                   $(PP3_DIR)/mult_sim.v        \
                   $(PP3_DIR)/qlal3_sim.v
+ABC_SCRIPTS     = $(wildcard $(ABC_SCRIPTS_DIR)/*)
+
+
+ifeq ($(OS), Darwin)
+DE_BINARIES     = $(wildcard $(DE_BIN_DIR)/darwin/*)
+else ifeq ($(OS), MINGW)
+DE_BINARIES     = $(wildcard $(DE_BIN_DIR)/win32/*)
+else
+DE_BINARIES     = $(wildcard $(DE_BIN_DIR)/linux/*)
+endif
+
 
 PMGEN_OUT_DIR := $(BUILD_DIR)/pmgen
 
@@ -103,8 +116,8 @@ $(PMGEN_OUT_DIR):
 
 DEPS := $(PMGEN_OUT_DIR)/ql-dsp-pm.h \
         $(PMGEN_OUT_DIR)/ql-dsp-macc.h \
-		$(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-write.h \
-		$(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-read.h
+        $(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-write.h \
+        $(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-read.h
 
 $(DEPS): $(PMGEN_PY) | $(PMGEN_OUT_DIR)
 
@@ -126,4 +139,10 @@ $(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-read.h: ql-bram-asymmetric-wider-read.
 install_modules: $(VERILOG_MODULES)
 	$(foreach f,$^,install -D $(f) $(YOSYS_DATA_DIR)/quicklogic/$(f);)
 
-install: install_modules
+install_abc_scripts: $(ABC_SCRIPTS)
+	$(foreach f,$^,install -D $(f) $(YOSYS_DATA_DIR)/quicklogic/$(f);)
+
+install_de_binaries: $(DE_BINARIES)
+	$(foreach f,$^,install -D $(f) $(YOSYS_DATA_DIR)/quicklogic/$(DE_BIN_DIR)/$(notdir $(f));)
+
+install: install_modules install_abc_scripts install_de_binaries

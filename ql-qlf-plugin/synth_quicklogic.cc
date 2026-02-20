@@ -698,16 +698,16 @@ struct SynthQuickLogicPass : public ScriptPass {
                                 else{
                                     run("design -save base");
                                     run("design -load base");
-                                    run("tee -o abc_lut6.log abc -script /dsoft/Navid/de-integration/lut6.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                    run("tee -o abc_lut6.log abc -script +/quicklogic/abc_scripts/lut6.scr", "(for qlf_k6n10, qlf_k6n10f)");
                                     run("design -save lut6");
                                     run("write_blif lut6.blif");
                                     run("design -load base");
                                     if(de == "delay")
-                                        run("tee -o abc_de.log abc -script /dsoft/Navid/de-integration/dde.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/dde.scr", "(for qlf_k6n10, qlf_k6n10f)");
                                     if(de == "area")
-                                        run("tee -o abc_de.log abc -script /dsoft/Navid/de-integration/ade.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/ade.scr", "(for qlf_k6n10, qlf_k6n10f)");
                                     if(de == "mixed")
-                                        run("tee -o abc_de.log abc -script /dsoft/Navid/de-integration/mde.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/mde.scr", "(for qlf_k6n10, qlf_k6n10f)");
                                     run("design -save de");
                                     run("write_blif de.blif");
                                     
