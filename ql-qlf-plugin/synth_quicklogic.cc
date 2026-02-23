@@ -54,6 +54,23 @@ std::pair<int, int> extract_abc_metrics(const std::string &fname)
     return {-1, -1};
 }
 
+
+bool check_equivalence(const std::string& fname)
+{
+    std::ifstream f(fname);
+    if (!f.is_open())
+        return false;  
+
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.find("Networks are equivalent.") != std::string::npos)
+            return true;
+    }
+
+    return false;
+}
+
+
 struct SynthQuickLogicPass : public ScriptPass {
 
     SynthQuickLogicPass() : ScriptPass(STR(PASS_NAME), "Synthesis for QuickLogic FPGAs") {}
@@ -711,47 +728,54 @@ struct SynthQuickLogicPass : public ScriptPass {
                                     run("design -save de");
                                     run("write_blif de.blif");
                                     
-                                    auto [lut6_nd, lut6_lev] = extract_abc_metrics("abc_lut6.log");                                    
-                                    auto [de_nd, de_lev] = extract_abc_metrics("abc_de.log");
-                                    
-                                    if(de == "delay"){
-                                        if(de_lev <= lut6_lev)
-                                            run("design -load de");
-                                        else
-                                            run("design -load lut6");
+                                    if (!check_equivalence("abc_de.log")) {
+                                        log("Networks are not Equivalent. Cannot use DE for this module.\n");
+                                        run("design -load lut6");
                                     }
-                                    else if (de == "area"){
-                                         if(de_nd <= lut6_nd)
-                                            run("design -load de");
-                                        else
-                                            run("design -load lut6");
-                                    }
-                                    else if (de == "mixed"){
-                                        if(de_nd <= lut6_nd && de_lev <= lut6_lev)
-                                            run("design -load de");
-                                        else if(de_nd >= lut6_nd && de_lev >= lut6_lev)
-                                            run("design -load lut6");
-                                        else{
-                                            int dmin = std::min(de_lev, lut6_lev);
-                                            int dmax = std::max(de_lev, lut6_lev);
-                                            double D_de = (dmax == dmin) ? 0.0 : (de_lev - dmin) / (dmax - dmin);
-                                            double D_lut6 = (dmax == dmin) ? 0.0 : (lut6_lev - dmin) / (dmax - dmin);
-
-                                            int amin = std::min(de_nd, lut6_nd);
-                                            int amax = std::max(de_nd, lut6_nd);
-                                            double A_de = (amax == amin) ? 0.0 :
-                                            (std::log(de_nd) - std::log(amin)) /
-                                            (std::log(amax) - std::log(amin));
-                                            double A_lut6 = (amax == amin) ? 0.0 :
-                                            (std::log(lut6_nd) - std::log(amin)) /
-                                            (std::log(amax) - std::log(amin));
-
-                                            double de_score = 0.5 * A_de + 0.5 * D_de;
-                                            double lut6_score = 0.5 * A_lut6 + 0.5 * D_lut6;
-                                            if (de_score <= lut6_score)
+                                    else {
+                                        log("Networks are Equivalent after using DE.\n");
+                                        auto [lut6_nd, lut6_lev] = extract_abc_metrics("abc_lut6.log");                                    
+                                        auto [de_nd, de_lev] = extract_abc_metrics("abc_de.log");
+                                        
+                                        if(de == "delay") {
+                                            if(de_lev <= lut6_lev)
                                                 run("design -load de");
-                                            else 
+                                            else
                                                 run("design -load lut6");
+                                        }
+                                        else if (de == "area") {
+                                            if(de_nd <= lut6_nd)
+                                                run("design -load de");
+                                            else
+                                                run("design -load lut6");
+                                        }
+                                        else if (de == "mixed") {
+                                            if(de_nd <= lut6_nd && de_lev <= lut6_lev)
+                                                run("design -load de");
+                                            else if(de_nd >= lut6_nd && de_lev >= lut6_lev)
+                                                run("design -load lut6");
+                                            else{
+                                                int dmin = std::min(de_lev, lut6_lev);
+                                                int dmax = std::max(de_lev, lut6_lev);
+                                                double D_de = (dmax == dmin) ? 0.0 : (de_lev - dmin) / (dmax - dmin);
+                                                double D_lut6 = (dmax == dmin) ? 0.0 : (lut6_lev - dmin) / (dmax - dmin);
+
+                                                int amin = std::min(de_nd, lut6_nd);
+                                                int amax = std::max(de_nd, lut6_nd);
+                                                double A_de = (amax == amin) ? 0.0 :
+                                                (std::log(de_nd) - std::log(amin)) /
+                                                (std::log(amax) - std::log(amin));
+                                                double A_lut6 = (amax == amin) ? 0.0 :
+                                                (std::log(lut6_nd) - std::log(amin)) /
+                                                (std::log(amax) - std::log(amin));
+
+                                                double de_score = 0.5 * A_de + 0.5 * D_de;
+                                                double lut6_score = 0.5 * A_lut6 + 0.5 * D_lut6;
+                                                if (de_score <= lut6_score)
+                                                    run("design -load de");
+                                                else 
+                                                    run("design -load lut6");
+                                            }
                                         }
                                     }
                                 }
