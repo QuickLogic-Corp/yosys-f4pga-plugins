@@ -503,7 +503,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
                 const std::vector<DspParams> dsp_rules = {
                   {20, 18, 11, 10, "$__QL_MUL20X18"},
-                  {10, 9, 4, 4, "$__QL_MUL10X9"},
+                  {10, 9, 2, 2, "$__QL_MUL10X9"},
                 };
 
                 if (help_mode) {
