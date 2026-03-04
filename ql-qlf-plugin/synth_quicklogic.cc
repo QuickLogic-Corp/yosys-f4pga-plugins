@@ -20,6 +20,7 @@
 #include "kernel/log.h"
 #include "kernel/register.h"
 #include "kernel/rtlil.h"
+#include <cmath>
 
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
@@ -30,6 +31,45 @@ PRIVATE_NAMESPACE_BEGIN
 #ifndef PASS_NAME
 #define PASS_NAME synth_quicklogic
 #endif
+
+/* This function extracts abc metrics (lev(delay logic level) 
+    and nd(number of luts) from the abc log.)*/
+
+std::pair<int, int> extract_abc_metrics(const std::string &fname) 
+{
+    std::ifstream f(fname);
+    std::string line;
+
+    std::regex re(R"(nd\s*=\s*([0-9]+).*lev\s*=\s*([0-9]+))");
+
+    while (std::getline(f, line)) {
+        std::smatch m;
+        if (std::regex_search(line, m, re)) {
+            int nd  = std::stoi(m[1].str());
+            int lev = std::stoi(m[2].str());
+            return {nd, lev};
+        }
+    }
+
+    return {-1, -1};
+}
+
+
+bool check_equivalence(const std::string& fname)
+{
+    std::ifstream f(fname);
+    if (!f.is_open())
+        return false;  
+
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.find("Networks are equivalent.") != std::string::npos)
+            return true;
+    }
+
+    return false;
+}
+
 
 struct SynthQuickLogicPass : public ScriptPass {
 
@@ -134,13 +174,16 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("    -synplify\n");
         log("        synplify description \n");
         log("\n");
+        log("    -de\n");
+        log("        uses de for deeper optimizations. Use area, delay, mixed as the optimization approach \n");
+        log("\n");
         log("\n");
         log("The following commands are executed by this synthesis command:\n");
         help_script();
         log("\n");
     }
 
-    string top_opt, edif_file, blif_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script;
+    string top_opt, edif_file, blif_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script, de;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -184,6 +227,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         use_dsp_cfg_params = "";
         lib_path = "+/quicklogic/";
         mince_num = "";
+        de = "";
     }
 
     void execute(std::vector<std::string> args, RTLIL::Design *design) override
@@ -299,6 +343,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (args[argidx] == "-synplify") {
                 synplify = true;
+                continue;
+            }
+            if (args[argidx] == "-de" && argidx + 1 < args.size()) {
+                de = args[++argidx];
                 continue;
             }
 
@@ -457,7 +505,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
                 const std::vector<DspParams> dsp_rules = {
                   {20, 18, 11, 10, "$__QL_MUL20X18"},
-                  {10, 9, 4, 4, "$__QL_MUL10X9"},
+                  {10, 9, 2, 2, "$__QL_MUL10X9"},
                 };
 
                 if (help_mode) {
@@ -663,7 +711,76 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // run("techmap -map +/quicklogic/pp3/abc9_unmap.v");
                         } else {
                             if(custom_abc_script == ""){
-                                run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
+                                if(de == "")
+                                    run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
+
+                                else{
+                                    run("design -save base");
+                                    run("design -load base");
+                                    run("tee -o abc_lut6.log abc -script +/quicklogic/abc_scripts/lut6.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                    run("design -save lut6");
+                                    run("write_blif lut6.blif");
+                                    run("design -load base");
+                                    if(de == "delay")
+                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/dde.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                    if(de == "area")
+                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/ade.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                    if(de == "mixed")
+                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/mde.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                    run("design -save de");
+                                    run("write_blif de.blif");
+                                    
+                                    if (!check_equivalence("abc_de.log")) {
+                                        log("Networks are not Equivalent. Cannot use DE for this module.\n");
+                                        run("design -load lut6");
+                                    }
+                                    else {
+                                        log("Networks are Equivalent after using DE.\n");
+                                        auto [lut6_nd, lut6_lev] = extract_abc_metrics("abc_lut6.log");                                    
+                                        auto [de_nd, de_lev] = extract_abc_metrics("abc_de.log");
+                                        
+                                        if(de == "delay") {
+                                            if(de_lev <= lut6_lev)
+                                                run("design -load de");
+                                            else
+                                                run("design -load lut6");
+                                        }
+                                        else if (de == "area") {
+                                            if(de_nd <= lut6_nd)
+                                                run("design -load de");
+                                            else
+                                                run("design -load lut6");
+                                        }
+                                        else if (de == "mixed") {
+                                            if(de_nd <= lut6_nd && de_lev <= lut6_lev)
+                                                run("design -load de");
+                                            else if(de_nd >= lut6_nd && de_lev >= lut6_lev)
+                                                run("design -load lut6");
+                                            else{
+                                                int dmin = std::min(de_lev, lut6_lev);
+                                                int dmax = std::max(de_lev, lut6_lev);
+                                                double D_de = (dmax == dmin) ? 0.0 : (de_lev - dmin) / (dmax - dmin);
+                                                double D_lut6 = (dmax == dmin) ? 0.0 : (lut6_lev - dmin) / (dmax - dmin);
+
+                                                int amin = std::min(de_nd, lut6_nd);
+                                                int amax = std::max(de_nd, lut6_nd);
+                                                double A_de = (amax == amin) ? 0.0 :
+                                                (std::log(de_nd) - std::log(amin)) /
+                                                (std::log(amax) - std::log(amin));
+                                                double A_lut6 = (amax == amin) ? 0.0 :
+                                                (std::log(lut6_nd) - std::log(amin)) /
+                                                (std::log(amax) - std::log(amin));
+
+                                                double de_score = 0.5 * A_de + 0.5 * D_de;
+                                                double lut6_score = 0.5 * A_lut6 + 0.5 * D_lut6;
+                                                if (de_score <= lut6_score)
+                                                    run("design -load de");
+                                                else 
+                                                    run("design -load lut6");
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             else{
                                 run("abc -script " + custom_abc_script + " ", "(for qlf_k6n10, qlf_k6n10f)");
