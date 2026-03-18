@@ -115,6 +115,92 @@ struct QlDSPV2TypesPass : public Pass {
 		return control_word;
 	}
 
+	void add_bitwise_dffre_before_cell_input(RTLIL::Module *module,
+											RTLIL::Cell *cell,
+											RTLIL::IdString port)  // input port
+	{
+		SigSpec clk, rst;
+		if (cell->hasPort(IdString("\\clk"))) clk = cell->getPort(IdString("\\clk"));
+		if (cell->hasPort(IdString("\\reset"))) rst = cell->getPort(IdString("\\reset"));
+
+		SigSpec input_sig = cell->getPort(port);
+		int width = GetSize(input_sig);
+
+		log("\nAdding bitwise dffre BEFORE %s.%s, width=%d\n", log_id(cell), log_id(port), width);
+
+		// Create intermediate wire that will connect to the cell input
+		Wire *reg_wire = module->addWire(
+			module->uniquify(stringf("\\%s_%s_reg", log_id(cell), log_id(port))),
+			width
+		);
+
+		// Rewire cell input to use the register output
+		cell->setPort(port, reg_wire);
+
+		// Instantiate one 1-bit dffre per bit
+		for (int i = 0; i < width; i++) {
+			Cell *dff = module->addCell(
+				module->uniquify("\\dffre"),
+				IdString("\\dffre")
+			);
+
+			SigBit bit_in = input_sig[i];           // original input bit
+			SigBit bit_out = SigBit(reg_wire, i);   // intermediate reg wire bit
+
+			dff->setPort(IdString("\\D"), SigSpec(bit_in));
+			dff->setPort(IdString("\\Q"), SigSpec(bit_out));
+			dff->setPort(IdString("\\C"), clk);
+			dff->setPort(IdString("\\R"), rst);
+			dff->setPort(IdString("\\E"), SigSpec());
+
+			log("Added bit %d dffre BEFORE: D=%s, Q=%s\n", i, log_signal(bit_in), log_signal(bit_out));
+		}
+	}
+
+
+	void add_bitwise_dffre_after_cell_output(RTLIL::Module *module,
+                                         RTLIL::Cell *cell,
+                                         RTLIL::IdString port)  // output port
+	{
+		SigSpec clk, rst;
+		if (cell->hasPort(IdString("\\clk"))) clk = cell->getPort(IdString("\\clk"));
+		if (cell->hasPort(IdString("\\reset"))) rst = cell->getPort(IdString("\\reset"));
+
+		SigSpec output_sig = cell->getPort(port);
+		int width = GetSize(output_sig);
+
+		log("\nAdding bitwise dffre AFTER %s.%s, width=%d\n", log_id(cell), log_id(port), width);
+
+		// Create intermediate wire that will be the new cell output
+		Wire *reg_wire = module->addWire(
+			module->uniquify(stringf("\\%s_%s_reg", log_id(cell), log_id(port))),
+			width
+		);
+
+		// Rewire cell output to drive the intermediate wire
+		cell->setPort(port, reg_wire);
+
+		// Instantiate one 1-bit dffre per bit
+		for (int i = 0; i < width; i++) {
+			Cell *dff = module->addCell(
+				module->uniquify("\\dffre"),
+				IdString("\\dffre")
+			);
+
+			SigBit bit_in = SigBit(reg_wire, i);   // intermediate wire bit drives D
+			SigBit bit_out = output_sig[i];        // original output bit driven by Q
+
+			dff->setPort(IdString("\\D"), SigSpec(bit_in));
+			dff->setPort(IdString("\\Q"), SigSpec(bit_out));
+			dff->setPort(IdString("\\C"), clk);
+			dff->setPort(IdString("\\R"), rst);
+			dff->setPort(IdString("\\E"), SigSpec());
+
+			log("Added bit %d dffre AFTER: D=%s, Q=%s\n", i, log_signal(bit_in), log_signal(bit_out));
+		}
+	}
+
+
 	void transform_cell_with_ports(
 		RTLIL::Cell *cell,
 		RTLIL::IdString new_type,
@@ -147,7 +233,7 @@ struct QlDSPV2TypesPass : public Pass {
 		size_t argidx = 1;
 		extra_args(args, argidx, design);
 
-		for (RTLIL::Module* module : design->selected_modules())
+		for (RTLIL::Module* module : design->selected_modules()){
 			for (RTLIL::Cell* cell: module->selected_cells())
 			{
 				if (cell->type != ID(QL_DSPV2) || !cell->hasParam(ID(MODE_BITS)))
@@ -225,106 +311,71 @@ struct QlDSPV2TypesPass : public Pass {
 						break;
 					
 					case 0b000000000100010000000: //MULT_REGIN
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULT_REGIN"),
+												  RTLIL::escape_id("QL_DSPV2_MULT"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(feedback),
 														ID(output_select)
 													});
-					
 						break;
 					
 					case 0b000100000000000000000: //MULT_REGOUT
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULT_REGOUT"),
-												  pool<RTLIL::IdString>{ 
+												RTLIL::escape_id("QL_DSPV2_MULT"),
+												pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(feedback),
 														ID(output_select)
 													});
 						break;
 					
 					case 0b000100000100010000000: //MULT_REGIN_REGOUT
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULT_REGIN_REGOUT"),
+												  RTLIL::escape_id("QL_DSPV2_MULT"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(feedback),
 														ID(output_select)
 													});
 						break;
 					
-					case 0b000000000000100000000: //CASCADE_MULT
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_CASCADE_MULT"),
-												  pool<RTLIL::IdString>{ 
-														ID(a),
-														ID(b_cin),
-														ID(z),
-														ID(feedback),
-														ID(output_select),
-														ID(b_cout)
-													});
-						break;
-					
-					case 0b000000000100110000000: //CASCADE_MULT_REGIN
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_CASCADE_MULT_REGIN"),
-												  pool<RTLIL::IdString>{ 
-														ID(a),
-														ID(b_cin),
-														ID(z),
-														ID(clk),
-														ID(reset),
-														ID(feedback),
-														ID(output_select),
-														ID(b_cout)
-													});
-					
-						break;
-					
-					case 0b000100000000100000000: //CASCADE_MULT_REGOUT
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_CASCADE_MULT_REGOUT"),
-												  pool<RTLIL::IdString>{ 
-														ID(a),
-														ID(b_cin),
-														ID(z),
-														ID(clk),
-														ID(reset),
-														ID(feedback),
-														ID(output_select),
-														ID(b_cout)
-													});
-						break;
-					
-					case 0b000100000100110000000: //CASCADE_MULT_REGIN_REGOUT
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_CASCADE_MULT_REGIN_REGOUT"),
-												  pool<RTLIL::IdString>{ 
-														ID(a),
-														ID(b_cin),
-														ID(z),
-														ID(clk),
-														ID(reset),
-														ID(feedback),
-														ID(output_select),
-														ID(b_cout)
-													});
-						break;
 
 					case 0b010010000000000000000: //CONCAT_CASCADE
 						transform_cell_with_ports(cell,
@@ -334,50 +385,73 @@ struct QlDSPV2TypesPass : public Pass {
 														ID(b),
 														ID(feedback),
 														ID(output_select),
-														ID(z_cout)
+														ID(z)
 													});
 						break;
 					
 					case 0b010010000100010000000: //CONCAT_CASCADE_REGIN
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_CONCAT_CASCADE_REGIN"),
+												  RTLIL::escape_id("QL_DSPV2_CONCAT_CASCADE"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
-														ID(clk),
-														ID(reset),
 														ID(feedback),
 														ID(output_select),
-														ID(z_cout)
+														ID(z)
 													});
-					
 						break;
 					
 					case 0b010111000000000000000: //CONCAT_CASCADE_REGOUT
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_CONCAT_CASCADE_REGOUT"),
+												  RTLIL::escape_id("QL_DSPV2_CONCAT_CASCADE"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
-														ID(clk),
-														ID(reset),
 														ID(feedback),
 														ID(output_select),
-														ID(z_cout)
+														ID(z)
 													});
 						break;
 					
 					case 0b010111000100010000000: //CONCAT_CASCADE_REGIN_REGOUT
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_CONCAT_CASCADE_REGIN_REGOUT"),
+												  RTLIL::escape_id("QL_DSPV2_CONCAT_CASCADE"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
-														ID(clk),
-														ID(reset),
 														ID(feedback),
 														ID(output_select),
-														ID(z_cout)
+														ID(z)
 													});
 						break;
 
@@ -398,8 +472,18 @@ struct QlDSPV2TypesPass : public Pass {
 						break;
 					
 					case 0b000001100100010000000: //MULTACC_REGIN
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC_REGIN"),
+												  RTLIL::escape_id("QL_DSPV2_MULTACC"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
@@ -411,12 +495,16 @@ struct QlDSPV2TypesPass : public Pass {
 														ID(feedback),
 														ID(output_select)
 													});
-					
 						break;
 					
 					case 0b000101100000000000000: //MULTACC_REGOUT
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC_REGOUT"),
+												  RTLIL::escape_id("QL_DSPV2_MULTACC"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
@@ -431,8 +519,23 @@ struct QlDSPV2TypesPass : public Pass {
 						break;
 					
 					case 0b000101100100010000000: //MULTACC_REGIN_REGOUT
+					    add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC_REGIN_REGOUT"),
+												  RTLIL::escape_id("QL_DSPV2_MULTACC"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
@@ -451,68 +554,31 @@ struct QlDSPV2TypesPass : public Pass {
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTACC_NEG"),
 												  pool<RTLIL::IdString>{ 
-														ID(acc_reset),
-													  	ID(load_acc),
-														ID(feedback),
-														ID(output_select),
 														ID(a),
 														ID(b),
-														ID(z)
+														ID(z),
+														ID(clk),
+														ID(reset),
+														ID(acc_reset),
+														ID(load_acc),
+														ID(feedback),
+														ID(output_select)
 													});
 						break;
 					
 					case 0b000001100100010000001: //MULTACC_NEG_REGIN
+					    add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC_NEG_REGIN"),
-												  pool<RTLIL::IdString>{ 
-														ID(acc_reset),
-													  	ID(load_acc),
-														ID(feedback),
-														ID(output_select),
-														ID(a),
-														ID(b),
-														ID(z),
-														ID(clk),
-														ID(reset)
-													});
-					
-						break;
-					
-					case 0b000101100000000000001: //MULTACC_NEG_REGOUT
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC_NEG_REGOUT"),
-												  pool<RTLIL::IdString>{ 
-														ID(acc_reset),
-													  	ID(load_acc),
-														ID(feedback),
-														ID(output_select),
-														ID(a),
-														ID(b),
-														ID(z),
-														ID(clk),
-														ID(reset)
-													});
-						break;
-					
-					case 0b000101100100010000001: //MULTACC_NEG_REGIN_REGOUT
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC_NEG_REGIN_REGOUT"),
-												  pool<RTLIL::IdString>{ 
-														ID(acc_reset),
-													  	ID(load_acc),
-														ID(feedback),
-														ID(output_select),
-														ID(a),
-														ID(b),
-														ID(z),
-														ID(clk),
-														ID(reset)
-													});
-						break;
-					
-					case 0b010001100000000000000: //LOAD_ACC
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_LOAD_ACC"),
+												  RTLIL::escape_id("QL_DSPV2_MULTACC_NEG"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
@@ -524,7 +590,58 @@ struct QlDSPV2TypesPass : public Pass {
 														ID(feedback),
 														ID(output_select)
 													});
+						break;
 					
+					case 0b000101100000000000001: //MULTACC_NEG_REGOUT
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
+						transform_cell_with_ports(cell,
+												  RTLIL::escape_id("QL_DSPV2_MULTACC_NEG"),
+												  pool<RTLIL::IdString>{ 
+														ID(a),
+														ID(b),
+														ID(z),
+														ID(clk),
+														ID(reset),
+														ID(acc_reset),
+														ID(load_acc),
+														ID(feedback),
+														ID(output_select)
+													});
+						break;
+					
+					case 0b000101100100010000001: //MULTACC_NEG_REGIN_REGOUT
+					    add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
+						transform_cell_with_ports(cell,
+												  RTLIL::escape_id("QL_DSPV2_MULTACC_NEG"),
+												  pool<RTLIL::IdString>{ 
+														ID(a),
+														ID(b),
+														ID(z),
+														ID(clk),
+														ID(reset),
+														ID(acc_reset),
+														ID(load_acc),
+														ID(feedback),
+														ID(output_select)
+													});
 						break;
 
 					case 0b000000000000000000100: //PREADDER_MULT
@@ -541,29 +658,59 @@ struct QlDSPV2TypesPass : public Pass {
 						break;
 
 					case 0b000000000100000001100: //PREADDER_MULT_REGIN
+					add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\c")
+						);
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_PREADDER_MULT_REGIN"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(c),
-														ID(clk),
-														ID(reset),
 														ID(feedback),
 														ID(output_select),
 														ID(z)
 													});
-						break;
 					
 					case 0b000100000100000001100: //PREADDER_MULT_REGIN_REGOUT
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\c")
+						);
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_PREADDER_MULT_REGIN_REGOUT"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(c),
-														ID(clk),
-														ID(reset),
 														ID(feedback),
 														ID(output_select),
 														ID(z)
@@ -571,49 +718,52 @@ struct QlDSPV2TypesPass : public Pass {
 						break;
 					
 					case 0b000100000000000000100: //PREADDER_MULT_REGOUT
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_PREADDER_MULT_REGOUT"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(c),
-														ID(clk),
-														ID(reset),
 														ID(feedback),
 														ID(output_select),
 														ID(z)
 													});
 						break;
 					
-					case 0b000100000100010010100: //PREADDER_REGIN_MULT_REGIN_REGOUT
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_PREADDER_REGIN_MULT_REGIN_REGOUT"),
-												  pool<RTLIL::IdString>{ 
-														ID(a),
-														ID(b),
-														ID(c),
-														ID(clk),
-														ID(reset),
-														ID(feedback),
-														ID(output_select),
-														ID(z)
-													});
-						break;
+					// case 0b000100000100010010100: //PREADDER_REGIN_MULT_REGIN_REGOUT
+					// 	transform_cell_with_ports(cell,
+					// 							  RTLIL::escape_id("QL_DSPV2_PREADDER_REGIN_MULT_REGIN_REGOUT"),
+					// 							  pool<RTLIL::IdString>{ 
+					// 									ID(a),
+					// 									ID(b),
+					// 									ID(c),
+					// 									ID(clk),
+					// 									ID(reset),
+					// 									ID(feedback),
+					// 									ID(output_select),
+					// 									ID(z)
+					// 								});
+					// 	break;
 					
-					case 0b000100000011010011100: //PREADDER_REGIN_REGOUT_MULT_REGIN_REGOUT
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_PREADDER_REGIN_REGOUT_MULT_REGIN_REGOUT"),
-												  pool<RTLIL::IdString>{ 
-														ID(a),
-														ID(b),
-														ID(c),
-														ID(clk),
-														ID(reset),
-														ID(feedback),
-														ID(output_select),
-														ID(z)
-													});
-						break;
+					// case 0b000100000011010011100: //PREADDER_REGIN_REGOUT_MULT_REGIN_REGOUT
+					// 	transform_cell_with_ports(cell,
+					// 							  RTLIL::escape_id("QL_DSPV2_PREADDER_REGIN_REGOUT_MULT_REGIN_REGOUT"),
+					// 							  pool<RTLIL::IdString>{ 
+					// 									ID(a),
+					// 									ID(b),
+					// 									ID(c),
+					// 									ID(clk),
+					// 									ID(reset),
+					// 									ID(feedback),
+					// 									ID(output_select),
+					// 									ID(z)
+					// 								});
+					// 	break;
 					
 					case 0b011010010000000000000: //MULTADD
 						transform_cell_with_ports(cell,
@@ -622,59 +772,76 @@ struct QlDSPV2TypesPass : public Pass {
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(z_cin),
-														ID(z_cout),
 														ID(feedback),
 														ID(output_select)
 													});
 						break;
 					
 					case 0b011010010100010000000: //MULTADD_REGIN
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTADD_REGIN"),
+												  RTLIL::escape_id("QL_DSPV2_MULTADD"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(z_cin),
-														ID(z_cout),
 														ID(feedback),
 														ID(output_select)
 													});
-					
 						break;
 					
 					case 0b011111010000000000000: //MULTADD_REGOUT
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTADD_REGOUT"),
+												  RTLIL::escape_id("QL_DSPV2_MULTADD"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(z_cin),
-														ID(z_cout),
 														ID(feedback),
 														ID(output_select)
 													});
 						break;
 					
 					case 0b011111010100010000000: //MULTADD_REGIN_REGOUT
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTADD_REGIN_REGOUT"),
+												  RTLIL::escape_id("QL_DSPV2_MULTADD"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(z_cin),
-														ID(z_cout),
 														ID(feedback),
 														ID(output_select)
 													});
@@ -687,69 +854,102 @@ struct QlDSPV2TypesPass : public Pass {
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(z_cin),
-														ID(z_cout),
 														ID(feedback),
 														ID(output_select)
 													});
 						break;
 					
 					case 0b011010010100010000001: //MULTADD_NEG_REGIN
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG_REGIN"),
+												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(z_cin),
-														ID(z_cout),
 														ID(feedback),
 														ID(output_select)
 													});
-					
 						break;
 					
 					case 0b011111010000000000001: //MULTADD_NEG_REGOUT
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG_REGOUT"),
+												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(z_cin),
-														ID(z_cout),
 														ID(feedback),
 														ID(output_select)
 													});
 						break;
 					
 					case 0b011111010100010000001: //MULTADD_NEG_REGIN_REGOUT
+					add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+						add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
+						add_bitwise_dffre_after_cell_output(
+							module,
+							cell,
+							RTLIL::IdString("\\z")
+						);
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG_REGIN_REGOUT"),
-												  pool<RTLIL::IdString>{ 
+												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG"),
+												 pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
-														ID(clk),
-														ID(reset),
 														ID(z_cin),
-														ID(z_cout),
 														ID(feedback),
 														ID(output_select)
 													});
 						break;
 
 					default:
+						transform_cell_with_ports(cell,
+												  RTLIL::escape_id("QL_DSPV2"),
+												 pool<RTLIL::IdString>{ 
+														ID(a),
+														ID(b),
+														ID(c),
+														ID(clk),
+														ID(feedback),
+														ID(load_acc),
+														ID(output_select),
+														ID(reset),
+														ID(acc_reset),
+														ID(z_cin),
+														ID(z)
+													});
 						break;
 
 				}
 			}
+		}
 	}
 
 
