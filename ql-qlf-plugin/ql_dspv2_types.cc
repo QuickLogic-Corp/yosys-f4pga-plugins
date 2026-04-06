@@ -179,6 +179,30 @@ struct QlDSPV2TypesPass : public Pass {
 	}
 
 
+	void replace_output_port_and_drop(
+		RTLIL::Module *module,
+		RTLIL::Cell *cell,
+		RTLIL::IdString keep_port,   // ID("\\z")
+		RTLIL::IdString drop_port    // ID("\\z_cout")
+	) {
+		// Safety checks
+		if (!cell->hasPort(keep_port) || !cell->hasPort(drop_port))
+			log_error("Cell %s does not have required ports %s / %s\n",
+					log_id(cell), log_id(keep_port), log_id(drop_port));
+
+		SigMap sigmap(module);
+
+		// Capture signals BEFORE modifying the cell
+		RTLIL::SigSpec keep_sig = sigmap(cell->getPort(keep_port));
+		RTLIL::SigSpec drop_sig = sigmap(cell->getPort(drop_port));
+
+		// 1. Remove the unwanted port
+		cell->unsetPort(drop_port);
+
+		// 2. Reconnect: old drop wire now driven by keep signal
+		module->connect(drop_sig, keep_sig);  // drop = keep
+	}
+
 	void transform_cell_with_ports(
 		RTLIL::Cell *cell,
 		RTLIL::IdString new_type,
@@ -221,60 +245,136 @@ struct QlDSPV2TypesPass : public Pass {
                 
 
                 int COEFF_0    = mode_bits.extract(0, 31).as_int();
+				log("COEFF_0: %d.\n", COEFF_0);
                 int ACC_FIR    = mode_bits.extract(32, 6).as_int();
+				log("ACC_FIR: %d.\n", ACC_FIR);
                 int ROUND      = mode_bits.extract(38, 3).as_int();
+				log("ROUND: %d.\n", ROUND);
                 int ZC_SHIFT   = mode_bits.extract(41, 5).as_int();
+				log("ZC_SHIFT: %d.\n", ZC_SHIFT);
                 int ZREG_SHIFT = mode_bits.extract(46, 5).as_int();
+				log("ZREG_SHIFT: %d.\n", ZREG_SHIFT);
                 int SHIFT_REG  = mode_bits.extract(51, 6).as_int();
+				log("SHIFT_REG: %d.\n", SHIFT_REG);
                 
                 bool SATURATE  = mode_bits.extract(57).as_bool();
+				if (SATURATE)
+					log("STARUATE Enabled.\n");
                 bool SUBTRACT  = mode_bits.extract(58).as_bool();
+				if (SUBTRACT)
+					log("SUBTRACT Enabled.\n");
                 bool PRE_ADD   = mode_bits.extract(59).as_bool();
-                
+                if (PRE_ADD)
+					log("PRE_ADD Enabled.\n");
                 bool A_SEL     = mode_bits.extract(60).as_bool();
+				if (A_SEL)
+					log("A_SEL Enabled.\n");
                 bool A_REG     = mode_bits.extract(61).as_bool();
+				if (A_REG)
+					log("A_REG Enabled.\n");
                 bool A1_REG    = mode_bits.extract(62).as_bool();
+				if (A1_REG)
+					log("A1_REG Enabled.\n");
                 bool A2_REG    = mode_bits.extract(63).as_bool();
+				if (A2_REG)
+					log("A2_REG Enabled.\n");
 
                 bool B_SEL     = mode_bits.extract(64).as_bool();
+				if (B_SEL)
+					log("B_SEL Enabled.\n");
                 bool B_REG     = mode_bits.extract(65).as_bool();
+				if (B_REG)
+					log("B_REG Enabled.\n");
                 bool B1_REG    = mode_bits.extract(66).as_bool();
+				if (B1_REG)
+					log("B1_REG Enabled.\n");
                 bool B2_REG    = mode_bits.extract(67).as_bool();	
+				if (B2_REG)
+					log("B2_REG Enabled.\n");
 
                 bool C_REG     = mode_bits.extract(68).as_bool();
+				if (C_REG)
+					log("C_REG Enabled.\n");
                 bool BC_REG    = mode_bits.extract(69).as_bool();
+				if (BC_REG)
+					log("BC_REG Enabled.\n");
                 bool M_REG     = mode_bits.extract(70).as_bool();
+				if (M_REG)
+					log("M_REG Enabled.\n");
                 bool ZCIN_SEL  = mode_bits.extract(71).as_bool();
+				if (ZCIN_SEL)
+					log("ZCIN_SEL Enabled.\n");
                 bool ACOUT_SEL = mode_bits.extract(72).as_bool();
+				if (ACOUT_SEL)
+					log("ACOUT_SEL Enabled.\n");
                 bool BCOUT_SEL = mode_bits.extract(73).as_bool();
-
+				if (BCOUT_SEL)
+					log("BCOUT_SEL Enabled.\n");
                 bool FRAC_MODE = mode_bits.extract(79).as_bool();
+				if (FRAC_MODE)
+					log("FRAC_MODE Enabled.\n");
 
 				int FEEDBACK = get_const_port_value(cell, ID(feedback));
+				log("FEEDBACK: %d.\n", FEEDBACK);
 				int OUTPUT_SELECT = get_const_port_value(cell, ID(output_select));
+				log("OUTPUT_SELECT: %d.\n", OUTPUT_SELECT);
 				int LOAD_ACC = get_const_port_value(cell, ID(load_acc));
+				log("LOAD_ACC: %d.\n", LOAD_ACC);
+
+				replace_output_port_and_drop(
+						module,
+						cell,
+						RTLIL::IdString("\\z"),
+						RTLIL::IdString("\\z_cout")
+					);
 				
-				if (A_REG)
+				if (A1_REG && A2_REG) {
 					add_bitwise_dffre_before_cell_input(
 							module,
 							cell,
 							RTLIL::IdString("\\a")
 						);
-				
-				if (B_REG)
+					add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+				}
+
+				else if (A2_REG || A_REG) {
+					add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\a")
+						);
+				}
+
+				if (B1_REG && B2_REG) {
 					add_bitwise_dffre_before_cell_input(
 							module,
 							cell,
 							RTLIL::IdString("\\b")
 						);
-				
-				if (C_REG)
+					add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
+				}			
+				else if (B2_REG || B_REG) {
+					add_bitwise_dffre_before_cell_input(
+							module,
+							cell,
+							RTLIL::IdString("\\b")
+						);
+				}
+				if (C_REG) {
 					add_bitwise_dffre_before_cell_input(
 							module,
 							cell,
 							RTLIL::IdString("\\c")
 						);
-				
+				}
 				if (OUTPUT_SELECT >= 4)
 					add_bitwise_dffre_after_cell_output(
 						module,
@@ -306,7 +406,7 @@ struct QlDSPV2TypesPass : public Pass {
 						break;
 					
 					
-
+					case 0b010110000: //CONCAT_CASCADE									
 					case 0b010100000: //CONCAT_CASCADE
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_CONCAT_CASCADE"),
@@ -368,7 +468,7 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 
-					
+					case 0b011110100: //MULTADD
 					case 0b011100100: //MULTADD
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD"),
@@ -382,7 +482,7 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 					
-					
+					case 0b011110101: //MULTADD_NEG
 					case 0b011100101: //MULTADD_NEG
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG"),
