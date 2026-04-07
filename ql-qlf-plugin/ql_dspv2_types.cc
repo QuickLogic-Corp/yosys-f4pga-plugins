@@ -58,7 +58,7 @@ struct QlDSPV2TypesPass : public Pass {
 
 		RTLIL::SigSpec sig = cell->getPort(port_name);
 
-		log("Cell %s %s = %s\n",
+		log_debug("Cell %s %s = %s\n",
 			log_id(cell), log_id(port_name), log_signal(sig));
 
 		if (!sig.is_fully_const())
@@ -68,7 +68,7 @@ struct QlDSPV2TypesPass : public Pass {
 		RTLIL::Const c = sig.as_const();
 		int value = c.as_int();
 
-		log("%s value: %d\n", log_id(port_name), value);
+		log_debug("%s value: %d\n", log_id(port_name), value);
 
 		return value;
 	}
@@ -131,7 +131,7 @@ struct QlDSPV2TypesPass : public Pass {
 			dff->setPort(IdString("\\R"), rst);
 			dff->setPort(IdString("\\E"), SigSpec());
 
-			log("Added bit %d dffre BEFORE: D=%s, Q=%s\n", i, log_signal(bit_in), log_signal(bit_out));
+			log_debug("Added bit %d dffre BEFORE: D=%s, Q=%s\n", i, log_signal(bit_in), log_signal(bit_out));
 		}
 	}
 
@@ -174,7 +174,7 @@ struct QlDSPV2TypesPass : public Pass {
 			dff->setPort(IdString("\\R"), rst);
 			dff->setPort(IdString("\\E"), SigSpec());
 
-			log("Added bit %d dffre AFTER: D=%s, Q=%s\n", i, log_signal(bit_in), log_signal(bit_out));
+			log_debug("Added bit %d dffre AFTER: D=%s, Q=%s\n", i, log_signal(bit_in), log_signal(bit_out));
 		}
 	}
 
@@ -222,7 +222,7 @@ struct QlDSPV2TypesPass : public Pass {
 		}
 
 		for (auto &p : ports_to_remove) {
-			log("Removing port %s from cell %s\n",
+			log_debug("Removing port %s from cell %s\n",
 				log_id(p), log_id(cell));
 			cell->unsetPort(p);
 		}
@@ -245,81 +245,81 @@ struct QlDSPV2TypesPass : public Pass {
                 
 
                 int COEFF_0    = mode_bits.extract(0, 31).as_int();
-				log("COEFF_0: %d.\n", COEFF_0);
+				log_debug("COEFF_0: %d.\n", COEFF_0);
                 int ACC_FIR    = mode_bits.extract(32, 6).as_int();
-				log("ACC_FIR: %d.\n", ACC_FIR);
+				log_debug("ACC_FIR: %d.\n", ACC_FIR);
                 int ROUND      = mode_bits.extract(38, 3).as_int();
-				log("ROUND: %d.\n", ROUND);
+				log_debug("ROUND: %d.\n", ROUND);
                 int ZC_SHIFT   = mode_bits.extract(41, 5).as_int();
-				log("ZC_SHIFT: %d.\n", ZC_SHIFT);
+				log_debug("ZC_SHIFT: %d.\n", ZC_SHIFT);
                 int ZREG_SHIFT = mode_bits.extract(46, 5).as_int();
-				log("ZREG_SHIFT: %d.\n", ZREG_SHIFT);
+				log_debug("ZREG_SHIFT: %d.\n", ZREG_SHIFT);
                 int SHIFT_REG  = mode_bits.extract(51, 6).as_int();
-				log("SHIFT_REG: %d.\n", SHIFT_REG);
+				log_debug("SHIFT_REG: %d.\n", SHIFT_REG);
                 
                 bool SATURATE  = mode_bits.extract(57).as_bool();
 				if (SATURATE)
-					log("STARUATE Enabled.\n");
+					log_debug("STARUATE Enabled.\n");
                 bool SUBTRACT  = mode_bits.extract(58).as_bool();
 				if (SUBTRACT)
-					log("SUBTRACT Enabled.\n");
+					log_debug("SUBTRACT Enabled.\n");
                 bool PRE_ADD   = mode_bits.extract(59).as_bool();
                 if (PRE_ADD)
-					log("PRE_ADD Enabled.\n");
+					log_debug("PRE_ADD Enabled.\n");
                 bool A_SEL     = mode_bits.extract(60).as_bool();
 				if (A_SEL)
-					log("A_SEL Enabled.\n");
+					log_debug("A_SEL Enabled.\n");
                 bool A_REG     = mode_bits.extract(61).as_bool();
 				if (A_REG)
-					log("A_REG Enabled.\n");
+					log_debug("A_REG Enabled.\n");
                 bool A1_REG    = mode_bits.extract(62).as_bool();
 				if (A1_REG)
-					log("A1_REG Enabled.\n");
+					log_debug("A1_REG Enabled.\n");
                 bool A2_REG    = mode_bits.extract(63).as_bool();
 				if (A2_REG)
-					log("A2_REG Enabled.\n");
+					log_debug("A2_REG Enabled.\n");
 
                 bool B_SEL     = mode_bits.extract(64).as_bool();
 				if (B_SEL)
-					log("B_SEL Enabled.\n");
+					log_debug("B_SEL Enabled.\n");
                 bool B_REG     = mode_bits.extract(65).as_bool();
 				if (B_REG)
-					log("B_REG Enabled.\n");
+					log_debug("B_REG Enabled.\n");
                 bool B1_REG    = mode_bits.extract(66).as_bool();
 				if (B1_REG)
-					log("B1_REG Enabled.\n");
+					log_debug("B1_REG Enabled.\n");
                 bool B2_REG    = mode_bits.extract(67).as_bool();	
 				if (B2_REG)
-					log("B2_REG Enabled.\n");
+					log_debug("B2_REG Enabled.\n");
 
                 bool C_REG     = mode_bits.extract(68).as_bool();
 				if (C_REG)
-					log("C_REG Enabled.\n");
+					log_debug("C_REG Enabled.\n");
                 bool BC_REG    = mode_bits.extract(69).as_bool();
 				if (BC_REG)
-					log("BC_REG Enabled.\n");
+					log_debug("BC_REG Enabled.\n");
                 bool M_REG     = mode_bits.extract(70).as_bool();
 				if (M_REG)
-					log("M_REG Enabled.\n");
+					log_debug("M_REG Enabled.\n");
                 bool ZCIN_SEL  = mode_bits.extract(71).as_bool();
 				if (ZCIN_SEL)
-					log("ZCIN_SEL Enabled.\n");
+					log_debug("ZCIN_SEL Enabled.\n");
                 bool ACOUT_SEL = mode_bits.extract(72).as_bool();
 				if (ACOUT_SEL)
-					log("ACOUT_SEL Enabled.\n");
+					log_debug("ACOUT_SEL Enabled.\n");
                 bool BCOUT_SEL = mode_bits.extract(73).as_bool();
 				if (BCOUT_SEL)
-					log("BCOUT_SEL Enabled.\n");
+					log_debug("BCOUT_SEL Enabled.\n");
                 bool FRAC_MODE = mode_bits.extract(79).as_bool();
 				if (FRAC_MODE)
-					log("FRAC_MODE Enabled.\n");
+					log_debug("FRAC_MODE Enabled.\n");
 
 				int FEEDBACK = get_const_port_value(cell, ID(feedback));
-				log("FEEDBACK: %d.\n", FEEDBACK);
+				log_debug("FEEDBACK: %d.\n", FEEDBACK);
 				int OUTPUT_SELECT = get_const_port_value(cell, ID(output_select));
-				log("OUTPUT_SELECT: %d.\n", OUTPUT_SELECT);
+				log_debug("OUTPUT_SELECT: %d.\n", OUTPUT_SELECT);
 				int LOAD_ACC = get_const_port_value(cell, ID(load_acc));
-				log("LOAD_ACC: %d.\n", LOAD_ACC);
+				log_debug("LOAD_ACC: %d.\n", LOAD_ACC);
 
 				replace_output_port_and_drop(
 						module,
@@ -390,7 +390,7 @@ struct QlDSPV2TypesPass : public Pass {
 														 SUBTRACT);
 				
 
-				log("Control Word: %d\n", control_word);
+				log_debug("Control Word: %d\n", control_word);
 				std::string type = "QL_DSPV2";
 				switch (control_word){
 					case 0b000000000: //MULT
