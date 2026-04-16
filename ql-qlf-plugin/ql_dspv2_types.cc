@@ -178,12 +178,20 @@ struct QlDSPV2TypesPass : public Pass {
 		}
 	}
 
+	pool<RTLIL::SigBit> sigbits_set(RTLIL::SigSpec sig)
+	{
+		pool<RTLIL::SigBit> bits;
+		for (auto b : sig)
+			bits.insert(b);
+		return bits;
+	}
 
-	void replace_output_port_and_drop(
+
+	void replace_drop_net_with_keep_net(
 		RTLIL::Module *module,
 		RTLIL::Cell *cell,
-		RTLIL::IdString keep_port,   // ID("\\z")
-		RTLIL::IdString drop_port    // ID("\\z_cout")
+		RTLIL::IdString keep_port,
+		RTLIL::IdString drop_port
 	) {
 		// Safety checks
 		if (!cell->hasPort(keep_port) || !cell->hasPort(drop_port))
@@ -196,11 +204,55 @@ struct QlDSPV2TypesPass : public Pass {
 		RTLIL::SigSpec keep_sig = sigmap(cell->getPort(keep_port));
 		RTLIL::SigSpec drop_sig = sigmap(cell->getPort(drop_port));
 
-		// 1. Remove the unwanted port
+		auto drop_bits = sigbits_set(drop_sig);
+
+		log_debug("\n[replace_drop_net_with_keep_net]\n");
+		log_debug("  Cell        : %s\n", log_id(cell));
+		log_debug("  Keep        : %s\n", log_signal(keep_sig));
+		log_debug("  Drop        : %s\n", log_signal(drop_sig));
+
+		// ----------------------------------------
+		// Find all consumers of drop signal
+		// ----------------------------------------
+		for (auto c : module->cells())
+		{
+			for (auto &conn : c->connections())
+			{
+				RTLIL::SigSpec old_sig = sigmap(conn.second);
+				bool uses_drop = false;
+
+				for (auto bit : old_sig) {
+					if (drop_bits.count(bit)) {
+						uses_drop = true;
+						break;
+					}
+				}
+
+				if (!uses_drop)
+					continue;
+
+				// ----------------------------------------
+				// Replace drop bits with keep bits
+				// ----------------------------------------
+				RTLIL::SigSpec new_sig = old_sig;
+				new_sig.replace(drop_sig, keep_sig);
+
+				c->setPort(conn.first, new_sig);
+
+				log_debug("  Rewire     : %s.%s\n",
+					log_id(c), log_id(conn.first));
+				log_debug("               %s → %s\n",
+					log_signal(old_sig),
+					log_signal(new_sig));
+			}
+		}
+
+		// ----------------------------------------
+		// Remove drop port
+		// ----------------------------------------
 		cell->unsetPort(drop_port);
 
-		// 2. Reconnect: old drop wire now driven by keep signal
-		module->connect(drop_sig, keep_sig);  // drop = keep
+		log_debug("  Action     : drop port removed\n");
 	}
 
 	void transform_cell_with_ports(
@@ -321,12 +373,12 @@ struct QlDSPV2TypesPass : public Pass {
 				int LOAD_ACC = get_const_port_value(cell, ID(load_acc));
 				log_debug("LOAD_ACC: %d.\n", LOAD_ACC);
 
-				replace_output_port_and_drop(
-						module,
-						cell,
-						RTLIL::IdString("\\z"),
-						RTLIL::IdString("\\z_cout")
-					);
+				replace_drop_net_with_keep_net(
+					module,
+					cell,
+					RTLIL::IdString("\\z"),
+					RTLIL::IdString("\\z_cout")
+				);
 				
 				if (A1_REG && A2_REG) {
 					add_bitwise_dffre_before_cell_input(
