@@ -76,16 +76,14 @@ struct QlDSPV2TypesPass : public Pass {
 	uint32_t get_control_word(
 		uint32_t feedback, //3 bits
 		uint32_t output_select, //2 bits
-		bool load_acc,
 		bool zcin_sel,
 		bool padd_sel,
 		bool sub
 	) {
 		uint32_t control_word = 0;
 
-		control_word |= (feedback & 0b111) 		<< 6;  // top 3 bits
-		control_word |= (output_select & 0b11)  << 4;
-		control_word |= (load_acc ? 1u : 0u)    << 3;
+		control_word |= (feedback & 0b111) 		<< 5;  // top 3 bits
+		control_word |= (output_select & 0b11)  << 3;
 		control_word |= (zcin_sel ? 1u : 0u) 	<< 2;
 		control_word |= (padd_sel ? 1u : 0u) 	<< 1;
 		control_word |= (sub ? 1u : 0u);
@@ -178,12 +176,20 @@ struct QlDSPV2TypesPass : public Pass {
 		}
 	}
 
+	pool<RTLIL::SigBit> sigbits_set(RTLIL::SigSpec sig)
+	{
+		pool<RTLIL::SigBit> bits;
+		for (auto b : sig)
+			bits.insert(b);
+		return bits;
+	}
 
-	void replace_output_port_and_drop(
+
+	void replace_drop_net_with_keep_net(
 		RTLIL::Module *module,
 		RTLIL::Cell *cell,
-		RTLIL::IdString keep_port,   // ID("\\z")
-		RTLIL::IdString drop_port    // ID("\\z_cout")
+		RTLIL::IdString keep_port,
+		RTLIL::IdString drop_port
 	) {
 		// Safety checks
 		if (!cell->hasPort(keep_port) || !cell->hasPort(drop_port))
@@ -196,11 +202,55 @@ struct QlDSPV2TypesPass : public Pass {
 		RTLIL::SigSpec keep_sig = sigmap(cell->getPort(keep_port));
 		RTLIL::SigSpec drop_sig = sigmap(cell->getPort(drop_port));
 
-		// 1. Remove the unwanted port
+		auto drop_bits = sigbits_set(drop_sig);
+
+		log_debug("\n[replace_drop_net_with_keep_net]\n");
+		log_debug("  Cell        : %s\n", log_id(cell));
+		log_debug("  Keep        : %s\n", log_signal(keep_sig));
+		log_debug("  Drop        : %s\n", log_signal(drop_sig));
+
+		// ----------------------------------------
+		// Find all consumers of drop signal
+		// ----------------------------------------
+		for (auto c : module->cells())
+		{
+			for (auto &conn : c->connections())
+			{
+				RTLIL::SigSpec old_sig = sigmap(conn.second);
+				bool uses_drop = false;
+
+				for (auto bit : old_sig) {
+					if (drop_bits.count(bit)) {
+						uses_drop = true;
+						break;
+					}
+				}
+
+				if (!uses_drop)
+					continue;
+
+				// ----------------------------------------
+				// Replace drop bits with keep bits
+				// ----------------------------------------
+				RTLIL::SigSpec new_sig = old_sig;
+				new_sig.replace(drop_sig, keep_sig);
+
+				c->setPort(conn.first, new_sig);
+
+				log_debug("  Rewire     : %s.%s\n",
+					log_id(c), log_id(conn.first));
+				log_debug("               %s → %s\n",
+					log_signal(old_sig),
+					log_signal(new_sig));
+			}
+		}
+
+		// ----------------------------------------
+		// Remove drop port
+		// ----------------------------------------
 		cell->unsetPort(drop_port);
 
-		// 2. Reconnect: old drop wire now driven by keep signal
-		module->connect(drop_sig, keep_sig);  // drop = keep
+		log_debug("  Action     : drop port removed\n");
 	}
 
 	void transform_cell_with_ports(
@@ -318,15 +368,13 @@ struct QlDSPV2TypesPass : public Pass {
 				log_debug("FEEDBACK: %d.\n", FEEDBACK);
 				int OUTPUT_SELECT = get_const_port_value(cell, ID(output_select));
 				log_debug("OUTPUT_SELECT: %d.\n", OUTPUT_SELECT);
-				int LOAD_ACC = get_const_port_value(cell, ID(load_acc));
-				log_debug("LOAD_ACC: %d.\n", LOAD_ACC);
 
-				replace_output_port_and_drop(
-						module,
-						cell,
-						RTLIL::IdString("\\z"),
-						RTLIL::IdString("\\z_cout")
-					);
+				replace_drop_net_with_keep_net(
+					module,
+					cell,
+					RTLIL::IdString("\\z"),
+					RTLIL::IdString("\\z_cout")
+				);
 				
 				if (A1_REG && A2_REG) {
 					add_bitwise_dffre_before_cell_input(
@@ -384,7 +432,6 @@ struct QlDSPV2TypesPass : public Pass {
 
 				uint32_t control_word = get_control_word(FEEDBACK,
 														 OUTPUT_SELECT,
-														 LOAD_ACC,
 														 ZCIN_SEL,
 														 PRE_ADD,
 														 SUBTRACT);
@@ -393,7 +440,7 @@ struct QlDSPV2TypesPass : public Pass {
 				log_debug("Control Word: %d\n", control_word);
 				std::string type = "QL_DSPV2";
 				switch (control_word){
-					case 0b000000000: //MULT
+					case 0b00000000: //MULT
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULT"),
 												  pool<RTLIL::IdString>{ 
@@ -405,9 +452,8 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 					
-					
-					case 0b010110000: //CONCAT_CASCADE									
-					case 0b010100000: //CONCAT_CASCADE
+						case 0b01011000: //CONCAT_CASCADE									
+						case 0b01010000: //CONCAT_CASCADE
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_CONCAT_CASCADE"),
 												  pool<RTLIL::IdString>{ 
@@ -420,7 +466,7 @@ struct QlDSPV2TypesPass : public Pass {
 						break;
 					
 
-					case 0b000011000: //MULTACC
+					case 0b00001000: //MULTACC
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTACC"),
 												  pool<RTLIL::IdString>{ 
@@ -438,7 +484,7 @@ struct QlDSPV2TypesPass : public Pass {
 					
 					
 
-					case 0b000011001: //MULTACC_NEG
+					case 0b00001001: //MULTACC_NEG
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTACC_NEG"),
 												  pool<RTLIL::IdString>{ 
@@ -455,7 +501,7 @@ struct QlDSPV2TypesPass : public Pass {
 						break;
 					
 
-					case 0b000000010: //PREADDER_MULT
+					case 0b00000010: //PREADDER_MULT
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_PREADDER_MULT"),
 												  pool<RTLIL::IdString>{ 
@@ -468,8 +514,8 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 
-					case 0b011110100: //MULTADD
-					case 0b011100100: //MULTADD
+					case 0b01111100: //MULTADD
+					case 0b01110100: //MULTADD
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD"),
 												  pool<RTLIL::IdString>{ 
@@ -481,9 +527,9 @@ struct QlDSPV2TypesPass : public Pass {
 														ID(output_select)
 													});
 						break;
-					
-					case 0b011110101: //MULTADD_NEG
-					case 0b011100101: //MULTADD_NEG
+
+					case 0b01111101: //MULTADD_NEG
+					case 0b01110101: //MULTADD_NEG
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG"),
 												  pool<RTLIL::IdString>{ 
