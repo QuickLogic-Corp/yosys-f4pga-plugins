@@ -21,6 +21,7 @@
 #include "kernel/register.h"
 #include "kernel/rtlil.h"
 #include "kernel/sigtools.h"
+#include "kernel/yosys.h"
 
 #include <cstdint>
 
@@ -278,6 +279,53 @@ struct QlDSPV2TypesPass : public Pass {
 		}
 	}
 
+	void make_gnd_bits_unconn(RTLIL::Module *module,
+                          RTLIL::Cell *cell,
+                          const pool<RTLIL::IdString> &ports)
+	{
+		SigMap sigmap(module);
+
+		log_debug("Processing cell %s (%s)\n",
+			log_id(cell->name), log_id(cell->type));
+
+		for (auto pname : ports)
+		{
+			if (!cell->hasPort(pname))
+				continue;
+
+			RTLIL::SigSpec sig = cell->getPort(pname);
+			RTLIL::SigSpec new_sig;
+
+			bool changed = false;
+
+			log_debug("  Port %s: %s\n", log_id(pname), log_signal(sig));
+
+			for (int i = 0; i < sig.size(); i++)
+			{
+				RTLIL::SigBit bit = sig[i];
+
+				if (sigmap(bit) == RTLIL::State::S0)
+				{
+					log_debug("    bit %d -> GND replaced with \\unconn\n", i);
+					new_sig.append(SigSpec());
+					changed = true;
+				}
+				else
+				{
+					new_sig.append(bit);
+				}
+			}
+
+			if (changed)
+			{
+				log_debug("  Updated port %s: %s\n",
+					log_id(pname), log_signal(new_sig));
+
+				cell->setPort(pname, new_sig);
+			}
+		}
+	}
+
 	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing QL_DSPV2_TYPES pass.\n");
@@ -516,6 +564,12 @@ struct QlDSPV2TypesPass : public Pass {
 
 					case 0b01111100: //MULTADD
 					case 0b01110100: //MULTADD
+						make_gnd_bits_unconn(
+											module,
+											cell,
+											pool<RTLIL::IdString>{ 
+												ID(z_cin),
+											});
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD"),
 												  pool<RTLIL::IdString>{ 
@@ -530,6 +584,12 @@ struct QlDSPV2TypesPass : public Pass {
 
 					case 0b01111101: //MULTADD_NEG
 					case 0b01110101: //MULTADD_NEG
+						make_gnd_bits_unconn(
+											module,
+											cell,
+											pool<RTLIL::IdString>{ 
+												ID(z_cin),
+											});
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG"),
 												  pool<RTLIL::IdString>{ 
@@ -543,6 +603,12 @@ struct QlDSPV2TypesPass : public Pass {
 						break;
 
 					default:
+						make_gnd_bits_unconn(
+											module,
+											cell,
+											pool<RTLIL::IdString>{ 
+												ID(z_cin),
+											});
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2"),
 												 pool<RTLIL::IdString>{ 
