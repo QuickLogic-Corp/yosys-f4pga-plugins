@@ -20,6 +20,7 @@
 #include "kernel/log.h"
 #include "kernel/register.h"
 #include "kernel/rtlil.h"
+#include "kernel/sigtools.h"
 #include <cmath>
 
 USING_YOSYS_NAMESPACE
@@ -228,6 +229,44 @@ struct SynthQuickLogicPass : public ScriptPass {
         lib_path = "+/quicklogic/";
         mince_num = "";
         de = "";
+    }
+
+    pool<RTLIL::Wire*> find_clock_wires(RTLIL::Module *mod)
+    {
+        pool<RTLIL::Wire*> clock_wires;
+        SigMap sigmap(mod);
+
+        for (auto cell : mod->cells()) {
+            for (auto &conn : cell->connections()) {
+                // look up the cell definition in the design
+                RTLIL::Module *cell_mod = mod->design->module(cell->type);
+                if (!cell_mod)
+                    continue;
+
+                // get the port wire in the cell's own module
+                RTLIL::Wire *cell_port = cell_mod->wire(conn.first);
+                if (!cell_port)
+                    continue;
+
+                if (!cell_port->get_bool_attribute(ID::clkbuf_sink))
+                    continue;
+
+                // grab the wires connected to this port in the parent module
+                for (auto &bit : conn.second) {
+                    if (!bit.wire)
+                        continue;
+
+                    log("Found clock wire: %s (via clkbuf_sink on cell %s port %s)\n",
+                        log_id(bit.wire->name),
+                        log_id(cell->name),
+                        log_id(conn.first));
+
+                    clock_wires.insert(bit.wire);
+                }
+            }
+        }
+
+        return clock_wires;
     }
 
     void execute(std::vector<std::string> args, RTLIL::Design *design) override
@@ -871,6 +910,15 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
         }
 
+        RTLIL::Design *design = yosys_get_design();
+        std::string design_name = log_id(design->top_module()->name);
+        std::ofstream ofs(design_name + ".clocks");
+        for (RTLIL::Module *mod : design->selected_modules()) {
+            auto clock_wires = find_clock_wires(mod);
+                for (auto wire : clock_wires) {
+                    ofs << log_id(wire->name) << "\n";
+                }
+        }
         if (check_label("map_synplify", "(if -synplify)")) {
             std::string family_path = " " + lib_path + family;
             if (family == "qlf_k6n10f") {
@@ -887,7 +935,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (check_label("blif", "(if -blif)")) {
                 if (help_mode || !blif_file.empty()) {
-                    run(stringf("write_blif -param %s", help_mode ? "<file-name>" : blif_file.c_str()));
+                    run(stringf("write_blif -attr -param %s", help_mode ? "<file-name>" : blif_file.c_str()));
                 }
             }
         }
