@@ -35,6 +35,18 @@ struct SynthQuickLogicPass : public ScriptPass {
 
     SynthQuickLogicPass() : ScriptPass(STR(PASS_NAME), "Synthesis for QuickLogic FPGAs") {}
 
+    void on_register() override
+    {
+        // ABC9's &satlut pass has the limitation that it only works with LUT6s.
+        // This turns out to integrate nicely with k6n10f.
+        RTLIL::constpad["synth_quicklogic.abc9.script.default"] = "+&scorr; &sweep; &dc2; &dch -f -r; &ps; &if {W} {D} {R} -v; &mfs; &ps -l; &satlut -C 100000; &st -u";
+        RTLIL::constpad["synth_quicklogic.abc9.script.flow3"] = "+&scorr; &sweep;" \
+                "&if {W} {D}; &save; &st; &syn2; &if {W} {D} {R} -v; &save; &load;"\
+                "&st; &if -g -K 6; &dch -f; &if {W} {D} {R} -v; &save; &load;"\
+                "&st; &if -g -K 6; &synch2; &if {W} {D} {R} -v; &save; &load;"\
+                "&mfs; &ps -l; &satlut -C 100000; &st -u";
+    }
+
     void help() override
     {
         log("\n");
@@ -326,6 +338,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (family == "qlf_k6n10f") {
                 design->scratchpad_set_int("abc9.W", 1000); // set interconnet delay as 1ns
             }
+        }
+
+        if (abc9 && family == "qlf_k6n10f" && design->scratchpad.count("abc9.script") == 0) {
+            design->scratchpad_set_string("abc9.script", RTLIL::constpad["synth_quicklogic.abc9.script.flow3"]);
         }
 
         log_header(design, "Executing SYNTH_QUICKLOGIC pass.\n");
