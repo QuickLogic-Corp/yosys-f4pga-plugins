@@ -112,6 +112,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        write the design to the specified BLIF file. Writing of an output file\n");
         log("        is omitted if this parameter is not specified.\n");
         log("\n");
+        log("    -clocks_file <file>\n");
+        log("        write the design clock nets to the specified clocks file. If not passed\n");
+        log("        top module name will be used as the clocks file name.\n");
+        log("\n");
         log("    -verilog <file>\n");
         log("        write the design to the specified verilog file. Writing of an output\n");
         log("        file is omitted if this parameter is not specified.\n");
@@ -184,7 +188,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("\n");
     }
 
-    string top_opt, edif_file, blif_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script, de;
+    string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script, de;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -208,6 +212,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         edif_file = "";
         blif_file = "";
         verilog_file = "";
+        clocks_file = "";
         currmodule = "";
         family = "qlf_k4n8";
         inferAdder = true;
@@ -309,6 +314,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (args[argidx] == "-verilog" && argidx + 1 < args.size()) {
                 verilog_file = args[++argidx];
+                continue;
+            }
+            if (args[argidx] == "-clocks_file" && argidx + 1 < args.size()) {
+                clocks_file = args[++argidx];
                 continue;
             }
             if (args[argidx] == "-no_dsp") {
@@ -911,8 +920,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         RTLIL::Design *design = yosys_get_design();
-        std::string design_name = log_id(design->top_module()->name);
-        std::ofstream ofs(design_name + ".clocks");
+        if (clocks_file.empty()) {
+            clocks_file = std::string(log_id(design->top_module()->name)) + ".clocks";
+        }
+        std::ofstream ofs(clocks_file);
         for (RTLIL::Module *mod : design->selected_modules()) {
             auto clock_wires = find_clock_wires(mod);
                 for (auto wire : clock_wires) {
@@ -935,7 +946,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (check_label("blif", "(if -blif)")) {
                 if (help_mode || !blif_file.empty()) {
-                    run(stringf("write_blif -attr -param %s", help_mode ? "<file-name>" : blif_file.c_str()));
+                    run(stringf("write_blif -param %s", help_mode ? "<file-name>" : blif_file.c_str()));
                 }
             }
         }
