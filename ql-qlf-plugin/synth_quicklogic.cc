@@ -398,10 +398,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             // Read simulation library
             readVelArgs = family_path + "/cells_sim.v";
             if (family == "qlf_k6n10f") {
-                if(!synplify && dspv2) {
-                    log_cmd_error("DSPV2 is only supported with Synplify.\nPlease use Synplify as your synthesis tool.\n");
-                }
-				if (dspv2) {
+                if (dspv2) {
 					readVelArgs += family_path + "/dspv2_sim.v";
 				}
 				else {
@@ -422,7 +419,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             // some block ram cell models. After all the only part of the cells
             // library required here is cell port definitions plus specify blocks.
             run("read_verilog -lib -specify -nomem2reg " + readVelArgs);
-			if (synplify) {
+			if (dspv2) {
 			    run("read_verilog " + family_path + "/QL_DSPV2.v");
 			}
             run(stringf("hierarchy -check %s", help_mode ? "-top <top>" : top_opt.c_str()));
