@@ -188,18 +188,46 @@ struct QlDspPass : public Pass {
         for (auto module : design->selected_modules()) {
             SigMap sigmap(module);
 
-            // For deciding whether a SigBit is consumed by exactly one user,
-            // count fan-out per bit (cell ports only -- module ports excluded
-            // intentionally: a SigBit that escapes the module cannot be
-            // absorbed safely).
+            // Count fan-out per SigBit, restricted to *consumer-side* cell-port
+            // references. Cell::input/output correctly handles both built-in
+            // cells (via yosys_celltypes) and user-defined modules (via
+            // module->design->module(type)->wire(port)->port_input), so this
+            // gives accurate single-consumer detection.
+            //
+            // Note: a SigSpec rvalue returned by sigmap() must be bound to a
+            // named local before iterating .bits(). Range-for lifetime
+            // extension only covers the outermost expression, and clang -O3
+            // has been observed to mis-elide the inner SigSpec, leaving the
+            // bit-list referring to freed memory and the loop body silently
+            // skipped. This was the actual root cause of the original
+            // Phase-4 absorption failure on the aurora2 toolchain.
             dict<RTLIL::SigBit, int> bit_users;
             for (auto cell : module->cells()) {
                 for (auto &conn : cell->connections()) {
-                    if (cell->input(conn.first)) {
-                        for (auto bit : sigmap(conn.second).bits()) {
-                            if (bit.wire != nullptr)
-                                bit_users[bit] += 1;
-                        }
+                    if (!cell->input(conn.first))
+                        continue;
+                    RTLIL::SigSpec mapped = sigmap(conn.second);
+                    std::vector<RTLIL::SigBit> bits = mapped.bits();
+                    for (auto bit : bits) {
+                        if (bit.wire != nullptr)
+                            bit_users[bit] += 1;
+                    }
+                }
+            }
+
+            // Pre-build a SigBit -> driver (cell, output-port) map. Avoids the
+            // original code's nested O(B*C) re-scan per absorbed bit. Same
+            // named-local lifetime discipline as above.
+            dict<RTLIL::SigBit, std::pair<RTLIL::Cell *, RTLIL::IdString>> bit_driver;
+            for (auto cell : module->cells()) {
+                for (auto &conn : cell->connections()) {
+                    if (!cell->output(conn.first))
+                        continue;
+                    RTLIL::SigSpec mapped = sigmap(conn.second);
+                    std::vector<RTLIL::SigBit> bits = mapped.bits();
+                    for (auto bit : bits) {
+                        if (bit.wire != nullptr)
+                            bit_driver[bit] = std::make_pair(cell, conn.first);
                     }
                 }
             }
@@ -235,7 +263,8 @@ struct QlDspPass : public Pass {
                     if (port_sig.empty())
                         continue;
 
-                    auto port_bits = sigmap(port_sig).bits();
+                    RTLIL::SigSpec mapped_port = sigmap(port_sig);
+                    std::vector<RTLIL::SigBit> port_bits = mapped_port.bits();
 
                     // Every bit must come from a $dff Q port of the same FF
                     // cell, on the same clock as the dspv2 cell, with no
@@ -256,31 +285,15 @@ struct QlDspPass : public Pass {
                             eligible = false;
                             break;
                         }
-                        // Find the cell whose output produces this bit.
-                        RTLIL::Cell *driver = nullptr;
-                        RTLIL::IdString driver_port;
-                        for (auto c : module->cells()) {
-                            for (auto &conn : c->connections()) {
-                                if (!c->output(conn.first))
-                                    continue;
-                                for (auto b : sigmap(conn.second).bits()) {
-                                    if (b == bit) {
-                                        driver = c;
-                                        driver_port = conn.first;
-                                        break;
-                                    }
-                                }
-                                if (driver)
-                                    break;
-                            }
-                            if (driver)
-                                break;
-                        }
-                        if (!driver || driver->type != ID($dff)) {
+                        // O(1) driver lookup via the pre-built map.
+                        auto dit = bit_driver.find(bit);
+                        if (dit == bit_driver.end()) {
                             eligible = false;
                             break;
                         }
-                        if (driver_port != ID(Q)) {
+                        RTLIL::Cell *driver = dit->second.first;
+                        RTLIL::IdString driver_port = dit->second.second;
+                        if (driver->type != ID($dff) || driver_port != ID(Q)) {
                             eligible = false;
                             break;
                         }
@@ -290,6 +303,7 @@ struct QlDspPass : public Pass {
                             eligible = false;
                             break;
                         }
+                        // The Q bit must have exactly one consumer (this cell port).
                         if (bit_users[bit] != 1) {
                             eligible = false;
                             break;
@@ -298,6 +312,47 @@ struct QlDspPass : public Pass {
 
                     if (!eligible || ff == nullptr)
                         continue;
+
+                    // Honour the user's \keep attribute: never remove a $dff
+                    // that the designer (or upstream pass) has explicitly
+                    // marked. Mirrors v1 ql_dsp.pmg in_dffe semantics: check
+                    // both the cell attribute and the Q-side wire chunks.
+                    if (ff->has_keep_attr())
+                        continue;
+                    {
+                        bool keep_hit = false;
+                        RTLIL::SigSpec ff_q_raw = ff->getPort(ID(Q));
+                        for (auto chunk : ff_q_raw.chunks()) {
+                            if (chunk.wire && chunk.wire->get_bool_attribute(ID(keep))) {
+                                keep_hit = true;
+                                break;
+                            }
+                        }
+                        if (keep_hit)
+                            continue;
+                    }
+
+                    // Reject if the Q wire carries a non-zero/non-undef \init
+                    // attribute. The $dff is removed entirely on absorption,
+                    // so an init value would be silently dropped.
+                    {
+                        bool init_ok = true;
+                        RTLIL::SigSpec ff_q_raw = ff->getPort(ID(Q));
+                        for (auto chunk : ff_q_raw.chunks()) {
+                            if (chunk.wire == nullptr)
+                                continue;
+                            auto ait = chunk.wire->attributes.find(ID(init));
+                            if (ait == chunk.wire->attributes.end())
+                                continue;
+                            const RTLIL::Const &init = ait->second;
+                            if (!init.is_fully_undef() && !init.is_fully_zero()) {
+                                init_ok = false;
+                                break;
+                            }
+                        }
+                        if (!init_ok)
+                            continue;
+                    }
 
                     // Verify clock identity and that the FF is plain $dff.
                     if (!ff->getParam(ID(CLK_POLARITY)).as_bool())
