@@ -146,6 +146,15 @@ struct QlDspPass : public Pass {
         log("input will be folded into the DSP. In this scenario only, resetting the\n");
         log("the accumulator to an arbitrary value can be inferred to use the {C,D} input.\n");
         log("\n");
+        log("    -dspv2\n");
+        log("        Operate on dspv2_*_cfg_ports cells (Aurora2 DSPv2 wrappers) instead\n");
+        log("        of the legacy QL_DSP cell. Absorbs simple synchronous $dff input\n");
+        log("        pipelines on a_i/b_i/c_i into the cell's A_REG/B_REG/C_REG cfg-\n");
+        log("        parameters. Cascade folding (z_cout/z_cin) is intentionally NOT\n");
+        log("        performed yet -- it is deferred to a follow-up commit per the\n");
+        log("        DSP_V2_FLOW design-doc rollout. The legacy QL_DSP pmgen-driven path\n");
+        log("        is unchanged when this option is omitted.\n");
+        log("\n");
     }
 
     bool replace_existing_pass() const override
@@ -153,15 +162,196 @@ struct QlDspPass : public Pass {
         return true;
     }
 
+    // ------------------------------------------------------------------
+    // -dspv2 mode: absorb $dff input pipelines into the dspv2 wrapper's
+    // A_REG / B_REG / C_REG cfg-parameters.
+    //
+    // A $dff is eligible if:
+    //   - it drives the entire dspv2 cell port (a_i, b_i, or c_i);
+    //   - its CLK signal is identical to the dspv2 cell's clock_i;
+    //   - it has no async reset and no enable (plain $dff);
+    //   - every bit of its Q has exactly one user (this cell port);
+    //   - the corresponding cell parameter is currently 0 (no double-absorb).
+    //
+    // On absorption, the cell port is rewired to the $dff's D and the
+    // matching cfg-parameter is set to 1. The $dff is removed.
+    void run_dspv2(RTLIL::Design *design)
+    {
+        const std::vector<std::string> v2_types = {"dspv2_16x9x32_cfg_ports", "dspv2_32x18x64_cfg_ports"};
+        // Cell input port -> cfg-parameter to set when the pipeline is absorbed.
+        const std::vector<std::pair<std::string, std::string>> port_to_param = {
+          std::make_pair("a_i", "A_REG"),
+          std::make_pair("b_i", "B_REG"),
+          std::make_pair("c_i", "C_REG"),
+        };
+
+        for (auto module : design->selected_modules()) {
+            SigMap sigmap(module);
+
+            // For deciding whether a SigBit is consumed by exactly one user,
+            // count fan-out per bit (cell ports only -- module ports excluded
+            // intentionally: a SigBit that escapes the module cannot be
+            // absorbed safely).
+            dict<RTLIL::SigBit, int> bit_users;
+            for (auto cell : module->cells()) {
+                for (auto &conn : cell->connections()) {
+                    if (cell->input(conn.first)) {
+                        for (auto bit : sigmap(conn.second).bits()) {
+                            if (bit.wire != nullptr)
+                                bit_users[bit] += 1;
+                        }
+                    }
+                }
+            }
+
+            std::vector<RTLIL::Cell *> ffs_to_remove;
+
+            for (auto cell : module->selected_cells()) {
+                if (std::find(v2_types.begin(), v2_types.end(), cell->type.str().substr(1)) == v2_types.end()) {
+                    continue;
+                }
+                if (cell->has_keep_attr()) {
+                    continue;
+                }
+                if (!cell->hasPort(RTLIL::escape_id("clock_i"))) {
+                    continue;
+                }
+                RTLIL::SigSpec cell_clk = sigmap(cell->getPort(RTLIL::escape_id("clock_i")));
+                if (cell_clk.size() != 1) {
+                    continue;
+                }
+                RTLIL::SigBit cell_clk_bit = cell_clk[0];
+
+                for (const auto &pp : port_to_param) {
+                    auto port = RTLIL::escape_id(pp.first);
+                    auto param = RTLIL::escape_id(pp.second);
+
+                    if (!cell->hasPort(port))
+                        continue;
+                    if (cell->hasParam(param) && cell->getParam(param).as_bool())
+                        continue; // already absorbed once
+
+                    RTLIL::SigSpec port_sig = cell->getPort(port);
+                    if (port_sig.empty())
+                        continue;
+
+                    auto port_bits = sigmap(port_sig).bits();
+
+                    // Every bit must come from a $dff Q port of the same FF
+                    // cell, on the same clock as the dspv2 cell, with no
+                    // async-reset / no-enable, and that single FF cell must
+                    // be the unique consumer of all those Q bits.
+                    RTLIL::Cell *ff = nullptr;
+                    bool eligible = true;
+
+                    for (auto bit : port_bits) {
+                        if (bit.wire == nullptr) {
+                            eligible = false;
+                            break;
+                        }
+                        // A bit that escapes the module via an output port
+                        // is not safely absorbable -- another module observes
+                        // the registered value.
+                        if (bit.wire->port_output) {
+                            eligible = false;
+                            break;
+                        }
+                        // Find the cell whose output produces this bit.
+                        RTLIL::Cell *driver = nullptr;
+                        RTLIL::IdString driver_port;
+                        for (auto c : module->cells()) {
+                            for (auto &conn : c->connections()) {
+                                if (!c->output(conn.first))
+                                    continue;
+                                for (auto b : sigmap(conn.second).bits()) {
+                                    if (b == bit) {
+                                        driver = c;
+                                        driver_port = conn.first;
+                                        break;
+                                    }
+                                }
+                                if (driver)
+                                    break;
+                            }
+                            if (driver)
+                                break;
+                        }
+                        if (!driver || driver->type != ID($dff)) {
+                            eligible = false;
+                            break;
+                        }
+                        if (driver_port != ID(Q)) {
+                            eligible = false;
+                            break;
+                        }
+                        if (ff == nullptr)
+                            ff = driver;
+                        else if (ff != driver) {
+                            eligible = false;
+                            break;
+                        }
+                        if (bit_users[bit] != 1) {
+                            eligible = false;
+                            break;
+                        }
+                    }
+
+                    if (!eligible || ff == nullptr)
+                        continue;
+
+                    // Verify clock identity and that the FF is plain $dff.
+                    if (!ff->getParam(ID(CLK_POLARITY)).as_bool())
+                        continue;
+                    RTLIL::SigSpec ff_clk = sigmap(ff->getPort(ID(CLK)));
+                    if (ff_clk.size() != 1 || ff_clk[0] != cell_clk_bit)
+                        continue;
+
+                    // The FF's Q must be exactly the cell's port spec
+                    // (modulo the SigMap canonicalisation used above).
+                    RTLIL::SigSpec ff_q = sigmap(ff->getPort(ID(Q)));
+                    if (ff_q.size() != port_sig.size())
+                        continue;
+                    if (ff_q != sigmap(port_sig))
+                        continue;
+
+                    // Absorb: rewire port to D, set cfg-param, drop FF.
+                    log("Absorbing $dff %s into %s.%s on cell %s\n",
+                        log_id(ff), log_id(cell->type), pp.first.c_str(), log_id(cell));
+                    cell->setPort(port, ff->getPort(ID(D)));
+                    cell->setParam(param, RTLIL::Const(1, 1));
+                    ffs_to_remove.push_back(ff);
+                }
+            }
+
+            // De-duplicate (an FF could only be matched once given the fan-out
+            // constraint above, but keep the std::sort / unique idiom for safety).
+            std::sort(ffs_to_remove.begin(), ffs_to_remove.end());
+            ffs_to_remove.erase(std::unique(ffs_to_remove.begin(), ffs_to_remove.end()), ffs_to_remove.end());
+            for (auto ff : ffs_to_remove) {
+                module->remove(ff);
+            }
+        }
+    }
+
     void execute(std::vector<std::string> args, RTLIL::Design *design) override
     {
         log_header(design, "Executing ql_DSP pass (map multipliers).\n");
 
+        bool dspv2 = false;
         size_t argidx;
         for (argidx = 1; argidx < args.size(); argidx++) {
+            if (args[argidx] == "-dspv2") {
+                dspv2 = true;
+                continue;
+            }
             break;
         }
         extra_args(args, argidx, design);
+
+        if (dspv2) {
+            run_dspv2(design);
+            return;
+        }
 
         for (auto module : design->selected_modules())
             ql_dsp_pm(module, module->selected_cells()).run_ql_dsp(create_ql_dsp);
