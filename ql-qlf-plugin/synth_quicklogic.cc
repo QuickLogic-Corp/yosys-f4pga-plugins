@@ -540,10 +540,9 @@ struct SynthQuickLogicPass : public ScriptPass {
                         // `dspv2_16x9x32_cfg_ports` so ql_dsp_simd -dspv2 can
                         // later pack two halves into the 32x18 fractured cell.
                         //
-                        // TODO(dspv2 phase-3..4): insert
-                        //   ql_dsp              (phase 4, post-adder cascade)
-                        //   ql_dsp_simd -dspv2  (phase 3, fractured 32x18 pack)
-                        // between ql_dsp_macc and dspv2_final_map.v.
+                        // TODO(dspv2 phase-4): insert
+                        //   ql_dsp              (post-adder cascade)
+                        // between ql_dsp_simd and dspv2_final_map.v.
                         run("wreduce t:$mul");
                         run("ql_dsp_macc -dspv2");
                         run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dspv2_map.v "
@@ -558,6 +557,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                             "-D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4 "
                             "-D DSP_NAME=$__MUL16X9");
                         run("chtype -set $mul t:$__soft_mul");
+                        run("ql_dsp_simd -dspv2");
                         run("techmap -map " + lib_path + family + "/dspv2_final_map.v");
                         run("ql_dspv2_types");
                     } else {
