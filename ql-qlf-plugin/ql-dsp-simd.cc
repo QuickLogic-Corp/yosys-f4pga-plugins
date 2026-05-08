@@ -36,11 +36,17 @@ struct QlDspSimdPass : public Pass {
     void help() override
     {
         log("\n");
-        log("    ql_dsp_simd [selection]\n");
+        log("    ql_dsp_simd [options] [selection]\n");
         log("\n");
         log("    This pass identifies k6n10f DSP cells with identical configuration\n");
         log("    and packs pairs of them together into other DSP cells that can\n");
         log("    perform SIMD operation.\n");
+        log("\n");
+        log("    -dspv2\n");
+        log("        Pack pairs of dspv2_16x9x32_cfg_ports cells into a single\n");
+        log("        dspv2_32x18x64_cfg_ports cell with FRAC_MODE=1 (fractured 2x 16x9).\n");
+        log("        Source cells must agree on every config port and config parameter\n");
+        log("        except COEFF_0 (which is concatenated low|high into the target).\n");
     }
 
     bool replace_existing_pass() const override
@@ -59,6 +65,11 @@ struct QlDspSimdPass : public Pass {
         // Whether DSPs pass configuration bits through ports of parameters
         bool use_cfg_params;
 
+        // Parameter values (used by -dspv2 mode where most controls are
+        // cfg-parameters on the wrapper). Two halves can only pack if every
+        // entry here matches between them.
+        dict<RTLIL::IdString, RTLIL::Const> params;
+
         // TODO: Possibly include parameters here. For now we have just
         // connections.
 
@@ -70,13 +81,14 @@ struct QlDspSimdPass : public Pass {
         #if defined YS_HASHING_VERSION && YS_HASHING_VERSION == 1
                 Hasher hash_into(Hasher h) const {
                 h.eat(connections);
+                h.eat(params);
                 return h;
                 }
         #else
             #error "This version of Yosys uses an unsupported hashing interface"
         #endif
 
-        bool operator==(const DspConfig &ref) const { return connections == ref.connections && use_cfg_params == ref.use_cfg_params; }
+        bool operator==(const DspConfig &ref) const { return connections == ref.connections && use_cfg_params == ref.use_cfg_params && params == ref.params; }
     };
 
     // ..........................................
@@ -118,6 +130,40 @@ struct QlDspSimdPass : public Pass {
     const std::string m_SimdDspType_cfg_ports = "QL_DSP2";
     const std::string m_SimdDspType_cfg_params = "QL_DSP3";
 
+    // ---- DSPv2 SIMD configuration ----
+    // v2 source / target cell types.
+    const std::string m_Dspv2SisdType = "dspv2_16x9x32_cfg_ports";
+    const std::string m_Dspv2SimdType = "dspv2_32x18x64_cfg_ports";
+
+    // v2 control ports that must agree between two halves to be packable.
+    // Same name on source and target wrapper.
+    const std::vector<std::pair<std::string, std::string>> m_Dspv2CfgPorts = {
+      std::make_pair("clock_i", "clock_i"),       std::make_pair("reset_i", "reset_i"),
+      std::make_pair("acc_reset_i", "acc_reset_i"), std::make_pair("feedback_i", "feedback_i"),
+      std::make_pair("load_acc_i", "load_acc_i"), std::make_pair("output_select_i", "output_select_i"),
+    };
+
+    // v2 data ports. The target widths are 2x the source widths; halves are
+    // concatenated low|high (dsp_a is the low half, dsp_b the high half).
+    const std::vector<std::pair<std::string, std::string>> m_Dspv2DataPorts = {
+      std::make_pair("a_i", "a_i"),         std::make_pair("b_i", "b_i"),         std::make_pair("c_i", "c_i"),
+      std::make_pair("z_o", "z_o"),         std::make_pair("a_cin_i", "a_cin_i"), std::make_pair("b_cin_i", "b_cin_i"),
+      std::make_pair("z_cin_i", "z_cin_i"), std::make_pair("a_cout_o", "a_cout_o"), std::make_pair("b_cout_o", "b_cout_o"),
+      std::make_pair("z_cout_o", "z_cout_o"),
+    };
+
+    // v2 cfg-parameters that must match between the two halves. FRAC_MODE
+    // and COEFF_0 are excluded: FRAC_MODE is forced to 1 on the target;
+    // COEFF_0 is concatenated low|high.
+    const std::vector<std::string> m_Dspv2CfgParams = {
+      "ACC_FIR",   "ROUND",   "ZC_SHIFT", "ZREG_SHIFT", "SHIFT_REG", "SATURATE", "SUBTRACT", "PRE_ADD",
+      "A_SEL",     "A_REG",   "A1_REG",   "A2_REG",     "B_SEL",     "B_REG",    "B1_REG",   "B2_REG",
+      "C_REG",     "BC_REG",  "M_REG",    "ZCIN_REG",   "ACOUT_SEL", "BCOUT_SEL",
+    };
+
+    // Run-time mode flag (set from -dspv2 command-line argument).
+    bool m_dspv2 = false;
+
     /// Temporary SigBit to SigBit helper map.
     SigMap m_SigMap;
 
@@ -128,7 +174,21 @@ struct QlDspSimdPass : public Pass {
         log_header(a_Design, "Executing QL_DSP_SIMD pass.\n");
 
         // Parse args
-        extra_args(a_Args, 1, a_Design);
+        m_dspv2 = false;
+        size_t argidx;
+        for (argidx = 1; argidx < a_Args.size(); argidx++) {
+            if (a_Args[argidx] == "-dspv2") {
+                m_dspv2 = true;
+                continue;
+            }
+            break;
+        }
+        extra_args(a_Args, argidx, a_Design);
+
+        if (m_dspv2) {
+            executeDspv2(a_Design);
+            return;
+        }
 
         // Process modules
         for (auto module : a_Design->selected_modules()) {
@@ -364,6 +424,181 @@ struct QlDspSimdPass : public Pass {
         }
 
         return config;
+    }
+
+    // ..........................................
+    // -------- DSPv2 SIMD path ---------------------------------------------
+    //
+    // Pairs of dspv2_16x9x32_cfg_ports cells with identical control ports
+    // and identical cfg-parameters (excluding COEFF_0 / FRAC_MODE) are packed
+    // into a single dspv2_32x18x64_cfg_ports cell with FRAC_MODE forced to 1.
+    // Data ports are concatenated low|high (dsp_a is the low half).
+
+    /// Build a v2 DspConfig: control-port connections + cfg-parameters that
+    /// must agree between two halves to be packable.
+    DspConfig getDspv2Config(RTLIL::Cell *a_Cell)
+    {
+        DspConfig config;
+        config.use_cfg_params = false;
+
+        for (const auto &it : m_Dspv2CfgPorts) {
+            auto port = RTLIL::escape_id(it.first);
+
+            if (!a_Cell->hasPort(port)) {
+                config.connections[port] = RTLIL::SigSpec(RTLIL::Sx);
+                continue;
+            }
+
+            const auto &orgSigSpec = a_Cell->getPort(port);
+            const auto &orgSigBits = orgSigSpec.bits();
+
+            RTLIL::SigSpec newSigSpec;
+            for (size_t i = 0; i < orgSigBits.size(); ++i) {
+                newSigSpec.append(m_SigMap(orgSigBits[i]));
+            }
+            config.connections[port] = newSigSpec;
+        }
+
+        for (const auto &name : m_Dspv2CfgParams) {
+            auto pname = RTLIL::escape_id(name);
+            if (a_Cell->hasParam(pname)) {
+                config.params[pname] = a_Cell->getParam(pname);
+            }
+        }
+
+        return config;
+    }
+
+    void executeDspv2(RTLIL::Design *a_Design)
+    {
+        for (auto module : a_Design->selected_modules()) {
+
+            m_SigMap.clear();
+            m_SigMap.set(module);
+
+            // Group dspv2_16x9x32_cfg_ports cells by their control-port +
+            // cfg-param signature.
+            dict<DspConfig, std::vector<RTLIL::Cell *>> groups;
+            for (auto cell : module->selected_cells()) {
+
+                if (cell->type != RTLIL::escape_id(m_Dspv2SisdType)) {
+                    continue;
+                }
+                if (cell->has_keep_attr()) {
+                    continue;
+                }
+
+                const auto key = getDspv2Config(cell);
+                groups[key].push_back(cell);
+            }
+
+            std::vector<const RTLIL::Cell *> cellsToRemove;
+
+            for (const auto &it : groups) {
+                const auto &group = it.second;
+                const auto &config = it.first;
+
+                size_t count = group.size();
+                if (count & 1)
+                    count--; // pairs only
+
+                for (size_t i = 0; i < count; i += 2) {
+                    const RTLIL::Cell *dsp_a = group[i];     // low half
+                    const RTLIL::Cell *dsp_b = group[i + 1]; // high half
+
+                    std::string name = stringf("simdv2_%ld", i / 2);
+
+                    log(" SIMD(v2): %s + %s => %s (%s)\n", RTLIL::unescape_id(dsp_a->name).c_str(),
+                        RTLIL::unescape_id(dsp_b->name).c_str(), name.c_str(), m_Dspv2SimdType.c_str());
+
+                    RTLIL::Cell *simd = module->addCell(RTLIL::escape_id(name), RTLIL::escape_id(m_Dspv2SimdType));
+                    if (!simd->known()) {
+                        log_error(" The target cell type '%s' is not known!", m_Dspv2SimdType.c_str());
+                    }
+
+                    // Connect common control ports (1:1 from the matched config).
+                    for (const auto &it : m_Dspv2CfgPorts) {
+                        auto sport = RTLIL::escape_id(it.first);
+                        auto dport = RTLIL::escape_id(it.second);
+                        simd->setPort(dport, config.connections.at(sport));
+                    }
+
+                    // Concatenate data ports low|high. Target widths are 2x
+                    // source widths; if a source port is missing or narrower,
+                    // pad inputs with Sx and outputs with new wires.
+                    for (const auto &it : m_Dspv2DataPorts) {
+                        auto sport = RTLIL::escape_id(it.first);
+                        auto dport = RTLIL::escape_id(it.second);
+
+                        size_t width;
+                        bool isOutput;
+                        std::tie(width, isOutput) = getPortInfo(simd, dport);
+
+                        auto getConnection = [&](const RTLIL::Cell *cell) {
+                            RTLIL::SigSpec sigspec;
+                            if (cell->hasPort(sport)) {
+                                sigspec.append(cell->getPort(sport));
+                            }
+                            if (sigspec.bits().size() < width / 2) {
+                                if (isOutput) {
+                                    for (size_t i = 0; i < width / 2 - sigspec.bits().size(); ++i) {
+                                        sigspec.append(RTLIL::SigSpec());
+                                    }
+                                } else {
+                                    sigspec.append(RTLIL::SigSpec(RTLIL::Sx, width / 2 - sigspec.bits().size()));
+                                }
+                            }
+                            return sigspec;
+                        };
+
+                        RTLIL::SigSpec sigspec;
+                        sigspec.append(getConnection(dsp_a));
+                        sigspec.append(getConnection(dsp_b));
+                        simd->setPort(dport, sigspec);
+                    }
+
+                    // Copy matched cfg-parameters from dsp_a (==dsp_b by
+                    // construction).
+                    for (const auto &name : m_Dspv2CfgParams) {
+                        auto pname = RTLIL::escape_id(name);
+                        if (dsp_a->hasParam(pname)) {
+                            simd->setParam(pname, dsp_a->getParam(pname));
+                        }
+                    }
+
+                    // COEFF_0: concatenate low|high. Source is 16 bits, target
+                    // is 32 bits. Pad with zeros if a half is missing.
+                    auto coeff_id = RTLIL::escape_id("COEFF_0");
+                    RTLIL::Const coeff_a = dsp_a->hasParam(coeff_id) ? dsp_a->getParam(coeff_id) : RTLIL::Const(0, 16);
+                    RTLIL::Const coeff_b = dsp_b->hasParam(coeff_id) ? dsp_b->getParam(coeff_id) : RTLIL::Const(0, 16);
+                    std::vector<RTLIL::State> coeff_bits;
+                    coeff_bits.insert(coeff_bits.end(), coeff_a.begin(), coeff_a.end());
+                    coeff_bits.insert(coeff_bits.end(), coeff_b.begin(), coeff_b.end());
+                    simd->setParam(coeff_id, RTLIL::Const(coeff_bits));
+
+                    // Force fractured mode on the target.
+                    simd->setParam(RTLIL::escape_id("FRAC_MODE"), RTLIL::Const(1, 1));
+
+                    // Propagate is_inferred only if BOTH halves were inferred.
+                    bool is_inferred_a = dsp_a->has_attribute(RTLIL::escape_id("is_inferred"))
+                                           ? dsp_a->get_bool_attribute(RTLIL::escape_id("is_inferred"))
+                                           : false;
+                    bool is_inferred_b = dsp_b->has_attribute(RTLIL::escape_id("is_inferred"))
+                                           ? dsp_b->get_bool_attribute(RTLIL::escape_id("is_inferred"))
+                                           : false;
+                    simd->set_bool_attribute(RTLIL::escape_id("is_inferred"), is_inferred_a && is_inferred_b);
+
+                    cellsToRemove.push_back(dsp_a);
+                    cellsToRemove.push_back(dsp_b);
+                }
+            }
+
+            for (const auto &cell : cellsToRemove) {
+                module->remove(const_cast<RTLIL::Cell *>(cell));
+            }
+        }
+
+        m_SigMap.clear();
     }
 
 } QlDspSimdPass;
