@@ -528,21 +528,27 @@ struct SynthQuickLogicPass : public ScriptPass {
 
                     if (dspv2 && !synplify) {
                         // Yosys-driven DSPv2 inference flow.
-                        // Lowers $mul cells through `dspv2_map.v` into the
-                        // `dspv2_*_cfg_ports` wrappers, then `dspv2_final_map.v`
-                        // collapses the wrappers into hard `QL_DSPV2` cells with
-                        // the 80-bit MODE_BITS. `ql_dspv2_types` finally rewrites
-                        // each `QL_DSPV2` to its specialised variant
-                        // (QL_DSPV2_MULT[ADD|ACC][_REGIN][_REGOUT]).
                         //
-                        // Phase 2 adds `ql_dsp_macc -dspv2` ahead of mul2dsp:
-                        // MAC patterns are inferred directly into
-                        // `dspv2_16x9x32_cfg_ports` so ql_dsp_simd -dspv2 can
-                        // later pack two halves into the 32x18 fractured cell.
+                        //   wreduce t:$mul       trim each $mul to its useful width
+                        //   ql_dsp_macc -dspv2   infer MAC patterns into
+                        //                        dspv2_16x9x32_cfg_ports (Phase 2)
+                        //   techmap mul2dsp x2   lower remaining $mul into
+                        //                        dspv2_{32x18,16x9}_cfg_ports (Phase 1)
+                        //   ql_dsp_simd -dspv2   pack two 16x9 halves into one
+                        //                        32x18x64 fractured cell (Phase 3)
+                        //   ql_dsp -dspv2        absorb input $dff pipelines into
+                        //                        the wrapper's A_REG/B_REG/C_REG
+                        //                        cfg-parameters (Phase 4)
+                        //   techmap dspv2_final  collapse wrappers into hard
+                        //                        QL_DSPV2 with 80-bit MODE_BITS
+                        //   ql_dspv2_types       rewrite each QL_DSPV2 to its
+                        //                        specialised variant
+                        //                        (QL_DSPV2_MULT[ADD|ACC][_REGIN][_REGOUT])
                         //
-                        // TODO(dspv2 phase-4): insert
-                        //   ql_dsp              (post-adder cascade)
-                        // between ql_dsp_simd and dspv2_final_map.v.
+                        // Cascade folding (z_cout/z_cin chains) and A/B-cascade
+                        // are intentionally left to a follow-up commit; see
+                        // docs/development/DSP_V2_FLOW_DEVIATIONS.md sections
+                        // 6.2 and 9 for the deferral.
                         run("wreduce t:$mul");
                         run("ql_dsp_macc -dspv2");
                         run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dspv2_map.v "
@@ -558,6 +564,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                             "-D DSP_NAME=$__MUL16X9");
                         run("chtype -set $mul t:$__soft_mul");
                         run("ql_dsp_simd -dspv2");
+                        run("ql_dsp -dspv2");
                         run("techmap -map " + lib_path + family + "/dspv2_final_map.v");
                         run("ql_dspv2_types");
                     } else {
