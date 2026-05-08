@@ -1,0 +1,33 @@
+# Phase 3 smoke for ql_dsp_simd -dspv2.
+#
+# REQUIRES a yosys built against the updated ql-qlf plugin source — the
+# aurora2 yosys binary statically embeds older `ql_dsp_macc` and
+# `ql_dsp_simd` (without `-dspv2`), so `plugin -i ql-qlf` is rejected
+# with a name collision and this test cannot run against it. Re-enable
+# in CI once aurora2 rebuilds yosys after the Phase-5 plugin PR merges.
+#
+# Acceptance after `ql_dsp_simd -dspv2`:
+# - 0 dspv2_16x9x32_cfg_ports cells (both halves consumed).
+# - 1 dspv2_32x18x64_cfg_ports cell with the is_inferred attribute.
+
+read_verilog tests/qlf_k6n10f/dspv2/dspv2_phase3_simd_smoke.v
+read_verilog -lib +/quicklogic/qlf_k6n10f/dspv2_sim.v
+hierarchy -top top
+proc
+flatten
+opt_expr
+opt_clean
+opt -nodffe -nosdff
+fsm
+opt
+wreduce
+peepopt
+opt_clean
+share
+ql_dsp_macc -dspv2
+stat
+ql_dsp_simd -dspv2
+stat
+select -assert-count 0 t:dspv2_16x9x32_cfg_ports
+select -assert-count 1 t:dspv2_32x18x64_cfg_ports
+select -assert-count 1 t:dspv2_32x18x64_cfg_ports a:is_inferred
