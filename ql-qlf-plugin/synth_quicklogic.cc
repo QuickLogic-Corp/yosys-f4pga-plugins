@@ -527,7 +527,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 } else if (!nodsp) {
 
                     if (dspv2 && !synplify) {
-                        // Yosys-driven DSPv2 inference flow (Phase 1: plumbing only).
+                        // Yosys-driven DSPv2 inference flow.
                         // Lowers $mul cells through `dspv2_map.v` into the
                         // `dspv2_*_cfg_ports` wrappers, then `dspv2_final_map.v`
                         // collapses the wrappers into hard `QL_DSPV2` cells with
@@ -535,12 +535,17 @@ struct SynthQuickLogicPass : public ScriptPass {
                         // each `QL_DSPV2` to its specialised variant
                         // (QL_DSPV2_MULT[ADD|ACC][_REGIN][_REGOUT]).
                         //
-                        // TODO(dspv2 phase-2..4): insert
-                        //   ql_dsp_macc -dspv2  (phase 2)
-                        //   ql_dsp              (phase 4)
-                        //   ql_dsp_simd -dspv2  (phase 3)
-                        // between mul2dsp and dspv2_final_map.v.
+                        // Phase 2 adds `ql_dsp_macc -dspv2` ahead of mul2dsp:
+                        // MAC patterns are inferred directly into
+                        // `dspv2_16x9x32_cfg_ports` so ql_dsp_simd -dspv2 can
+                        // later pack two halves into the 32x18 fractured cell.
+                        //
+                        // TODO(dspv2 phase-3..4): insert
+                        //   ql_dsp              (phase 4, post-adder cascade)
+                        //   ql_dsp_simd -dspv2  (phase 3, fractured 32x18 pack)
+                        // between ql_dsp_macc and dspv2_final_map.v.
                         run("wreduce t:$mul");
+                        run("ql_dsp_macc -dspv2");
                         run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dspv2_map.v "
                             "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
                             "-D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 "
