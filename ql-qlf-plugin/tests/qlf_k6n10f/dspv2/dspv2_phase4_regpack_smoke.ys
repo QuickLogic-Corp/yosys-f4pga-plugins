@@ -1,0 +1,26 @@
+# Phase 4 smoke for ql_dsp -dspv2 input-register absorption.
+#
+# REQUIRES a yosys built against the updated ql-qlf plugin source. Like
+# the Phase 1/2/3 smokes, plugin -i ql-qlf is rejected against the
+# aurora2 yosys binary because of synth_quicklogic / ql_dsp_macc /
+# ql_dsp_simd name collisions with the embedded versions. Re-enable in
+# CI once aurora2 rebuilds yosys after the Phase-5 plugin PR merges.
+#
+# Acceptance:
+#   - 0 $dff cells (the input-side $dff has been absorbed)
+#   - 1 dspv2_16x9x32_cfg_ports cell with parameter A_REG = 1
+#
+# Note: the wrapper is instantiated directly from RTL, so this script
+# does not exercise ql_dsp_macc / ql_dsp_simd; only ql_dsp -dspv2.
+
+read_verilog tests/qlf_k6n10f/dspv2/dspv2_phase4_regpack_smoke.v
+read_verilog -lib +/quicklogic/qlf_k6n10f/dspv2_sim.v
+hierarchy -top top
+proc
+flatten
+opt_clean
+ql_dsp -dspv2
+stat
+select -assert-count 0 t:$dff
+select -assert-count 1 t:dspv2_16x9x32_cfg_ports
+select -assert-count 1 t:dspv2_16x9x32_cfg_ports r:A_REG=1
