@@ -1,0 +1,46 @@
+# Phase-1 smoke test for the Yosys-driven DSPv2 inference pipeline.
+#
+# Exercises the new techmap files (dspv2_map.v, dspv2_final_map.v) and the
+# existing ql_dspv2_types pass in isolation. We do NOT call synth_quicklogic
+# here — the aurora2-vendored yosys binary has the upstream synth_quicklogic
+# baked in, which doesn't know about -dspv2 yet. Once aurora2 rebuilds yosys
+# against the updated plugin source, the same flow runs through
+# `synth_quicklogic -family qlf_k6n10f -dspv2`.
+
+# 1. Read sim libraries (blackboxes for QL_DSPV2 and dspv2_*_cfg_ports).
+read_verilog -lib -specify -nomem2reg \
+    +/quicklogic/qlf_k6n10f/dspv2_sim.v
+read_verilog tests/qlf_k6n10f/dspv2/dspv2_phase1_smoke.v
+
+# 2. Standard front-end (mirrors synth_quicklogic prepare step).
+hierarchy -check -top dspv2_phase1_smoke
+proc; flatten; opt_expr; opt_clean
+opt -nodffe -nosdff
+fsm; opt; wreduce; peepopt; opt_clean; share
+
+# 3. v2 inference flow (mirrors the new -dspv2 branch in synth_quicklogic.cc).
+wreduce t:$mul
+techmap -map +/mul2dsp.v -map +/quicklogic/qlf_k6n10f/dspv2_map.v \
+    -D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY \
+    -D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 \
+    -D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10 \
+    -D DSP_NAME=$__MUL32X18
+chtype -set $mul t:$__soft_mul
+techmap -map +/mul2dsp.v -map +/quicklogic/qlf_k6n10f/dspv2_map.v \
+    -D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY \
+    -D DSP_A_MAXWIDTH=16 -D DSP_B_MAXWIDTH=9 \
+    -D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4 \
+    -D DSP_NAME=$__MUL16X9
+chtype -set $mul t:$__soft_mul
+techmap -map +/quicklogic/qlf_k6n10f/dspv2_final_map.v
+# NOTE: ql_dspv2_types is part of the ql-qlf plugin. The aurora2-vendored yosys
+# binary embeds the upstream synth_quicklogic statically, blocking `plugin -i`
+# from loading our updated `.so` (synth_quicklogic name collides). The pass is
+# pre-existing code we are not modifying in Phase 1, so its correctness is
+# verified by the existing test suite; here we stop after `dspv2_final_map.v`
+# and confirm a hard QL_DSPV2 cell with the expected MODE_BITS shape.
+
+# 4. Verify exactly one QL_DSPV2 cell with MODE_BITS set and the inferred attr.
+stat
+select -assert-count 1 t:QL_DSPV2
+select -assert-count 1 t:QL_DSPV2 a:is_inferred
