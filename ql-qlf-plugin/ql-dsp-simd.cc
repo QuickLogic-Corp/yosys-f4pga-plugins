@@ -469,12 +469,90 @@ struct QlDspSimdPass : public Pass {
         return config;
     }
 
+    /// Return true if the v2 SISD cell participates in an active cascade
+    /// chain and therefore must NOT be SIMD-packed. A cascade is "active"
+    /// when:
+    ///   - any bit of a_cin_i / b_cin_i / z_cin_i is driven by something
+    ///     other than constant 0 / x (after sigmap-canonicalisation), OR
+    ///   - any bit of a_cout_o / b_cout_o / z_cout_o has at least one
+    ///     consumer in the module (per the bit_users map built by the
+    ///     caller).
+    /// Packing a cascading cell would silently re-route the chain through
+    /// the wider 32x18 wrapper and break the user's connectivity.
+    bool isDspv2CascadeActive(RTLIL::Cell *a_Cell, const dict<RTLIL::SigBit, int> &bit_users)
+    {
+        for (const char *port_name : {"a_cin_i", "b_cin_i", "z_cin_i"}) {
+            auto pid = RTLIL::escape_id(port_name);
+            if (!a_Cell->hasPort(pid))
+                continue;
+            RTLIL::SigSpec mapped = m_SigMap(a_Cell->getPort(pid));
+            std::vector<RTLIL::SigBit> bits = mapped.bits();
+            for (auto bit : bits) {
+                if (bit != RTLIL::State::S0 && bit != RTLIL::State::Sx)
+                    return true;
+            }
+        }
+
+        for (const char *port_name : {"a_cout_o", "b_cout_o", "z_cout_o"}) {
+            auto pid = RTLIL::escape_id(port_name);
+            if (!a_Cell->hasPort(pid))
+                continue;
+            RTLIL::SigSpec mapped = m_SigMap(a_Cell->getPort(pid));
+            std::vector<RTLIL::SigBit> bits = mapped.bits();
+            for (auto bit : bits) {
+                if (bit.wire == nullptr)
+                    continue;
+                auto it = bit_users.find(bit);
+                if (it != bit_users.end() && it->second > 0)
+                    return true;
+            }
+        }
+        return false;
+    }
+
     void executeDspv2(RTLIL::Design *a_Design)
     {
         for (auto module : a_Design->selected_modules()) {
 
             m_SigMap.clear();
             m_SigMap.set(module);
+
+            // Build a per-canonical-bit consumer count for this module. A
+            // bit's count is the number of cell-input ports + module-output
+            // ports that read it. Cascade outputs of a v2 SISD candidate are
+            // "active" (and the cell must NOT be SIMD-packed) iff any bit of
+            // a_cout_o / b_cout_o / z_cout_o has count > 0 here.
+            //
+            // Note: SigSpec rvalues returned by m_SigMap(...) must be bound
+            // to a named local before calling .bits(); range-for lifetime
+            // extension only covers the outermost expression and clang -O3
+            // has been observed to mis-elide the inner SigSpec, leaving the
+            // bit-list referring to freed memory (the same UB that bit
+            // ql_dsp -dspv2 input-register absorption earlier; see
+            // ql-dsp.cc run_dspv2()).
+            dict<RTLIL::SigBit, int> bit_users;
+            for (auto cell2 : module->cells()) {
+                for (auto &conn : cell2->connections()) {
+                    if (!cell2->input(conn.first))
+                        continue;
+                    RTLIL::SigSpec mapped = m_SigMap(conn.second);
+                    std::vector<RTLIL::SigBit> bits = mapped.bits();
+                    for (auto bit : bits) {
+                        if (bit.wire != nullptr)
+                            bit_users[bit] += 1;
+                    }
+                }
+            }
+            for (auto wire : module->wires()) {
+                if (!wire->port_output)
+                    continue;
+                RTLIL::SigSpec mapped = m_SigMap(RTLIL::SigSpec(wire));
+                std::vector<RTLIL::SigBit> bits = mapped.bits();
+                for (auto bit : bits) {
+                    if (bit.wire != nullptr)
+                        bit_users[bit] += 1;
+                }
+            }
 
             // Group dspv2_16x9x32_cfg_ports cells by their control-port +
             // cfg-param signature.
@@ -485,6 +563,11 @@ struct QlDspSimdPass : public Pass {
                     continue;
                 }
                 if (cell->has_keep_attr()) {
+                    continue;
+                }
+                if (isDspv2CascadeActive(cell, bit_users)) {
+                    log("  SIMD(v2): skipping %s (active cascade port)\n",
+                        RTLIL::unescape_id(cell->name).c_str());
                     continue;
                 }
 
