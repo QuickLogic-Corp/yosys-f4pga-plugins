@@ -1,12 +1,20 @@
 // Smoke: input-register absorption into A_REG via ql_dsp -dspv2.
-// dspv2 wrapper with a registered `a_i` input, fed by the design's primary
-// input through a $dff. After ql_dsp -dspv2 absorption, the cell's A_REG
-// parameter must be 1 and the $dff cell must be gone.
 //
-// The verilog instantiates the wrapper directly so the test is independent
-// of upstream ql_dsp_macc / ql_dsp_simd. dspv2_sim.v supplies the wrapper
-// declaration via -lib; only the wrapper instance survives synthesis.
-module top (
+// We instantiate the dspv2_16x9x32_cfg_ports wrapper directly and feed
+// a_i through a $dff fed by a primary input. The synth_quicklogic -dspv2
+// flow's `ql_dsp -dspv2` absorption pass must roll the $dff into the
+// wrapper's A_REG, leaving zero $dff cells and producing a typed wrapper
+// with the _REGIN suffix.
+//
+// This deliberately bypasses ql_dsp_macc / ql_dsp_simd inference so the
+// W1.9 acceptance is a clean, isolated proof of just the absorption
+// stage (orthogonal to W1.7 / W1.8 which prove inference + packing).
+//
+// Module name matches the test directory name so DESIGN_TOP wiring is
+// correct. dspv2_sim.v provides the wrapper declaration; synth_quicklogic
+// reads it automatically when -dspv2 is set.
+
+module dspv2_input_reg_absorb_smoke (
     input  wire        clk,
     input  wire        rst,
     input  wire signed [15:0] a_in,

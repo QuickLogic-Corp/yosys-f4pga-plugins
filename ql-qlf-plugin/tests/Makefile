@@ -35,7 +35,8 @@ TESTS = \
 	qlf_k6n10f/dsp_macc \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/dspv2/dspv2_macc_inference_smoke \
-	qlf_k6n10f/dspv2/dspv2_simd_pack_smoke
+	qlf_k6n10f/dspv2/dspv2_simd_pack_smoke \
+	qlf_k6n10f/dspv2/dspv2_input_reg_absorb_smoke
 #	qlf_k6n10_bram \
 
 SIM_TESTS = \
@@ -94,4 +95,5 @@ qlf_k6n10f-dsp_macc_verify = true
 qlf_k6n10f-dsp_madd_verify = true
 qlf_k6n10f-dspv2-dspv2_macc_inference_smoke_verify = true
 qlf_k6n10f-dspv2-dspv2_simd_pack_smoke_verify = true
+qlf_k6n10f-dspv2-dspv2_input_reg_absorb_smoke_verify = true
 #qlf_k6n10_bram_verify = true
