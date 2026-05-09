@@ -253,10 +253,14 @@ static void create_ql_macc_dsp(ql_dsp_macc_pm &pm)
         cell->setPort(RTLIL::escape_id("a_cin_i"), RTLIL::SigSpec(RTLIL::S0, 16));
         cell->setPort(RTLIL::escape_id("b_cin_i"), RTLIL::SigSpec(RTLIL::S0, 9));
         cell->setPort(RTLIL::escape_id("z_cin_i"), RTLIL::SigSpec(RTLIL::S0, 25));
-        // 3 - output post acc; 1 - output pre acc (mirrors v1 numeric encoding;
-        // TODO(dspv2): verify output_select_i numeric encoding against
-        // QL_DSPV2 simulation model).
-        cell->setPort(RTLIL::escape_id("output_select_i"), out_ff ? RTLIL::Const(1, 3) : RTLIL::Const(3, 3));
+        // output_select_i decode in dspv2_sim.v (qlf_k6n10f/dspv2_sim.v
+        // ~L1549): {001,010,011} -> z2 (combinational MAC output, pre-flop);
+        // {100,101,110,111} -> z1 (registered MAC output, post-flop). The
+        // 010/011 and 110/111 pairs are bit-aliases; canonicalise to 010
+        // and 110. out_ff=true means the design output is taken from the
+        // FF's Q (registered MAC) -> 110; out_ff=false means it is taken
+        // from D (combinational MAC) -> 010.
+        cell->setPort(RTLIL::escape_id("output_select_i"), out_ff ? RTLIL::Const(6, 3) : RTLIL::Const(2, 3));
 
         cell->setParam(RTLIL::escape_id("FRAC_MODE"), RTLIL::Const(1, 1));
         cell->setParam(RTLIL::escape_id("SUBTRACT"), RTLIL::Const(subtract ? 1 : 0, 1));
