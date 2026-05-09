@@ -510,6 +510,24 @@ struct QlDspSimdPass : public Pass {
         return false;
     }
 
+    /// Return true if any wire connected to one of the v2 SISD cell's ports
+    /// carries a (* keep *) attribute. Such wires are explicit user requests
+    /// to preserve a named signal; SIMD-packing would rename the carrier
+    /// (data ports widen from 16/9/25 bits to 32/18/50 bits, and the source
+    /// wire is rerouted through the new wider wrapper), erasing the kept
+    /// name. Conservative: skip the cell, leave it as a SISD wrapper.
+    bool isDspv2PortWireKept(RTLIL::Cell *a_Cell)
+    {
+        for (const auto &conn : a_Cell->connections()) {
+            for (auto bit : conn.second.bits()) {
+                if (bit.wire != nullptr && bit.wire->has_attribute(RTLIL::escape_id("keep"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     void executeDspv2(RTLIL::Design *a_Design)
     {
         for (auto module : a_Design->selected_modules()) {
@@ -563,6 +581,11 @@ struct QlDspSimdPass : public Pass {
                     continue;
                 }
                 if (cell->has_keep_attr()) {
+                    continue;
+                }
+                if (isDspv2PortWireKept(cell)) {
+                    log("  SIMD(v2): skipping %s (port wire carries keep attribute)\n",
+                        RTLIL::unescape_id(cell->name).c_str());
                     continue;
                 }
                 if (isDspv2CascadeActive(cell, bit_users)) {
