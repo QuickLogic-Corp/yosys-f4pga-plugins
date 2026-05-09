@@ -1,4 +1,4 @@
-# Phase-1 smoke test for the Yosys-driven DSPv2 inference pipeline.
+# Smoke: $mul → QL_DSPV2_MULT lowering chain (Yosys-driven DSPv2 inference).
 #
 # Exercises the new techmap files (dspv2_map.v, dspv2_final_map.v) and the
 # existing ql_dspv2_types pass in isolation. We do NOT call synth_quicklogic
@@ -10,10 +10,10 @@
 # 1. Read sim libraries (blackboxes for QL_DSPV2 and dspv2_*_cfg_ports).
 read_verilog -lib -specify -nomem2reg \
     +/quicklogic/qlf_k6n10f/dspv2_sim.v
-read_verilog tests/qlf_k6n10f/dspv2/dspv2_phase1_smoke.v
+read_verilog tests/qlf_k6n10f/dspv2/dspv2_mult_lowering_smoke.v
 
 # 2. Standard front-end (mirrors synth_quicklogic prepare step).
-hierarchy -check -top dspv2_phase1_smoke
+hierarchy -check -top dspv2_mult_lowering_smoke
 proc; flatten; opt_expr; opt_clean
 opt -nodffe -nosdff
 fsm; opt; wreduce; peepopt; opt_clean; share
@@ -36,9 +36,9 @@ techmap -map +/quicklogic/qlf_k6n10f/dspv2_final_map.v
 # NOTE: ql_dspv2_types is part of the ql-qlf plugin. The aurora2-vendored yosys
 # binary embeds the upstream synth_quicklogic statically, blocking `plugin -i`
 # from loading our updated `.so` (synth_quicklogic name collides). The pass is
-# pre-existing code we are not modifying in Phase 1, so its correctness is
-# verified by the existing test suite; here we stop after `dspv2_final_map.v`
-# and confirm a hard QL_DSPV2 cell with the expected MODE_BITS shape.
+# pre-existing code unchanged by this work, so its correctness is verified by
+# the existing test suite; here we stop after `dspv2_final_map.v` and confirm
+# a hard QL_DSPV2 cell with the expected MODE_BITS shape.
 
 # 4. Verify exactly one QL_DSPV2 cell with MODE_BITS set and the inferred attr.
 stat

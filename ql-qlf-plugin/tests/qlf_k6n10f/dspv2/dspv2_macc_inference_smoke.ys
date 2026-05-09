@@ -1,15 +1,15 @@
-# Phase 2 smoke for ql_dsp_macc -dspv2.
+# Smoke: signed 16x9 multiply-accumulate inference via ql_dsp_macc -dspv2.
 #
 # REQUIRES a yosys built against the updated ql-qlf plugin source — the
 # aurora2 yosys binary statically embeds an older `ql_dsp_macc` (without
 # `-dspv2`), so `plugin -i ql-qlf` is rejected with a name collision and
 # this test cannot run against it. Re-enable in CI once aurora2 rebuilds
-# yosys after the Phase-5 plugin PR merges.
+# yosys after the upstream plugin PR merges.
 #
 # Acceptance: exactly one `dspv2_16x9x32_cfg_ports` cell carrying the
 # `is_inferred` attribute, with FRAC_MODE=1 and SUBTRACT=0 parameters.
 
-read_verilog tests/qlf_k6n10f/dspv2/dspv2_phase2_macc_smoke.v
+read_verilog tests/qlf_k6n10f/dspv2/dspv2_macc_inference_smoke.v
 read_verilog -lib +/quicklogic/qlf_k6n10f/dspv2_sim.v
 hierarchy -top top
 proc

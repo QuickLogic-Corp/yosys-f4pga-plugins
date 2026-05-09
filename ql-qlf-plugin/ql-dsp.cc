@@ -200,7 +200,7 @@ struct QlDspPass : public Pass {
             // has been observed to mis-elide the inner SigSpec, leaving the
             // bit-list referring to freed memory and the loop body silently
             // skipped. This was the actual root cause of the original
-            // Phase-4 absorption failure on the aurora2 toolchain.
+            // input-register absorption failure on the aurora2 toolchain.
             dict<RTLIL::SigBit, int> bit_users;
             for (auto cell : module->cells()) {
                 for (auto &conn : cell->connections()) {

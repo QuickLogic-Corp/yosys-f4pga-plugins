@@ -1,6 +1,6 @@
-// Phase 2 smoke: signed 16x9 multiply-accumulate.
-// `ql_dsp_macc -dspv2` should infer this as a single dspv2_16x9x32_cfg_ports
-// cell with FRAC_MODE=1 and SUBTRACT=0.
+// Smoke: signed 16x9 multiply-accumulate inference (ql_dsp_macc -dspv2).
+// Should infer this as a single dspv2_16x9x32_cfg_ports cell
+// with FRAC_MODE=1 and SUBTRACT=0.
 module top (
     input  wire                  clk,
     input  wire                  rst,

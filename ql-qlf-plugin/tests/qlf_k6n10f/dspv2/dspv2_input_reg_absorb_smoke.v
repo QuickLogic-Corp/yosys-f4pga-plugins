@@ -1,6 +1,7 @@
-// Phase 4 smoke: dspv2 wrapper with a registered `a_i` input, fed by the
-// design's primary input through a $dff. After ql_dsp -dspv2 absorption,
-// the cell's A_REG parameter must be 1 and the $dff cell must be gone.
+// Smoke: input-register absorption into A_REG via ql_dsp -dspv2.
+// dspv2 wrapper with a registered `a_i` input, fed by the design's primary
+// input through a $dff. After ql_dsp -dspv2 absorption, the cell's A_REG
+// parameter must be 1 and the $dff cell must be gone.
 //
 // The verilog instantiates the wrapper directly so the test is independent
 // of upstream ql_dsp_macc / ql_dsp_simd. dspv2_sim.v supplies the wrapper

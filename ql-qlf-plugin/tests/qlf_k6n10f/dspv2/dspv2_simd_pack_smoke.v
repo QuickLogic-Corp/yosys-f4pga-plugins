@@ -1,5 +1,6 @@
-// Phase 3 smoke: two independent signed 16x9 multiply-accumulators sharing
-// the same clock/reset/control. ql_dsp_macc -dspv2 infers each as a
+// Smoke: SIMD pair-pack of two 16x9 MACs into one fractured 32x18x64 cell.
+// Two independent signed 16x9 multiply-accumulators share the same
+// clock/reset/control. ql_dsp_macc -dspv2 infers each as a
 // dspv2_16x9x32_cfg_ports cell; ql_dsp_simd -dspv2 then packs both into a
 // single dspv2_32x18x64_cfg_ports cell with FRAC_MODE=1.
 module top (

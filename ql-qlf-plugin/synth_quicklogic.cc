@@ -528,14 +528,14 @@ struct SynthQuickLogicPass : public ScriptPass {
                         //
                         //   wreduce t:$mul       trim each $mul to its useful width
                         //   ql_dsp_macc -dspv2   infer MAC patterns into
-                        //                        dspv2_16x9x32_cfg_ports (Phase 2)
+                        //                        dspv2_16x9x32_cfg_ports
                         //   techmap mul2dsp x2   lower remaining $mul into
-                        //                        dspv2_{32x18,16x9}_cfg_ports (Phase 1)
+                        //                        dspv2_{32x18,16x9}_cfg_ports
                         //   ql_dsp_simd -dspv2   pack two 16x9 halves into one
-                        //                        32x18x64 fractured cell (Phase 3)
+                        //                        32x18x64 fractured cell
                         //   ql_dsp -dspv2        absorb input $dff pipelines into
                         //                        the wrapper's A_REG/B_REG/C_REG
-                        //                        cfg-parameters (Phase 4)
+                        //                        cfg-parameters
                         //   techmap dspv2_final  collapse wrappers into hard
                         //                        QL_DSPV2 with 80-bit MODE_BITS
                         //   ql_dspv2_types       rewrite each QL_DSPV2 to its

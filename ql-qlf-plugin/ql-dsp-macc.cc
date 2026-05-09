@@ -254,7 +254,8 @@ static void create_ql_macc_dsp(ql_dsp_macc_pm &pm)
         cell->setPort(RTLIL::escape_id("b_cin_i"), RTLIL::SigSpec(RTLIL::S0, 9));
         cell->setPort(RTLIL::escape_id("z_cin_i"), RTLIL::SigSpec(RTLIL::S0, 25));
         // 3 - output post acc; 1 - output pre acc (mirrors v1 numeric encoding;
-        // TODO(dspv2 phase-2): verify against QL_DSPV2 simulation model).
+        // TODO(dspv2): verify output_select_i numeric encoding against
+        // QL_DSPV2 simulation model).
         cell->setPort(RTLIL::escape_id("output_select_i"), out_ff ? RTLIL::Const(1, 3) : RTLIL::Const(3, 3));
 
         cell->setParam(RTLIL::escape_id("FRAC_MODE"), RTLIL::Const(1, 1));
