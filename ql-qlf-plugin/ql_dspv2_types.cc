@@ -342,7 +342,7 @@ struct QlDSPV2TypesPass : public Pass {
 				RTLIL::Const mode_bits = cell->getParam(ID(MODE_BITS));
                 
 
-                int COEFF_0    = mode_bits.extract(0, 31).as_int();
+                int COEFF_0    = mode_bits.extract(0, 32).as_int();
 				log_debug("COEFF_0: %d.\n", COEFF_0);
                 int ACC_FIR    = mode_bits.extract(32, 6).as_int();
 				log_debug("ACC_FIR: %d.\n", ACC_FIR);
@@ -532,9 +532,11 @@ struct QlDSPV2TypesPass : public Pass {
 					
 					
 
-					case 0b00001001: //MULTACC_NEG
+					case 0b00001001: //MULTACC with SUBTRACT (was MULTACC_NEG)
+						// SUBTRACT is already encoded in MODE_BITS[58]; no
+						// separate _NEG variant exists in dspv2_sim.v.
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC_NEG"),
+												  RTLIL::escape_id("QL_DSPV2_MULTACC"),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
@@ -626,6 +628,35 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 
+				}
+
+				// Pad narrow port connections to full QL_DSPV2 widths so the
+				// subsequent hierarchy pass does not emit resize warnings
+				// (the 16x9 fractured wrapper has narrower ports than the
+				// primitive).  This runs AFTER dffre externalization, so the
+				// register cell count is not affected.
+				struct PortPad { RTLIL::IdString name; int width; bool is_output; };
+				const PortPad port_pads[] = {
+					{ID(a),   32, false}, {ID(b),   18, false}, {ID(c),   18, false},
+					{ID(z),   50, true },
+				};
+				for (auto &pp : port_pads) {
+					if (!cell->hasPort(pp.name))
+						continue;
+					SigSpec sig = cell->getPort(pp.name);
+					int cur = GetSize(sig);
+					if (cur >= pp.width)
+						continue;
+					if (pp.is_output) {
+						Wire *pad = module->addWire(
+							module->uniquify(stringf("\\%s_%s_pad",
+								log_id(cell), log_id(pp.name))),
+							pp.width - cur);
+						sig.append(SigSpec(pad));
+					} else {
+						sig.extend_u0(pp.width, false);
+					}
+					cell->setPort(pp.name, sig);
 				}
 			}
 		}

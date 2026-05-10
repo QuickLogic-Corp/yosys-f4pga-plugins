@@ -263,7 +263,7 @@ module dsp_type2_bw #(
 ) (
     // active/fabric ports (connect to general/fabric routing)
     input   wire                       clk_i       , // Clk_i
-    input   wire                       rst_i       , // Rstn_i
+    input   wire                       rst_i       , // Rst_i (active-high; spec slide labels this Rstn_i but RTL is active-high)
     input   wire   [(NBITS_A-1):0]     a_i         , // A_i[31:0]
     input   wire   [(NBITS_BC-1):0]    b_i         , // B_i[17:0]
     input   wire   [(NBITS_BC-1):0]    c_i         , // C_i[17:0]

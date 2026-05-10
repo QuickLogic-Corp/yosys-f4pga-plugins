@@ -398,10 +398,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             // Read simulation library
             readVelArgs = family_path + "/cells_sim.v";
             if (family == "qlf_k6n10f") {
-                if(!synplify && dspv2) {
-                    log_cmd_error("DSPV2 is only supported with Synplify.\nPlease use Synplify as your synthesis tool.\n");
-                }
-				if (dspv2) {
+                if (dspv2) {
 					readVelArgs += family_path + "/dspv2_sim.v";
 				}
 				else {
@@ -422,7 +419,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             // some block ram cell models. After all the only part of the cells
             // library required here is cell port definitions plus specify blocks.
             run("read_verilog -lib -specify -nomem2reg " + readVelArgs);
-			if (synplify) {
+			if (dspv2) {
 			    run("read_verilog " + family_path + "/QL_DSPV2.v");
 			}
             run(stringf("hierarchy -check %s", help_mode ? "-top <top>" : top_opt.c_str()));
@@ -526,24 +523,65 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("ql_dsp_io_regs", "                  (for qlf_k6n10f)");
                 } else if (!nodsp) {
 
-                    run("wreduce t:$mul");
-                    run("ql_dsp_macc" + use_dsp_cfg_params);
-
-                    for (const auto &rule : dsp_rules) {
-                        run(stringf("techmap -map +/mul2dsp.v "
-                                    "-D DSP_A_MAXWIDTH=%zu -D DSP_B_MAXWIDTH=%zu "
-                                    "-D DSP_A_MINWIDTH=%zu -D DSP_B_MINWIDTH=%zu "
-                                    "-D DSP_NAME=%s",
-                                    rule.a_maxwidth, rule.b_maxwidth, rule.a_minwidth, rule.b_minwidth, rule.type.c_str()));
+                    if (dspv2 && !synplify) {
+                        // Yosys-driven DSPv2 inference flow.
+                        //
+                        //   wreduce t:$mul       trim each $mul to its useful width
+                        //   ql_dsp_macc -dspv2   infer MAC patterns into
+                        //                        dspv2_16x9x32_cfg_ports (Phase 2)
+                        //   techmap mul2dsp x2   lower remaining $mul into
+                        //                        dspv2_{32x18,16x9}_cfg_ports (Phase 1)
+                        //   ql_dsp_simd -dspv2   pack two 16x9 halves into one
+                        //                        32x18x64 fractured cell (Phase 3)
+                        //   ql_dsp -dspv2        absorb input $dff pipelines into
+                        //                        the wrapper's A_REG/B_REG/C_REG
+                        //                        cfg-parameters (Phase 4)
+                        //   techmap dspv2_final  collapse wrappers into hard
+                        //                        QL_DSPV2 with 80-bit MODE_BITS
+                        //   ql_dspv2_types       rewrite each QL_DSPV2 to its
+                        //                        specialised variant
+                        //                        (QL_DSPV2_MULT[ADD|ACC][_REGIN][_REGOUT])
+                        //
+                        // Cascade folding (z_cout/z_cin chains) and A/B-cascade
+                        // are intentionally deferred to a follow-up commit.
+                        run("wreduce t:$mul");
+                        run("ql_dsp_macc -dspv2");
+                        run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dspv2_map.v "
+                            "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
+                            "-D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 "
+                            "-D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10 "
+                            "-D DSP_NAME=$__MUL32X18");
                         run("chtype -set $mul t:$__soft_mul");
+                        run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dspv2_map.v "
+                            "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
+                            "-D DSP_A_MAXWIDTH=16 -D DSP_B_MAXWIDTH=9 "
+                            "-D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4 "
+                            "-D DSP_NAME=$__MUL16X9");
+                        run("chtype -set $mul t:$__soft_mul");
+                        run("ql_dsp_simd -dspv2");
+                        run("ql_dsp -dspv2");
+                        run("techmap -map " + lib_path + family + "/dspv2_final_map.v");
+                        run("ql_dspv2_types");
+                    } else {
+                        run("wreduce t:$mul");
+                        run("ql_dsp_macc" + use_dsp_cfg_params);
+
+                        for (const auto &rule : dsp_rules) {
+                            run(stringf("techmap -map +/mul2dsp.v "
+                                        "-D DSP_A_MAXWIDTH=%zu -D DSP_B_MAXWIDTH=%zu "
+                                        "-D DSP_A_MINWIDTH=%zu -D DSP_B_MINWIDTH=%zu "
+                                        "-D DSP_NAME=%s",
+                                        rule.a_maxwidth, rule.b_maxwidth, rule.a_minwidth, rule.b_minwidth, rule.type.c_str()));
+                            run("chtype -set $mul t:$__soft_mul");
+                        }
+                        if (use_dsp_cfg_params.empty())
+                            run("techmap -map " + lib_path + family + "/dsp_map.v -D USE_DSP_CFG_PARAMS=0");
+                        else
+                            run("techmap -map " + lib_path + family + "/dsp_map.v -D USE_DSP_CFG_PARAMS=1");
+                        run("ql_dsp_simd");
+                        run("techmap -map " + lib_path + family + "/dsp_final_map.v");
+                        run("ql_dsp_io_regs");
                     }
-                    if (use_dsp_cfg_params.empty())
-                        run("techmap -map " + lib_path + family + "/dsp_map.v -D USE_DSP_CFG_PARAMS=0");
-                    else
-                        run("techmap -map " + lib_path + family + "/dsp_map.v -D USE_DSP_CFG_PARAMS=1");
-                    run("ql_dsp_simd");
-                    run("techmap -map " + lib_path + family + "/dsp_final_map.v");
-                    run("ql_dsp_io_regs");
                 }
             }
         }

@@ -1,5 +1,51 @@
 `timescale 1ps/1ps
 
+// =============================================================================
+// QL_DSPV2 behavioural simulation model — semantic notes
+// =============================================================================
+// This file is the executable spec for the dspv2 hard cell. The Yosys-driven
+// dspv2 lowering flow uses it as the gold reference for equivalence checks
+// (see tests/qlf_k6n10f/dspv2/dspv2_equiv.tcl). Anything written here is
+// load-bearing — if these notes drift from the RTL behaviour, the equiv
+// harness will fail. Update the notes and the RTL in the same commit.
+//
+// Reset polarity
+//   The `reset` input is ACTIVE-HIGH on every always_ff block in this file
+//   (search "if (reset)" below; e.g. line 1290+, 1549+). The QL_DSPV2.v
+//   wrapper port comment was previously labelled "Rstn_i" — that came from
+//   a stale spec slide. Both v1 silicon and v2 RTL use active-high reset.
+//
+// acc_reset
+//   The `acc_reset` input ONLY clears the accumulator register; it does NOT
+//   touch input/output pipeline registers. Use it when you need to flush
+//   the running sum without disturbing the rest of the datapath. The full
+//   global `reset` clears every register in the cell.
+//
+// Pre-adder saturation
+//   The pre-adder (b + c on the BC-side path) ALWAYS saturates on overflow.
+//   There is no "wrap" mode and no enable bit — saturation is unconditional
+//   and always-on. Synthesis must therefore not infer a pre-adder for any
+//   `b + c` pattern that the user expected to wrap; current smoke tests
+//   route b through plain wires with c tied to 0 to avoid exercising this
+//   path.
+//
+// output_select encoding aliases
+//   The 3-bit `output_select` field decodes as:
+//     000   -> z0 (combinational mult/MAC, NO post-add)
+//     001   -> z2 (combinational, with post-add)
+//     010   -> z2 (alias of 001 — post-add path is identical)
+//     011   -> z2 (alias of 001 — post-add path is identical)
+//     100   -> z1 (registered output, NO post-add)
+//     101   -> z1 (registered output, with post-add)
+//     110   -> z1 (alias of 101)
+//     111   -> z1 (alias of 101)
+//   Bit [2] selects registered (z1) vs combinational (z0/z2) output.
+//   Bits [1:0] are NOT independent — 010/011 collapse to 001 and
+//   110/111 collapse to 101. ql_dsp_macc -dspv2 must therefore emit one of
+//   the canonical encodings (000, 001, 100, 101); the aliases exist only
+//   for hand-written instantiations to remain accepted.
+// =============================================================================
+
 `default_nettype none
 
 module QL_DSPV2 ( 
