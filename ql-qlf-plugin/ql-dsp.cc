@@ -386,8 +386,27 @@ struct QlDspPass : public Pass {
                     if (!ff->getParam(ID(CLK_POLARITY)).as_bool())
                         continue;
                     RTLIL::SigSpec ff_clk = sigmap(ff->getPort(ID(CLK)));
-                    if (ff_clk.size() != 1 || ff_clk[0] != cell_clk_bit)
+                    if (ff_clk.size() != 1)
                         continue;
+                    if (cell_clk_bit == RTLIL::SigBit(RTLIL::State::Sx)) {
+                        // The cell's clock_i is 1'bx (unassigned by
+                        // techmap). Adopt the FF's clock for this cell and
+                        // wire it in. Subsequent port absorptions on the
+                        // same cell will require this same clock.
+                        cell->setPort(RTLIL::escape_id("clock_i"), ff_clk);
+                        cell_clk_bit = ff_clk[0];
+                        log("  Adopting clock %s from FF %s for cell %s\n",
+                            log_signal(ff_clk), log_id(ff), log_id(cell));
+                        // If reset_i is also 1'bx, tie it low (inactive).
+                        // A plain $dff has no reset, so the DSP cell's
+                        // reset path should be quiescent.
+                        RTLIL::SigSpec cell_rst = sigmap(cell->getPort(RTLIL::escape_id("reset_i")));
+                        if (cell_rst.size() == 1 && cell_rst[0] == RTLIL::SigBit(RTLIL::State::Sx)) {
+                            cell->setPort(RTLIL::escape_id("reset_i"), RTLIL::SigSpec(RTLIL::State::S0));
+                        }
+                    } else if (ff_clk[0] != cell_clk_bit) {
+                        continue;
+                    }
 
                     // Per-FF-flavour semantic filters. The dspv2 cell
                     // has no per-pipeline-register enable port and only one
@@ -433,8 +452,17 @@ struct QlDspPass : public Pass {
                                 flavour_ok = false;
                             } else {
                                 RTLIL::SigSpec arst_sig = sigmap(ff->getPort(ID(ARST)));
-                                if (arst_sig.size() != 1 || arst_sig[0] != cell_rst_bit)
+                                if (arst_sig.size() != 1) {
                                     flavour_ok = false;
+                                } else if (cell_rst_bit == RTLIL::SigBit(RTLIL::State::Sx)) {
+                                    // reset_i was 1'bx -- adopt the FF's async reset.
+                                    cell->setPort(RTLIL::escape_id("reset_i"), arst_sig);
+                                    cell_rst_bit = arst_sig[0];
+                                    log("  Adopting reset %s from FF %s for cell %s\n",
+                                        log_signal(arst_sig), log_id(ff), log_id(cell));
+                                } else if (arst_sig[0] != cell_rst_bit) {
+                                    flavour_ok = false;
+                                }
                             }
                         }
 
@@ -450,8 +478,17 @@ struct QlDspPass : public Pass {
                                 flavour_ok = false;
                             } else {
                                 RTLIL::SigSpec srst_sig = sigmap(ff->getPort(ID(SRST)));
-                                if (srst_sig.size() != 1 || srst_sig[0] != cell_rst_bit)
+                                if (srst_sig.size() != 1) {
                                     flavour_ok = false;
+                                } else if (cell_rst_bit == RTLIL::SigBit(RTLIL::State::Sx)) {
+                                    // reset_i was 1'bx -- adopt the FF's sync reset.
+                                    cell->setPort(RTLIL::escape_id("reset_i"), srst_sig);
+                                    cell_rst_bit = srst_sig[0];
+                                    log("  Adopting reset %s from FF %s for cell %s\n",
+                                        log_signal(srst_sig), log_id(ff), log_id(cell));
+                                } else if (srst_sig[0] != cell_rst_bit) {
+                                    flavour_ok = false;
+                                }
                             }
                         }
 

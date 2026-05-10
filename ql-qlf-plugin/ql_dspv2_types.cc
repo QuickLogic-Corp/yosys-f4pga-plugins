@@ -464,7 +464,19 @@ struct QlDSPV2TypesPass : public Pass {
 				bool use_regout = (OUTPUT_SELECT >= 4) && type_has_reg_variants;
 
 				// Externalize only registers NOT handled by the variant.
+				// WARNING: The dffre cells created below have known
+				// wiring issues (R is active-high but dffre expects
+				// active-low reset; E is left unconnected). This path
+				// is only reachable for Synplify-originated multi-stage
+				// pipeline configs (A1/A2/B1/B2) or types without
+				// _REGIN sim-model variants. It does NOT fire for
+				// Yosys-inferred designs with simple A/B registers.
 				if (!use_regin) {
+					if (A1_REG || A2_REG || B1_REG || B2_REG)
+						log_warning("Cell %s: multi-stage pipeline registers "
+							"(A1/A2/B1/B2) externalized as dffre with known "
+							"reset-polarity and enable wiring issues.\n",
+							log_id(cell));
 					if (A1_REG && A2_REG) {
 						add_bitwise_dffre_before_cell_input(
 								module, cell, RTLIL::IdString("\\a"));

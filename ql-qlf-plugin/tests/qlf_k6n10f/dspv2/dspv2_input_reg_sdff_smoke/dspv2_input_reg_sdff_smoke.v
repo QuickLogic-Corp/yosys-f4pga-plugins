@@ -5,7 +5,7 @@
 // The FF matcher accepts $sdff when SRST_POLARITY=1,
 // SRST_VALUE=0, and the SRST signal matches the cell's reset_i net.
 // This test proves that $sdff absorption works and that the result is
-// formally equivalent to the original RTL.
+// structurally correct (cell type and count checks).
 //
 // Note: dspv2_input_reg_absorb_smoke uses the same RTL pattern
 // but was written before the $sdff matcher, when opt -nosdff folded the

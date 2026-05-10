@@ -45,7 +45,8 @@ TESTS = \
         qlf_k6n10f/dspv2/dspv2_input_reg_creg_smoke \
         qlf_k6n10f/dspv2/dspv2_input_reg_reject_smoke \
         qlf_k6n10f/dspv2/dspv2_mult16x9_smoke \
-        qlf_k6n10f/dspv2/dspv2_unsigned_reject
+        qlf_k6n10f/dspv2/dspv2_unsigned_reject \
+        qlf_k6n10f/dspv2/dspv2_behavioral_regin
 #	qlf_k6n10_bram \
 
 SIM_TESTS = \
@@ -114,4 +115,5 @@ qlf_k6n10f-dspv2-dspv2_input_reg_creg_smoke_verify = true
 qlf_k6n10f-dspv2-dspv2_input_reg_reject_smoke_verify = true
 qlf_k6n10f-dspv2-dspv2_mult16x9_smoke_verify = true
 qlf_k6n10f-dspv2-dspv2_unsigned_reject_verify = true
+qlf_k6n10f-dspv2-dspv2_behavioral_regin_verify = true
 #qlf_k6n10_bram_verify = true

@@ -4,7 +4,7 @@
 // lowers to a $adff cell. The FF matcher accepts $adff
 // when ARST_POLARITY=1, ARST_VALUE=0, and the ARST signal matches the
 // cell's reset_i net. This test proves that $adff absorption works and
-// that the result is formally equivalent to the original RTL.
+// that the result passes structural assertions (cell type and count checks).
 //
 // Module name matches the test directory name so DESIGN_TOP wiring is
 // correct. dspv2_sim.v provides the wrapper declaration; synth_quicklogic

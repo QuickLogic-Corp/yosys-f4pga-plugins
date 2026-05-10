@@ -2,7 +2,7 @@
 #
 # Prove ql_dsp -dspv2 absorbs a $adff (async-reset FF)
 # feeding a wrapper's a_i input into the wrapper's A_REG, AND that
-# the post-synth netlist is formally equivalent to the pre-synth RTL.
+# the post-synth netlist passes structural assertions (cell type and count checks).
 #
 # This exercises the $adff path in the FF matcher's
 # accept list with ARST_POLARITY / ARST_VALUE / ARST-signal filters.
@@ -18,7 +18,7 @@ yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
 
-# Shared formal-equivalence harness.
+# Shared synthesis + structural-assertion harness.
 source [file join [file dirname [info script]] .. dspv2_equiv.tcl]
 
 read_verilog dspv2_input_reg_adff_smoke.v

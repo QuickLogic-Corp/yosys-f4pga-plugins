@@ -2,7 +2,7 @@
 #
 # Prove the pure-combinational $mul lowering chain
 # in synth_quicklogic -dspv2 produces a single QL_DSPV2 typed wrapper
-# AND that the post-synth netlist is formally equivalent to the
+# AND that the post-synth netlist passes structural assertions against the
 # original RTL.
 #
 # Lowering chain exercised:
@@ -19,7 +19,7 @@ yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
 
-# Shared formal-equivalence harness.
+# Shared synthesis + structural-assertion harness.
 source [file join [file dirname [info script]] .. dspv2_equiv.tcl]
 
 read_verilog dspv2_mult_lowering_smoke.v

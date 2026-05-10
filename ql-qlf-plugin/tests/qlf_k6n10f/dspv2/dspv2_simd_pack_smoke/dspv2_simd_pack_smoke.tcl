@@ -3,7 +3,7 @@
 # Prove two independent signed-MAC patterns sharing
 # clk/rst/en are SIMD-packed into a single QL_DSPV2 wrapper by
 # synth_quicklogic -dspv2, AND that the post-synth netlist is
-# formally equivalent to the original RTL.
+# structurally correct (cell type and count checks).
 #
 # Acceptance:
 #   - run_synth_dspv2 completes without error.
@@ -15,7 +15,7 @@ yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
 
-# Shared formal-equivalence harness.
+# Shared synthesis + structural-assertion harness.
 source [file join [file dirname [info script]] .. dspv2_equiv.tcl]
 
 read_verilog dspv2_simd_pack_smoke.v
