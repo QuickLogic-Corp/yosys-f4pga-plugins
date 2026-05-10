@@ -14,8 +14,8 @@
 #   - run_synth_dspv2 completes without error.
 #   - Post-opt netlist contains zero $sdff/$dff cells (opt normalises
 #     $sdff to $dff; the $dff is then absorbed into the wrapper).
-#   - Post-opt netlist contains one QL_DSPV2_MULTACC cell and 16
-#     dffre cells (ql_dspv2_types externalizes A_REG as dffre).
+#   - Post-opt netlist contains exactly one QL_DSPV2_*_REGIN* cell
+#     (the typed wrapper carries a REGIN suffix because A_REG=1).
 
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
@@ -36,5 +36,4 @@ design -load postopt
 yosys cd dspv2_input_reg_sdff_smoke
 select -assert-count 0 t:\$sdff
 select -assert-count 0 t:\$dff
-select -assert-count 1 t:QL_DSPV2_MULTACC
-select -assert-count 16 t:dffre
+select -assert-count 1 t:QL_DSPV2_*REGIN*

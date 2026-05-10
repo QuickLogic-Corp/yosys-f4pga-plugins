@@ -423,82 +423,104 @@ struct QlDSPV2TypesPass : public Pass {
 					RTLIL::IdString("\\z"),
 					RTLIL::IdString("\\z_cout")
 				);
-				
-				if (A1_REG && A2_REG) {
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\a")
-						);
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\a")
-						);
-				}
 
-				else if (A2_REG || A_REG) {
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\a")
-						);
-				}
-
-				if (B1_REG && B2_REG) {
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\b")
-						);
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\b")
-						);
-				}			
-				else if (B2_REG || B_REG) {
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\b")
-						);
-				}
-				if (C_REG) {
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\c")
-						);
-				}
-				if (OUTPUT_SELECT >= 4)
-					add_bitwise_dffre_after_cell_output(
-						module,
-						cell,
-						RTLIL::IdString("\\z")
-					);
-
+				// --------------------------------------------------------
+				// Compute the control word and base type BEFORE register
+				// externalization so we can decide whether to use _REGIN /
+				// _REGOUT variant names (which keep the registers inside
+				// the DSP and avoid the dffre double-registration problem).
+				// --------------------------------------------------------
 				uint32_t control_word = get_control_word(FEEDBACK,
 														 OUTPUT_SELECT,
 														 ZCIN_SEL,
 														 PRE_ADD,
 														 SUBTRACT);
-				
-
 				log_debug("Control Word: %d\n", control_word);
+
+				bool type_has_reg_variants = false;
+				switch (control_word) {
+					case 0b00000000: // MULT
+					case 0b00001000: // MULTACC
+					case 0b00001001: // MULTACC w/ SUBTRACT
+					case 0b01111100: // MULTADD
+					case 0b01110100: // MULTADD
+						type_has_reg_variants = true;
+						break;
+					default:
+						break;
+				}
+
+				// Simple input registers (A_REG / B_REG without multi-
+				// stage A1/A2/B1/B2) can be represented by the _REGIN
+				// variant.  The DSP's internal register (controlled by
+				// MODE_BITS) does the actual pipelining — no external
+				// dffre needed.  C_REG is excluded because the _REGIN
+				// sim models only cover A/B input registers; the c port
+				// is unused by MULT/MULTACC/MULTADD types.
+				bool simple_input_reg = (A_REG || B_REG) &&
+										!A1_REG && !A2_REG &&
+										!B1_REG && !B2_REG;
+				bool use_regin  = simple_input_reg && type_has_reg_variants;
+				bool use_regout = (OUTPUT_SELECT >= 4) && type_has_reg_variants;
+
+				// Externalize only registers NOT handled by the variant.
+				if (!use_regin) {
+					if (A1_REG && A2_REG) {
+						add_bitwise_dffre_before_cell_input(
+								module, cell, RTLIL::IdString("\\a"));
+						add_bitwise_dffre_before_cell_input(
+								module, cell, RTLIL::IdString("\\a"));
+					} else if (A2_REG || A_REG) {
+						add_bitwise_dffre_before_cell_input(
+								module, cell, RTLIL::IdString("\\a"));
+					}
+
+					if (B1_REG && B2_REG) {
+						add_bitwise_dffre_before_cell_input(
+								module, cell, RTLIL::IdString("\\b"));
+						add_bitwise_dffre_before_cell_input(
+								module, cell, RTLIL::IdString("\\b"));
+					} else if (B2_REG || B_REG) {
+						add_bitwise_dffre_before_cell_input(
+								module, cell, RTLIL::IdString("\\b"));
+					}
+
+					if (C_REG) {
+						add_bitwise_dffre_before_cell_input(
+								module, cell, RTLIL::IdString("\\c"));
+					}
+				}
+
+				if (!use_regout && OUTPUT_SELECT >= 4) {
+					add_bitwise_dffre_after_cell_output(
+						module, cell, RTLIL::IdString("\\z"));
+				}
+
+				// Build the variant suffix.
+				std::string suffix;
+				if (use_regin && use_regout)
+					suffix = "_REGIN_REGOUT";
+				else if (use_regin)
+					suffix = "_REGIN";
+				else if (use_regout)
+					suffix = "_REGOUT";
+
 				std::string type = "QL_DSPV2";
 				switch (control_word){
-					case 0b00000000: //MULT
+					case 0b00000000: { //MULT
+						pool<RTLIL::IdString> mult_ports{
+							ID(a), ID(b), ID(z),
+							ID(feedback), ID(output_select)
+						};
+						if (!suffix.empty()) {
+							mult_ports.insert(ID(clk));
+							mult_ports.insert(ID(reset));
+						}
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULT"),
-												  pool<RTLIL::IdString>{ 
-														ID(a),
-														ID(b),
-														ID(z),
-														ID(feedback),
-														ID(output_select)
-													});
+												  RTLIL::escape_id("QL_DSPV2_MULT" + suffix),
+												  mult_ports);
 						break;
+					}
 					
 						case 0b01011000: //CONCAT_CASCADE									
 						case 0b01010000: //CONCAT_CASCADE
@@ -515,28 +537,11 @@ struct QlDSPV2TypesPass : public Pass {
 					
 
 					case 0b00001000: //MULTACC
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC"),
-												  pool<RTLIL::IdString>{ 
-														ID(a),
-														ID(b),
-														ID(z),
-														ID(clk),
-														ID(reset),
-														ID(acc_reset),
-														ID(load_acc),
-														ID(feedback),
-														ID(output_select)
-													});
-						break;
-					
-					
-
-					case 0b00001001: //MULTACC with SUBTRACT (was MULTACC_NEG)
+					case 0b00001001: //MULTACC with SUBTRACT
 						// SUBTRACT is already encoded in MODE_BITS[58]; no
 						// separate _NEG variant exists in dspv2_sim.v.
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC"),
+												  RTLIL::escape_id("QL_DSPV2_MULTACC" + suffix),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
@@ -549,7 +554,6 @@ struct QlDSPV2TypesPass : public Pass {
 														ID(output_select)
 													});
 						break;
-					
 
 					case 0b00000010: //PREADDER_MULT
 						transform_cell_with_ports(cell,
@@ -573,11 +577,15 @@ struct QlDSPV2TypesPass : public Pass {
 												ID(z_cin),
 											});
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTADD"),
+												  RTLIL::escape_id("QL_DSPV2_MULTADD" + suffix),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
+														ID(clk),
+														ID(reset),
+														ID(acc_reset),
+														ID(load_acc),
 														ID(z_cin),
 														ID(feedback),
 														ID(output_select)
