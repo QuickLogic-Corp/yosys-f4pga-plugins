@@ -403,6 +403,7 @@ struct QlDspPass : public Pass {
                         RTLIL::SigSpec cell_rst = sigmap(cell->getPort(RTLIL::escape_id("reset_i")));
                         if (cell_rst.size() == 1 && cell_rst[0] == RTLIL::SigBit(RTLIL::State::Sx)) {
                             cell->setPort(RTLIL::escape_id("reset_i"), RTLIL::SigSpec(RTLIL::State::S0));
+                            cell_rst_bit = RTLIL::SigBit(RTLIL::State::S0);
                         }
                     } else if (ff_clk[0] != cell_clk_bit) {
                         continue;
@@ -494,6 +495,20 @@ struct QlDspPass : public Pass {
 
                         if (!flavour_ok)
                             continue;
+                    }
+
+                    // A plain $dff / $dffe has no reset path.  If the DSP
+                    // cell already carries a real (non-constant-low) reset
+                    // signal, absorbing this FF would subject it to the
+                    // DSP's shared input-register reset, changing the
+                    // design's reset semantics.
+                    if ((ff->type == ID($dff) || ff->type == ID($dffe)) &&
+                        cell_has_rst &&
+                        cell_rst_bit != RTLIL::SigBit(RTLIL::State::Sx) &&
+                        cell_rst_bit != RTLIL::SigBit(RTLIL::State::S0)) {
+                        log("  Skipping FF %s on %s.%s: no-reset FF vs real DSP reset\n",
+                            log_id(ff), log_id(cell->type), pp.first.c_str());
+                        continue;
                     }
 
                     // The FF's Q must be exactly the cell's port spec

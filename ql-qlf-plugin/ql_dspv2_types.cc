@@ -463,52 +463,37 @@ struct QlDSPV2TypesPass : public Pass {
 				bool use_regin  = simple_input_reg && type_has_reg_variants;
 				bool use_regout = (OUTPUT_SELECT >= 4) && type_has_reg_variants;
 
-				// Externalize only registers NOT handled by the variant.
-				// WARNING: The dffre cells created below have known
-				// wiring issues (R is active-high but dffre expects
-				// active-low reset; E is left unconnected). This path
-				// is only reachable for Synplify-originated multi-stage
-				// pipeline configs (A1/A2/B1/B2) or types without
-				// _REGIN sim-model variants. It does NOT fire for
-				// Yosys-inferred designs with simple A/B registers.
+
+				// If _REGIN cannot represent the input registers
+				// (multi-stage A1/A2/B1/B2, or A/B regs on types
+				// without _REGIN variants), error out rather than
+				// emitting dffre cells with known wiring bugs (wrong
+				// reset polarity, unconnected enable).
+				//
+				// C_REG is excluded: for MULT-class types the c port
+				// is dropped by the type rewrite, so C_REG is
+				// harmlessly ignored.  No external dffre is created.
 				if (!use_regin) {
-					if (A1_REG || A2_REG || B1_REG || B2_REG)
-						log_warning("Cell %s: multi-stage pipeline registers "
-							"(A1/A2/B1/B2) externalized as dffre with known "
-							"reset-polarity and enable wiring issues.\n",
+					bool need_ext_ab_reg =
+						(A1_REG || A2_REG || B1_REG || B2_REG ||
+						 A_REG || B_REG);
+					if (need_ext_ab_reg)
+						log_error("Cell %s: input register configuration "
+							"requires external dffre cells which have known "
+							"wiring issues (reset polarity, enable). Use a "
+							"DSP type/mode that maps to a _REGIN variant, "
+							"or remove the pipeline registers.\n",
 							log_id(cell));
-					if (A1_REG && A2_REG) {
-						add_bitwise_dffre_before_cell_input(
-								module, cell, RTLIL::IdString("\\a"));
-						add_bitwise_dffre_before_cell_input(
-								module, cell, RTLIL::IdString("\\a"));
-					} else if (A2_REG || A_REG) {
-						add_bitwise_dffre_before_cell_input(
-								module, cell, RTLIL::IdString("\\a"));
-					}
-
-					if (B1_REG && B2_REG) {
-						add_bitwise_dffre_before_cell_input(
-								module, cell, RTLIL::IdString("\\b"));
-						add_bitwise_dffre_before_cell_input(
-								module, cell, RTLIL::IdString("\\b"));
-					} else if (B2_REG || B_REG) {
-						add_bitwise_dffre_before_cell_input(
-								module, cell, RTLIL::IdString("\\b"));
-					}
-
-					if (C_REG) {
-						add_bitwise_dffre_before_cell_input(
-								module, cell, RTLIL::IdString("\\c"));
-					}
 				}
 
 				if (!use_regout && OUTPUT_SELECT >= 4) {
-					add_bitwise_dffre_after_cell_output(
-						module, cell, RTLIL::IdString("\\z"));
+					log_error("Cell %s: output register (OUTPUT_SELECT=%d) "
+						"requires external dffre which has known wiring "
+						"issues. Use a DSP type that maps to a _REGOUT "
+						"variant.\n",
+						log_id(cell), OUTPUT_SELECT);
 				}
 
-				// Build the variant suffix.
 				std::string suffix;
 				if (use_regin && use_regout)
 					suffix = "_REGIN_REGOUT";

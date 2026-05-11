@@ -160,8 +160,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        Specifying this will use BRAM with ECC support.\n");
         log("\n");
         log("    -dspv2\n");
-        log("        By default use dsp version1 support for designs \n");
-        log("        Specifying this will use dsp version2 support.\n");
+        log("        Use the DSPv2 hard-macro inference flow instead of\n");
+        log("        the default DSPv1 path.  This flag is for the Yosys\n");
+        log("        synthesis flow only and is ignored when -synplify is\n");
+        log("        also specified (Synplify provides its own DSP mapping).\n");
         log("\n");
         log("    -no_tdpram\n");
         log("        By default infer TDP BRAM for architectures that support them.\n");
