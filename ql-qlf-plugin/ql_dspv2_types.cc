@@ -342,7 +342,7 @@ struct QlDSPV2TypesPass : public Pass {
 				RTLIL::Const mode_bits = cell->getParam(ID(MODE_BITS));
                 
 
-                int COEFF_0    = mode_bits.extract(0, 31).as_int();
+                int COEFF_0    = mode_bits.extract(0, 32).as_int();
 				log_debug("COEFF_0: %d.\n", COEFF_0);
                 int ACC_FIR    = mode_bits.extract(32, 6).as_int();
 				log_debug("ACC_FIR: %d.\n", ACC_FIR);
@@ -423,82 +423,101 @@ struct QlDSPV2TypesPass : public Pass {
 					RTLIL::IdString("\\z"),
 					RTLIL::IdString("\\z_cout")
 				);
-				
-				if (A1_REG && A2_REG) {
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\a")
-						);
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\a")
-						);
-				}
 
-				else if (A2_REG || A_REG) {
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\a")
-						);
-				}
-
-				if (B1_REG && B2_REG) {
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\b")
-						);
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\b")
-						);
-				}			
-				else if (B2_REG || B_REG) {
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\b")
-						);
-				}
-				if (C_REG) {
-					add_bitwise_dffre_before_cell_input(
-							module,
-							cell,
-							RTLIL::IdString("\\c")
-						);
-				}
-				if (OUTPUT_SELECT >= 4)
-					add_bitwise_dffre_after_cell_output(
-						module,
-						cell,
-						RTLIL::IdString("\\z")
-					);
-
+				// --------------------------------------------------------
+				// Compute the control word and base type BEFORE register
+				// externalization so we can decide whether to use _REGIN /
+				// _REGOUT variant names (which keep the registers inside
+				// the DSP and avoid the dffre double-registration problem).
+				// --------------------------------------------------------
 				uint32_t control_word = get_control_word(FEEDBACK,
 														 OUTPUT_SELECT,
 														 ZCIN_SEL,
 														 PRE_ADD,
 														 SUBTRACT);
-				
-
 				log_debug("Control Word: %d\n", control_word);
+
+				bool type_has_reg_variants = false;
+				switch (control_word) {
+					case 0b00000000: // MULT
+					case 0b00001000: // MULTACC
+					case 0b00001001: // MULTACC w/ SUBTRACT
+					case 0b01111100: // MULTADD
+					case 0b01110100: // MULTADD
+						type_has_reg_variants = true;
+						break;
+					default:
+						break;
+				}
+
+				// Simple input registers (A_REG / B_REG without multi-
+				// stage A1/A2/B1/B2) can be represented by the _REGIN
+				// variant.  The DSP's internal register (controlled by
+				// MODE_BITS) does the actual pipelining — no external
+				// dffre needed.  C_REG is excluded because the _REGIN
+				// sim models only cover A/B input registers; the c port
+				// is unused by MULT/MULTACC/MULTADD types.
+				bool simple_input_reg = (A_REG || B_REG) &&
+										!A1_REG && !A2_REG &&
+										!B1_REG && !B2_REG;
+				bool use_regin  = simple_input_reg && type_has_reg_variants;
+				bool use_regout = (OUTPUT_SELECT >= 4) && type_has_reg_variants;
+
+
+				// If _REGIN cannot represent the input registers
+				// (multi-stage A1/A2/B1/B2, or A/B regs on types
+				// without _REGIN variants), error out rather than
+				// emitting dffre cells with known wiring bugs (wrong
+				// reset polarity, unconnected enable).
+				//
+				// C_REG is excluded: for MULT-class types the c port
+				// is dropped by the type rewrite, so C_REG is
+				// harmlessly ignored.  No external dffre is created.
+				if (!use_regin) {
+					bool need_ext_ab_reg =
+						(A1_REG || A2_REG || B1_REG || B2_REG ||
+						 A_REG || B_REG);
+					if (need_ext_ab_reg)
+						log_error("Cell %s: input register configuration "
+							"requires external dffre cells which have known "
+							"wiring issues (reset polarity, enable). Use a "
+							"DSP type/mode that maps to a _REGIN variant, "
+							"or remove the pipeline registers.\n",
+							log_id(cell));
+				}
+
+				if (!use_regout && OUTPUT_SELECT >= 4) {
+					log_error("Cell %s: output register (OUTPUT_SELECT=%d) "
+						"requires external dffre which has known wiring "
+						"issues. Use a DSP type that maps to a _REGOUT "
+						"variant.\n",
+						log_id(cell), OUTPUT_SELECT);
+				}
+
+				std::string suffix;
+				if (use_regin && use_regout)
+					suffix = "_REGIN_REGOUT";
+				else if (use_regin)
+					suffix = "_REGIN";
+				else if (use_regout)
+					suffix = "_REGOUT";
+
 				std::string type = "QL_DSPV2";
 				switch (control_word){
-					case 0b00000000: //MULT
+					case 0b00000000: { //MULT
+						pool<RTLIL::IdString> mult_ports{
+							ID(a), ID(b), ID(z),
+							ID(feedback), ID(output_select)
+						};
+						if (!suffix.empty()) {
+							mult_ports.insert(ID(clk));
+							mult_ports.insert(ID(reset));
+						}
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULT"),
-												  pool<RTLIL::IdString>{ 
-														ID(a),
-														ID(b),
-														ID(z),
-														ID(feedback),
-														ID(output_select)
-													});
+												  RTLIL::escape_id("QL_DSPV2_MULT" + suffix),
+												  mult_ports);
 						break;
+					}
 					
 						case 0b01011000: //CONCAT_CASCADE									
 						case 0b01010000: //CONCAT_CASCADE
@@ -515,8 +534,11 @@ struct QlDSPV2TypesPass : public Pass {
 					
 
 					case 0b00001000: //MULTACC
+					case 0b00001001: //MULTACC with SUBTRACT
+						// SUBTRACT is already encoded in MODE_BITS[58]; no
+						// separate _NEG variant exists in dspv2_sim.v.
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC"),
+												  RTLIL::escape_id("QL_DSPV2_MULTACC" + suffix),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
@@ -529,25 +551,6 @@ struct QlDSPV2TypesPass : public Pass {
 														ID(output_select)
 													});
 						break;
-					
-					
-
-					case 0b00001001: //MULTACC_NEG
-						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTACC_NEG"),
-												  pool<RTLIL::IdString>{ 
-														ID(a),
-														ID(b),
-														ID(z),
-														ID(clk),
-														ID(reset),
-														ID(acc_reset),
-														ID(load_acc),
-														ID(feedback),
-														ID(output_select)
-													});
-						break;
-					
 
 					case 0b00000010: //PREADDER_MULT
 						transform_cell_with_ports(cell,
@@ -571,11 +574,15 @@ struct QlDSPV2TypesPass : public Pass {
 												ID(z_cin),
 											});
 						transform_cell_with_ports(cell,
-												  RTLIL::escape_id("QL_DSPV2_MULTADD"),
+												  RTLIL::escape_id("QL_DSPV2_MULTADD" + suffix),
 												  pool<RTLIL::IdString>{ 
 														ID(a),
 														ID(b),
 														ID(z),
+														ID(clk),
+														ID(reset),
+														ID(acc_reset),
+														ID(load_acc),
 														ID(z_cin),
 														ID(feedback),
 														ID(output_select)
@@ -626,6 +633,35 @@ struct QlDSPV2TypesPass : public Pass {
 													});
 						break;
 
+				}
+
+				// Pad narrow port connections to full QL_DSPV2 widths so the
+				// subsequent hierarchy pass does not emit resize warnings
+				// (the 16x9 fractured wrapper has narrower ports than the
+				// primitive).  This runs AFTER dffre externalization, so the
+				// register cell count is not affected.
+				struct PortPad { RTLIL::IdString name; int width; bool is_output; };
+				const PortPad port_pads[] = {
+					{ID(a),   32, false}, {ID(b),   18, false}, {ID(c),   18, false},
+					{ID(z),   50, true },
+				};
+				for (auto &pp : port_pads) {
+					if (!cell->hasPort(pp.name))
+						continue;
+					SigSpec sig = cell->getPort(pp.name);
+					int cur = GetSize(sig);
+					if (cur >= pp.width)
+						continue;
+					if (pp.is_output) {
+						Wire *pad = module->addWire(
+							module->uniquify(stringf("\\%s_%s_pad",
+								log_id(cell), log_id(pp.name))),
+							pp.width - cur);
+						sig.append(SigSpec(pad));
+					} else {
+						sig.extend_u0(pp.width, false);
+					}
+					cell->setPort(pp.name, sig);
 				}
 			}
 		}

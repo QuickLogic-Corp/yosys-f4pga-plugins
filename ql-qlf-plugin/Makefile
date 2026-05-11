@@ -74,6 +74,8 @@ VERILOG_MODULES = $(COMMON)/cells_sim.v         \
                   $(QLF_K6N10F_DIR)/ffs_map.v   \
                   $(QLF_K6N10F_DIR)/dsp_map.v   \
                   $(QLF_K6N10F_DIR)/dsp_final_map.v \
+                  $(QLF_K6N10F_DIR)/dspv2_map.v \
+                  $(QLF_K6N10F_DIR)/dspv2_final_map.v \
                   $(QLF_K6N10F_DIR)/libmap_brams_map_tdp.v \
                   $(QLF_K6N10F_DIR)/libmap_brams_map_sdp.v \
                   $(QLF_K6N10F_DIR)/synplify_map.v   \
@@ -137,13 +139,17 @@ $(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-read.h: ql-bram-asymmetric-wider-read.
 	python3 $(PMGEN_PY) -o $@ -p ql_bram_asymmetric_wider_read ql-bram-asymmetric-wider-read.pmg
 
 
+# NOTE: 'install -D' is a GNU coreutils extension that creates the destination
+# parent directory. BSD/macOS 'install' has no -D flag, so we mkdir -p first
+# and then call plain 'install'. This keeps the Makefile portable across
+# Linux (CI), macOS (developer), and FreeBSD without depending on coreutils.
 install_modules: $(VERILOG_MODULES)
-	$(foreach f,$^,install -D $(f) $(YOSYS_DATA_DIR)/quicklogic/$(f);)
+	$(foreach f,$^,mkdir -p $(dir $(YOSYS_DATA_DIR)/quicklogic/$(f)) && install $(f) $(YOSYS_DATA_DIR)/quicklogic/$(f);)
 
 install_abc_scripts: $(ABC_SCRIPTS)
-	$(foreach f,$^,install -D $(f) $(YOSYS_DATA_DIR)/quicklogic/$(f);)
+	$(foreach f,$^,mkdir -p $(dir $(YOSYS_DATA_DIR)/quicklogic/$(f)) && install $(f) $(YOSYS_DATA_DIR)/quicklogic/$(f);)
 
 install_de_binaries: $(DE_BINARIES)
-	$(foreach f,$^,install -D $(f) $(YOSYS_DATA_DIR)/quicklogic/$(DE_BIN_DIR)/$(notdir $(f));)
+	$(foreach f,$^,mkdir -p $(YOSYS_DATA_DIR)/quicklogic/$(DE_BIN_DIR) && install $(f) $(YOSYS_DATA_DIR)/quicklogic/$(DE_BIN_DIR)/$(notdir $(f));)
 
 install: install_modules install_abc_scripts install_de_binaries
