@@ -467,10 +467,6 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
         }
 
-        // Synplify flow: convert DSPv2 user-instantiated types before DSP mapping
-        if (synplify && dspv2)
-            run("ql_dspv2_types");
-
         if (check_label("map_dsp"), "(skip if -no_dsp)") {
             if (help_mode || family == "qlf_k6n10") {
                 if (help_mode || !nodsp) {
@@ -543,9 +539,6 @@ struct SynthQuickLogicPass : public ScriptPass {
 
                     run("ql_dsp_simd -dspv2");
                     run("techmap -map " + lib_path + family + "/dsp_final_map.v -D DSPV2IPG");
-                    // Yosys flow: convert DSPv2 types after final techmap
-                    if (!synplify)
-                        run("ql_dspv2_types");
                 } else if (!nodsp) {
 
                     run("wreduce t:$mul");
@@ -569,6 +562,8 @@ struct SynthQuickLogicPass : public ScriptPass {
                 }
             }
         }
+
+        run("ql_dspv2_types");
 
         if (check_label("coarse")) {
             //if (!synplify) {
