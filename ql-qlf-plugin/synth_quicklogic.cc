@@ -398,15 +398,11 @@ struct SynthQuickLogicPass : public ScriptPass {
             // Read simulation library
             readVelArgs = family_path + "/cells_sim.v";
             if (family == "qlf_k6n10f") {
-                if(!synplify && dspv2) {
-                    log_cmd_error("DSPV2 is only supported with Synplify.\nPlease use Synplify as your synthesis tool.\n");
+                if (dspv2) {
+                    readVelArgs += family_path + "/dspv2_sim.v";
+                } else {
+                    readVelArgs += family_path + "/dsp_sim.v";
                 }
-				if (dspv2) {
-					readVelArgs += family_path + "/dspv2_sim.v";
-				}
-				else {
-					readVelArgs += family_path + "/dsp_sim.v";
-				}
                 if(inferBram) {
                     readVelArgs += family_path + "/brams_sim.v";
                     if (bramTypes) {
@@ -524,6 +520,28 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("ql_dsp_simd", "                     (for qlf_k6n10f)");
                     run("techmap -map " + lib_path + family + "/dsp_final_map.v", "(for qlf_k6n10f)");
                     run("ql_dsp_io_regs", "                  (for qlf_k6n10f)");
+                } else if (!nodsp && dspv2) {
+                    // DSPv2 inference chain (aligned with YosysHQ/yosys PR #4932)
+                    run("wreduce t:$mul");
+                    run("ql_dsp_macc -dspv2");
+
+                    run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dspv2_map.v"
+                        " -D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY"
+                        " -D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18"
+                        " -D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10"
+                        " -D DSP_NAME=$__MUL32X18");
+                    run("chtype -set $mul t:$__soft_mul");
+
+                    run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dspv2_map.v"
+                        " -D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY"
+                        " -D DSP_A_MAXWIDTH=16 -D DSP_B_MAXWIDTH=9"
+                        " -D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4"
+                        " -D DSP_NAME=$__MUL16X9");
+                    run("chtype -set $mul t:$__soft_mul");
+
+                    run("ql_dsp_dspv2");
+                    run("ql_dsp_simd -dspv2");
+                    run("techmap -map " + lib_path + family + "/dspv2_final_map.v");
                 } else if (!nodsp) {
 
                     run("wreduce t:$mul");
