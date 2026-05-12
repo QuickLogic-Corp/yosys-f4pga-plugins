@@ -8,7 +8,7 @@ yosys -import  ;# ingest plugin commands
 proc test_dspv2_macc {top} {
     design -load read
     hierarchy -top ${top}
-    synth_quicklogic -family qlf_k6n10f -top ${top} -dspv2
+    synth_ql -family qlf_k6n10f -top ${top} -dspv2
     yosys cd ${top}
     select -assert-count 1 t:QL_DSPV2
     return

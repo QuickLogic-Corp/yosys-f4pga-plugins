@@ -401,7 +401,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (dspv2) {
                     readVelArgs += family_path + "/dspv2_sim.v";
                 } else {
-                    readVelArgs += family_path + "/dsp_sim.v";
+                    readVelArgs += family_path + "/dspv1_sim.v";
                 }
                 if(inferBram) {
                     readVelArgs += family_path + "/brams_sim.v";
@@ -467,7 +467,9 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
         }
 
-        run("ql_dspv2_types");
+        // Synplify flow: convert DSPv2 user-instantiated types before DSP mapping
+        if (synplify && dspv2)
+            run("ql_dspv2_types");
 
         if (check_label("map_dsp"), "(skip if -no_dsp)") {
             if (help_mode || family == "qlf_k6n10") {
@@ -521,27 +523,29 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("techmap -map " + lib_path + family + "/dsp_final_map.v", "(for qlf_k6n10f)");
                     run("ql_dsp_io_regs", "                  (for qlf_k6n10f)");
                 } else if (!nodsp && dspv2) {
-                    // DSPv2 inference chain (aligned with YosysHQ/yosys PR #4932)
+                    // DSPv2 inference: use merged dsp_map.v/dsp_final_map.v with DSPV2IPG define
                     run("wreduce t:$mul");
                     run("ql_dsp_macc -dspv2");
 
-                    run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dspv2_map.v"
-                        " -D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY"
+                    run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v"
+                        " -D DSPV2IPG -D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY"
                         " -D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18"
                         " -D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10"
                         " -D DSP_NAME=$__MUL32X18");
                     run("chtype -set $mul t:$__soft_mul");
 
-                    run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dspv2_map.v"
-                        " -D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY"
+                    run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v"
+                        " -D DSPV2IPG -D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY"
                         " -D DSP_A_MAXWIDTH=16 -D DSP_B_MAXWIDTH=9"
                         " -D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4"
                         " -D DSP_NAME=$__MUL16X9");
                     run("chtype -set $mul t:$__soft_mul");
 
-                    run("ql_dsp_dspv2");
                     run("ql_dsp_simd -dspv2");
-                    run("techmap -map " + lib_path + family + "/dspv2_final_map.v");
+                    run("techmap -map " + lib_path + family + "/dsp_final_map.v -D DSPV2IPG");
+                    // Yosys flow: convert DSPv2 types after final techmap
+                    if (!synplify)
+                        run("ql_dspv2_types");
                 } else if (!nodsp) {
 
                     run("wreduce t:$mul");
