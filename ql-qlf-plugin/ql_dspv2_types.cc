@@ -326,13 +326,202 @@ struct QlDSPV2TypesPass : public Pass {
 		}
 	}
 
+	// ============================================================================
+	// Build reverse driver map
+	// bit -> (driver cell, driver port)
+	// ============================================================================
+
+	static void build_driver_map(
+			RTLIL::Module *module,
+			SigMap &sigmap,
+			dict<SigBit, std::pair<Cell*, IdString>> &driver_map)
+	{
+		for (auto c : module->cells())
+		{
+			for (auto &conn : c->connections())
+			{
+				IdString port = conn.first;
+
+				// only output ports drive signals
+				if (!c->output(port))
+					continue;
+
+				SigSpec sig = sigmap(conn.second);
+
+				for (auto bit : sig)
+				{
+					if (bit.wire == nullptr)
+						continue;
+
+					driver_map[bit] =
+						std::make_pair(c, port);
+				}
+			}
+		}
+	}
+
+	// ============================================================================
+	// Create duplicated DFFRE
+	// ============================================================================
+
+	static RTLIL::Cell *create_dffre_dup(
+			RTLIL::Module *module,
+			RTLIL::Cell *orig,
+			RTLIL::SigSpec new_q)
+	{
+		log_assert(orig != nullptr);
+		log_assert(orig->type == "\\dffre" || orig->type == "\\DFFRE");
+
+		// ------------------------------------------------------------
+		// Create new DFFRE (same safe pattern you already use)
+		// ------------------------------------------------------------
+		RTLIL::Cell *dff = module->addCell(
+			module->uniquify("\\dffre"),
+			IdString("\\dffre")
+		);
+
+		// ------------------------------------------------------------
+		// Copy DFFRE ports exactly
+		// ------------------------------------------------------------
+		dff->setPort("\\D", orig->getPort("\\D"));
+		dff->setPort("\\C", orig->getPort("\\C"));
+		dff->setPort("\\R", orig->getPort("\\R"));
+
+		if (orig->hasPort("\\E"))
+			dff->setPort("\\E", orig->getPort("\\E"));
+		else
+			dff->setPort("\\E", SigSpec());
+
+		// ------------------------------------------------------------
+		// Override Q with new wire
+		// ------------------------------------------------------------
+		dff->setPort("\\Q", new_q);
+
+		log_debug("Created DFFRE duplicate: %s\n", log_id(dff));
+
+		return dff;
+	}
+	// ============================================================================
+	// Process ONE CELL
+	// inputs = pool of INPUT PORT NAMES to inspect
+	// ============================================================================
+
+	static void duplicate_shared_dffres(
+			RTLIL::Module *module,
+			RTLIL::Cell *target_cell,
+			const pool<RTLIL::IdString> &input_ports)
+	{
+		SigMap sigmap(module);
+
+		// ------------------------------------------------------------
+		// Build driver map: SigBit -> (cell, port)
+		// ------------------------------------------------------------
+		dict<SigBit, std::pair<RTLIL::Cell*, IdString>> driver_map;
+
+		for (auto cell : module->cells())
+		{
+			for (auto &conn : cell->connections())
+			{
+				if (!cell->output(conn.first))
+					continue;
+
+				SigSpec sig = sigmap(conn.second);
+
+				for (auto bit : sig)
+				{
+					if (bit.wire == nullptr)
+						continue;
+
+					driver_map[bit] = std::make_pair(cell, conn.first);
+				}
+			}
+		}
+
+		// ------------------------------------------------------------
+		// Process only provided input ports of the given cell
+		// ------------------------------------------------------------
+		for (auto port : input_ports)
+		{
+			if (!target_cell->hasPort(port))
+				continue;
+
+			SigSpec orig_sig  = target_cell->getPort(port);
+			SigSpec canon_sig = sigmap(orig_sig);
+
+			dict<SigBit, std::vector<int>> groups;
+
+			for (int i = 0; i < GetSize(canon_sig); i++)
+			{
+				SigBit b = canon_sig[i];
+				if (b.wire == nullptr)
+					continue;
+
+				groups[b].push_back(i);
+			}
+
+			SigSpec new_sig = orig_sig;
+			bool changed = false;
+
+			for (auto &it : groups)
+			{
+				SigBit driver_bit = it.first;
+				auto &idxs = it.second;
+
+				if (GetSize(idxs) < 2)
+					continue;
+
+				if (!driver_map.count(driver_bit))
+					continue;
+
+				RTLIL::Cell *drv_cell = driver_map[driver_bit].first;
+				IdString drv_port     = driver_map[driver_bit].second;
+
+				if (!(drv_cell->type == "\\dffre" || drv_cell->type == "\\DFFRE"))
+					continue;
+
+				if (drv_port != "\\Q")
+					continue;
+
+				// --------------------------------------------------------
+				// Keep first bit on original FF, duplicate rest
+				// --------------------------------------------------------
+				for (int k = 1; k < GetSize(idxs); k++)
+				{
+					int bit_index = idxs[k];
+
+					// create new output wire (SAFE naming style)
+					RTLIL::Wire *w = module->addWire(
+						module->uniquify(stringf("\\%s_dup_q_%d",
+							log_id(drv_cell), k)),
+						1
+					);
+
+					// duplicate DFFRE using your safe function
+					RTLIL::Cell *dup_ff =
+						create_dffre_dup(module, drv_cell, SigSpec(w));
+
+					new_sig[bit_index] = SigBit(w);
+					changed = true;
+
+					log_debug("Dup FF %s -> %s (bit %d)\n",
+						log_id(drv_cell),
+						log_id(dup_ff),
+						bit_index);
+				}
+			}
+
+			if (changed)
+				target_cell->setPort(port, new_sig);
+		}
+	}
+
+	
 	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing QL_DSPV2_TYPES pass.\n");
 
 		size_t argidx = 1;
 		extra_args(args, argidx, design);
-
 		for (RTLIL::Module* module : design->selected_modules()){
 			for (RTLIL::Cell* cell: module->selected_cells())
 			{
@@ -422,6 +611,16 @@ struct QlDSPV2TypesPass : public Pass {
 					cell,
 					RTLIL::IdString("\\z"),
 					RTLIL::IdString("\\z_cout")
+				);
+
+				duplicate_shared_dffres(
+					module,
+					cell,
+					pool<RTLIL::IdString>{ 
+						ID(a),
+						ID(b),
+						ID(c)
+					}
 				);
 				
 				if (A1_REG && A2_REG) {
