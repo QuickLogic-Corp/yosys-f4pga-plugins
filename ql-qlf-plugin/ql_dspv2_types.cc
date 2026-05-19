@@ -326,21 +326,622 @@ struct QlDSPV2TypesPass : public Pass {
 		}
 	}
 
+	// ============================================================================
+	// Shared types
+	// ============================================================================
+
+	struct DSPUsage {
+		RTLIL::Cell    *cell;
+		RTLIL::IdString port;
+		int             bit_idx;
+	};
+
+	// ============================================================================
+	// Return true if cell is strictly a dffre
+	// ============================================================================
+	static bool is_dffre(const RTLIL::Cell *cell)
+	{
+		return cell->type == IdString("\\dffre") ||
+			cell->type == IdString("\\DFFRE");
+	}
+
+	// ============================================================================
+	// Collect all DSP input usages, grouped by canonical signal bit.
+	// Pass an empty port filter to collect all input ports.
+	// ============================================================================
+	static dict<RTLIL::SigBit, std::vector<DSPUsage>>
+	collect_dsp_usages(RTLIL::Module *module,
+					const pool<RTLIL::IdString> &port_filter = {})
+	{
+		SigMap sigmap(module);
+		dict<RTLIL::SigBit, std::vector<DSPUsage>> usage_map;
+
+		log_debug("=== collect_dsp_usages START (filter size=%d) ===\n",
+			GetSize(port_filter));
+
+		for (auto cell : module->cells()) {
+			if (cell->type.str().find("QL_DSPV2") == std::string::npos)
+				continue;
+
+			log_debug("  DSP cell=%s\n", log_id(cell));
+
+			for (auto &conn : cell->connections()) {
+				RTLIL::IdString port = conn.first;
+
+				if (!cell->input(port)) {
+					log_debug("    port=%s skip (not input)\n", log_id(port));
+					continue;
+				}
+				if (!port_filter.empty() && !port_filter.count(port)) {
+					log_debug("    port=%s skip (not in filter)\n", log_id(port));
+					continue;
+				}
+
+				SigSpec sig = sigmap(conn.second);
+				log_debug("    port=%s width=%d\n", log_id(port), GetSize(sig));
+
+				for (int i = 0; i < GetSize(sig); i++) {
+					SigBit bit = sigmap(sig[i]);
+					if (bit.wire == nullptr) {
+						log_debug("      bit[%d] skip (constant)\n", i);
+						continue;
+					}
+					usage_map[bit].push_back({cell, port, i});
+					log_debug("      bit[%d]=%s -> recorded (total usages=%d)\n",
+						i, log_signal(bit), GetSize(usage_map[bit]));
+				}
+			}
+		}
+
+		log_debug("=== collect_dsp_usages END total_bits=%d ===\n\n",
+			GetSize(usage_map));
+		return usage_map;
+	}
+
+	// ============================================================================
+	// Return true if bit is the output of a buffer cell (prevents double-buffering)
+	// ============================================================================
+	static bool is_buffer_output(RTLIL::Module *module, const RTLIL::SigBit &bit)
+	{
+		if (bit.wire == nullptr)
+			return false;
+
+		SigMap sigmap(module);
+		for (auto cell : module->cells()) {
+			if (cell->type != ID(buffer) || !cell->hasPort(ID(out)))
+				continue;
+			for (auto b : sigmap(cell->getPort(ID(out)))) {
+				if (sigmap(b) == sigmap(bit)) {
+					log_debug("  is_buffer_output: bit=%s already buffered by cell=%s\n",
+						log_signal(bit), log_id(cell));
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	// ============================================================================
+	// Return true if bit comes from a dffre Q output
+	// Fills ff_cell and q_idx on success.
+	// ============================================================================
+	static bool get_dffre_q_driver(RTLIL::Module *module,
+									const RTLIL::SigBit &bit,
+									RTLIL::Cell *&ff_cell,
+									int &q_idx)
+	{
+		if (bit.wire == nullptr) {
+			log_debug("  get_dffre_q_driver: bit has no wire, skip\n");
+			return false;
+		}
+
+		SigMap sigmap(module);
+		for (auto cell : module->cells()) {
+			if (!is_dffre(cell))
+				continue;
+			if (!cell->hasPort(ID::Q))
+				continue;
+
+			SigSpec qsig = sigmap(cell->getPort(ID::Q));
+			for (int i = 0; i < GetSize(qsig); i++) {
+				if (sigmap(qsig[i]) == sigmap(bit)) {
+					ff_cell = cell;
+					q_idx   = i;
+					log_debug("  get_dffre_q_driver: bit=%s -> FF=%s Q[%d]\n",
+						log_signal(bit), log_id(cell), i);
+					return true;
+				}
+			}
+		}
+
+		log_debug("  get_dffre_q_driver: bit=%s -> no dffre driver found\n",
+			log_signal(bit));
+		return false;
+	}
+
+	// ============================================================================
+	// Duplicate a dffre, overriding Q[q_idx] with a fresh wire.
+	// Returns the new Q bit.
+	// ============================================================================
+	static RTLIL::SigBit duplicate_ff_bit(RTLIL::Module *module,
+										RTLIL::Cell   *orig_ff,
+										int            q_idx)
+	{
+		log_assert(orig_ff != nullptr);
+		log_assert(is_dffre(orig_ff));
+
+		SigSpec qsig = orig_ff->getPort("\\Q");
+		if (q_idx >= GetSize(qsig))
+			log_error("duplicate_ff_bit: q_idx=%d out of range (Q width=%d)\n",
+				q_idx, GetSize(qsig));
+
+		RTLIL::Wire *new_q = module->addWire(
+			module->uniquify(stringf("\\%s_dup_q_%d",
+				log_id(orig_ff), q_idx)),
+			1);
+
+		log_debug("  duplicate_ff_bit: orig_ff=%s q_idx=%d new_wire=%s\n",
+			log_id(orig_ff), q_idx, log_id(new_q));
+
+		RTLIL::Cell *dup_ff = module->addCell(
+			module->uniquify(IdString("\\dffre")),
+			IdString("\\dffre"));
+
+		dup_ff->setPort("\\D", orig_ff->getPort("\\D"));
+		dup_ff->setPort("\\C", orig_ff->getPort("\\C"));
+		dup_ff->setPort("\\R", orig_ff->getPort("\\R"));
+		dup_ff->setPort("\\E", orig_ff->hasPort("\\E")
+			? orig_ff->getPort("\\E")
+			: SigSpec());
+		dup_ff->setPort("\\Q", SigSpec(new_q));
+
+		log_debug("  created dup_ff=%s Q=%s\n", log_id(dup_ff), log_id(new_q));
+
+		return SigBit(new_q);
+	}
+
+	// ============================================================================
+	// Insert a shared dummy buffer when a bit drives the same
+	// bit index of port "a" on multiple DSPs.
+	// ============================================================================
+	static void insert_dummy_buffer(
+		RTLIL::Module *module,
+		const RTLIL::SigBit &src_bit,
+		const DSPUsage &usage)
+	{
+		static int buf_count = 0;
+		std::string idx = stringf("%d", buf_count++);
+
+		log_debug("  insert_dummy_buffer: src_bit=%s DSP=%s port=%s bit[%d] buf_idx=%s\n",
+			log_signal(src_bit), log_id(usage.cell), log_id(usage.port),
+			usage.bit_idx, idx.c_str());
+
+		RTLIL::Wire *buf_wire = module->addWire(
+			module->uniquify("\\dummy_buf_wire_" + idx));
+		RTLIL::Cell *buf = module->addCell(
+			module->uniquify("\\dummy_buf_" + idx), ID(buffer));
+
+		buf->setPort(ID(in),  SigSpec(src_bit));
+		buf->setPort(ID(out), SigSpec(buf_wire));
+
+		log_debug("    buffer cell=%s wire=%s\n", log_id(buf), log_id(buf_wire));
+
+		SigSpec sig = usage.cell->getPort(usage.port);
+		sig[usage.bit_idx] = SigBit(buf_wire);
+		usage.cell->setPort(usage.port, sig);
+
+		log_debug("    rewire DSP=%s port=%s bit[%d] -> %s\n",
+			log_id(usage.cell), log_id(usage.port), usage.bit_idx, log_id(buf_wire));
+	}
+
+	static void protect_shared_dsp_input(RTLIL::Module *module)
+	{
+		const RTLIL::IdString port_a = IdString("\\a");
+
+		log_debug("=== protect_shared_dsp_input START ===\n");
+
+		pool<RTLIL::IdString> filter = {port_a};
+		auto usage_map = collect_dsp_usages(module, filter);
+
+		pool<RTLIL::SigBit> processed;
+		int buffered = 0;
+
+		for (auto &it : usage_map) {
+			SigBit bit    = it.first;
+			auto  &usages = it.second;
+
+			log_debug("  bit=%s usages=%d\n", log_signal(bit), GetSize(usages));
+
+			if (GetSize(usages) <= 1) {
+				log_debug("    skip (not shared)\n");
+				continue;
+			}
+			if (is_buffer_output(module, bit)) {
+				log_debug("    skip (already buffered)\n");
+				continue;
+			}
+			if (processed.count(bit)) {
+				log_debug("    skip (already processed)\n");
+				continue;
+			}
+
+			// --------------------------------------------------------
+			// Group by bit index — only insert buffers where the same
+			// bit index is shared across multiple DSPs
+			// --------------------------------------------------------
+			dict<int, std::vector<DSPUsage>> by_bit_idx;
+			for (auto &u : usages) {
+				by_bit_idx[u.bit_idx].push_back(u);
+				log_debug("    usage: DSP=%s port=%s bit[%d]\n",
+					log_id(u.cell), log_id(u.port), u.bit_idx);
+			}
+
+			for (auto &bi : by_bit_idx) {
+				int  bit_index        = bi.first;
+				auto &same_idx_usages = bi.second;
+
+				log_debug("    bit_index=%d shared_count=%d\n",
+					bit_index, GetSize(same_idx_usages));
+
+				if (GetSize(same_idx_usages) <= 1) {
+					log_debug("      skip (only one DSP at this bit index)\n");
+					continue;
+				}
+
+				// One buffer per DSP sink
+				for (auto &u : same_idx_usages) {
+					insert_dummy_buffer(module, bit, u);
+					buffered++;
+				}
+			}
+
+			processed.insert(bit);
+		}
+
+		log_debug("=== protect_shared_dsp_input END buffers_inserted=%d ===\n\n",
+			buffered);
+	}
+	// ============================================================================
+	// Duplicate dffre when one bit drives multiple bit positions
+	// of the SAME port (a, b, or c) on the SAME DSP.
+	// ============================================================================
+	static void duplicate_shared_dffres(RTLIL::Module *module,
+										RTLIL::Cell   *target_cell,
+										const pool<RTLIL::IdString> &input_ports)
+	{
+		SigMap sigmap(module);
+
+		log_debug("=== duplicate_shared_dffres START cell=%s ===\n",
+			log_id(target_cell));
+
+		// Build dffre-only Q driver map
+		dict<SigBit, RTLIL::Cell*> driver_map;
+		for (auto cell : module->cells()) {
+			if (!is_dffre(cell))       continue;
+			if (!cell->hasPort(ID::Q)) continue;
+
+			SigSpec qsig = sigmap(cell->getPort(ID::Q));
+			log_debug("  FF candidate: cell=%s Q-width=%d\n",
+				log_id(cell), GetSize(qsig));
+
+			for (int i = 0; i < GetSize(qsig); i++) {
+				SigBit bit = qsig[i];
+				if (bit.wire) {
+					driver_map[bit] = cell;
+					log_debug("    driver_map: bit=%s -> FF=%s\n",
+						log_signal(bit), log_id(cell));
+				} else {
+					log_debug("    bit[%d] skip (constant)\n", i);
+				}
+			}
+		}
+		log_debug("driver_map size=%d\n", GetSize(driver_map));
+
+		for (auto port : input_ports) {
+			if (!target_cell->hasPort(port)) {
+				log_debug("SKIP port=%s (not present on cell=%s)\n",
+					log_id(port), log_id(target_cell));
+				continue;
+			}
+
+			SigSpec new_sig = target_cell->getPort(port);
+			log_debug("\n--- port=%s width=%d ---\n", log_id(port), GetSize(new_sig));
+
+			dict<RTLIL::Cell*, std::vector<int>> groups;
+			for (int i = 0; i < GetSize(new_sig); i++) {
+				SigBit b = sigmap(new_sig[i]);
+				log_debug("  bit[%d]=%s", i, log_signal(b));
+
+				if (b.wire == nullptr) {
+					log_debug(" -> skip (constant)\n");
+					continue;
+				}
+				if (!driver_map.count(b)) {
+					log_debug(" -> no dffre driver\n");
+					continue;
+				}
+				RTLIL::Cell *drv = driver_map[b];
+				groups[drv].push_back(i);
+				log_debug(" -> FF=%s (group size now %d)\n",
+					log_id(drv), GetSize(groups[drv]));
+			}
+
+			log_debug("Groups before filtering:\n");
+			for (auto &it : groups) {
+				log_debug("  FF=%s bits=[", log_id(it.first));
+				for (auto idx : it.second) log_debug(" %d", idx);
+				log_debug(" ] size=%d\n", GetSize(it.second));
+			}
+
+			bool changed = false;
+			for (auto &it : groups) {
+				if (it.second.size() < 2) {
+					log_debug("  SKIP singleton group FF=%s\n", log_id(it.first));
+					continue;
+				}
+
+				RTLIL::Cell *drv  = it.first;
+				auto        &idxs = it.second;
+
+				SigSpec qsig       = sigmap(drv->getPort(ID::Q));
+				SigBit  driven_bit = sigmap(new_sig[idxs[0]]);
+
+				log_debug("  Resolving q_idx for FF=%s driven_bit=%s Q-width=%d\n",
+					log_id(drv), log_signal(driven_bit), GetSize(qsig));
+
+				int q_idx = -1;
+				for (int i = 0; i < GetSize(qsig); i++) {
+					SigBit qbit = sigmap(qsig[i]);
+					log_debug("    Q[%d]=%s\n", i, log_signal(qbit));
+					if (qbit == driven_bit) { q_idx = i; break; }
+				}
+
+				if (q_idx < 0) {
+					log_debug("  ERROR: could not resolve q_idx for FF=%s bit=%s -- SKIP\n",
+						log_id(drv), log_signal(driven_bit));
+					continue;
+				}
+
+				log_debug("  q_idx=%d resolved OK\n", q_idx);
+				log_debug("  Duplicating FF=%s for bit positions:", log_id(drv));
+				for (auto i : idxs) log_debug(" %d", i);
+				log_debug("\n");
+
+				for (int k = 1; k < (int)idxs.size(); k++) {
+					int    bit_index = idxs[k];
+					SigBit new_q     = duplicate_ff_bit(module, drv, q_idx);
+					new_sig[bit_index] = new_q;
+					changed = true;
+					log_debug("    bit[%d] -> new wire=%s\n",
+						bit_index, log_signal(new_q));
+				}
+			}
+
+			if (changed) {
+				log_debug("Updating port=%s on cell=%s\n",
+					log_id(port), log_id(target_cell));
+				target_cell->setPort(port, new_sig);
+			} else {
+				log_debug("No changes for port=%s\n", log_id(port));
+			}
+		}
+
+		log_debug("=== duplicate_shared_dffres END cell=%s ===\n\n",
+			log_id(target_cell));
+	}
+
+	// ============================================================================
+	// Duplicate dffre when one bit drives:
+	//   (a) multiple different DSP ports (a, b, c) across any DSPs, OR
+	//   (b) any DSP port (a, b, c) AND any non-DSP cell.
+	//
+	// Result:
+	//   - Each DSP gets its own dedicated register copy.
+	//   - All non-DSP sinks share one register copy (the original or a duplicate).
+	// ============================================================================
+	static void duplicate_dffre_per_dsp_port(RTLIL::Module *module)
+	{
+		log_debug("=== duplicate_dffre_per_dsp_port START module=%s ===\n",
+			log_id(module));
+
+		SigMap sigmap(module);
+
+		const pool<RTLIL::IdString> dsp_ports = {
+			IdString("\\a"), IdString("\\b"), IdString("\\c")
+		};
+
+		// ----------------------------------------------------------------
+		// Build dffre Q bit map: bit -> (ff_cell, q_idx)
+		// ----------------------------------------------------------------
+		dict<RTLIL::SigBit, std::pair<RTLIL::Cell*, int>> dffre_q_map;
+		for (auto cell : module->cells()) {
+			if (!is_dffre(cell))       continue;
+			if (!cell->hasPort(ID::Q)) continue;
+			SigSpec qsig = sigmap(cell->getPort(ID::Q));
+			for (int i = 0; i < GetSize(qsig); i++) {
+				SigBit bit = sigmap(qsig[i]);
+				if (bit.wire) {
+					dffre_q_map[bit] = {cell, i};
+					log_debug("  dffre_q_map: bit=%s -> FF=%s Q[%d]\n",
+						log_signal(bit), log_id(cell), i);
+				}
+			}
+		}
+
+		log_debug("  dffre_q_map size=%d\n", GetSize(dffre_q_map));
+
+		// ----------------------------------------------------------------
+		// For each dffre Q bit, collect DSP sinks (a/b/c only)
+		// and non-DSP sinks
+		// ----------------------------------------------------------------
+		struct BitSinks {
+			std::vector<DSPUsage>                                  dsp;
+			std::vector<std::pair<RTLIL::Cell*, RTLIL::IdString>>  other;
+		};
+
+		dict<RTLIL::SigBit, BitSinks> sink_map;
+
+		for (auto cell : module->cells()) {
+			bool is_dsp = cell->type.str().find("QL_DSPV2") != std::string::npos;
+
+			for (auto &conn : cell->connections()) {
+				RTLIL::IdString port = conn.first;
+				if (!cell->input(port)) continue;
+
+				// For DSP cells restrict to ports a, b, c
+				if (is_dsp && !dsp_ports.count(port)) continue;
+
+				SigSpec sig = sigmap(conn.second);
+				for (int i = 0; i < GetSize(sig); i++) {
+					SigBit bit = sigmap(sig[i]);
+					if (!dffre_q_map.count(bit)) continue;
+
+					if (is_dsp) {
+						sink_map[bit].dsp.push_back({cell, port, i});
+						log_debug("  dsp sink: bit=%s DSP=%s port=%s bit[%d]\n",
+							log_signal(bit), log_id(cell), log_id(port), i);
+					} else {
+						sink_map[bit].other.push_back({cell, port});
+						log_debug("  other sink: bit=%s cell=%s port=%s\n",
+							log_signal(bit), log_id(cell), log_id(port));
+					}
+				}
+			}
+		}
+
+		int dup_total = 0;
+
+		for (auto &it : sink_map) {
+			SigBit      bit      = it.first;
+			BitSinks   &sinks    = it.second;
+			RTLIL::Cell *ff_cell = dffre_q_map[bit].first;
+			int          q_idx   = dffre_q_map[bit].second;
+
+			int dsp_count   = GetSize(sinks.dsp);
+			int other_count = GetSize(sinks.other);
+
+			log_debug("  bit=%s FF=%s Q[%d] dsp_sinks=%d other_sinks=%d\n",
+				log_signal(bit), log_id(ff_cell), q_idx, dsp_count, other_count);
+
+			if (dsp_count == 0) {
+				log_debug("    skip (no DSP sinks)\n");
+				continue;
+			}
+
+			if (dsp_count + other_count <= 1) {
+				log_debug("    skip (single sink)\n");
+				continue;
+			}
+
+			// --------------------------------------------------------
+			// Group DSP sinks by port name only.
+			// Same port on multiple DSPs is fine,
+			// only different ports need separate registers.
+			// --------------------------------------------------------
+			dict<RTLIL::IdString, std::vector<DSPUsage>> dsp_groups;
+			for (auto &u : sinks.dsp) {
+				dsp_groups[u.port].push_back(u);
+				log_debug("    dsp usage: DSP=%s port=%s bit[%d]\n",
+					log_id(u.cell), log_id(u.port), u.bit_idx);
+			}
+
+			for (auto &os : sinks.other)
+				log_debug("    other usage: cell=%s port=%s\n",
+					log_id(os.first), log_id(os.second));
+
+			log_debug("    dsp_groups=%d other_sinks=%d\n",
+				GetSize(dsp_groups), other_count);
+
+			// --------------------------------------------------------
+			// Nothing to do if only one DSP port group and no other sinks
+			// --------------------------------------------------------
+			if (GetSize(dsp_groups) == 1 && other_count == 0) {
+				log_debug("    skip (single DSP port group, no other sinks)\n");
+				continue;
+			}
+
+			// --------------------------------------------------------
+			// Original FF keeps non-DSP sinks if any exist.
+			// Otherwise original FF keeps first DSP port group.
+			// Each remaining DSP port group gets its own duplicate.
+			// --------------------------------------------------------
+			bool original_used_for_other = (other_count > 0);
+
+			if (original_used_for_other)
+				log_debug("    original FF=%s kept for non-DSP sinks\n",
+					log_id(ff_cell));
+
+			bool first_dsp_group = true;
+			for (auto &dg : dsp_groups) {
+				RTLIL::IdString  dsp_port = dg.first;
+				auto            &usages   = dg.second;
+
+				// Keep original FF for first DSP group if no other sinks
+				if (!original_used_for_other && first_dsp_group) {
+					log_debug("    keep original FF=%s for port=%s (%d sinks)\n",
+						log_id(ff_cell), log_id(dsp_port), GetSize(usages));
+					first_dsp_group = false;
+					continue;
+				}
+
+				log_debug("    duplicate FF=%s for port=%s (%d sinks)\n",
+					log_id(ff_cell), log_id(dsp_port), GetSize(usages));
+
+				SigBit new_q = duplicate_ff_bit(module, ff_cell, q_idx);
+				dup_total++;
+
+				for (auto &u : usages) {
+					SigSpec sig = u.cell->getPort(u.port);
+					if (u.bit_idx >= GetSize(sig))
+						log_error("duplicate_dffre_per_dsp_port: bit_idx=%d out of range (port width=%d)\n",
+							u.bit_idx, GetSize(sig));
+					sig[u.bit_idx] = new_q;
+					u.cell->setPort(u.port, sig);
+					log_debug("      rewire DSP=%s port=%s bit[%d] -> %s\n",
+						log_id(u.cell), log_id(u.port), u.bit_idx,
+						log_signal(new_q));
+				}
+
+				first_dsp_group = false;
+			}
+		}
+
+		log_debug("=== duplicate_dffre_per_dsp_port END duplications=%d ===\n\n",
+			dup_total);
+	}
+
 	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing QL_DSPV2_TYPES pass.\n");
-
-		size_t argidx = 1;
-		extra_args(args, argidx, design);
-
+		
 		for (RTLIL::Module* module : design->selected_modules()){
+			// Snapshot DSP cells before any modification
+			std::vector<RTLIL::Cell*> dsp_cells;
+			for (auto cell : module->cells()) {
+				if (cell->type.str().find("QL_DSPV2") != std::string::npos)
+					dsp_cells.push_back(cell);
+			}
+
+
+			// one FF bit driving multiple positions of same port (a, b, c)
+			const pool<RTLIL::IdString> abc_ports = {
+				IdString("\\a"), IdString("\\b"), IdString("\\c")
+			};
+			for (auto cell : dsp_cells)
+				duplicate_shared_dffres(module, cell, abc_ports);
+
+			// cross-port and cross-cell fanout
+			duplicate_dffre_per_dsp_port(module);
+
+			// buffers on port a only, same bit index only
+			protect_shared_dsp_input(module);
+
 			for (RTLIL::Cell* cell: module->selected_cells())
 			{
 				if (cell->type != ID(QL_DSPV2) || !cell->hasParam(ID(MODE_BITS)))
 					continue;
-				
+
 				RTLIL::Const mode_bits = cell->getParam(ID(MODE_BITS));
-                
 
                 int COEFF_0    = mode_bits.extract(0, 31).as_int();
 				log_debug("COEFF_0: %d.\n", COEFF_0);
@@ -559,6 +1160,27 @@ struct QlDSPV2TypesPass : public Pass {
 														ID(feedback),
 														ID(output_select),
 														ID(z)
+													});
+						break;
+					
+					case 0b01111110: //PREADDER_MULTADD
+					case 0b01110110: //PREADDER_MULTADD
+						make_gnd_bits_unconn(
+											module,
+											cell,
+											pool<RTLIL::IdString>{ 
+												ID(z_cin),
+											});
+						transform_cell_with_ports(cell,
+												  RTLIL::escape_id("QL_DSPV2_PREADDER_MULTADD"),
+												  pool<RTLIL::IdString>{ 
+														ID(a),
+														ID(b),
+														ID(c),
+														ID(feedback),
+														ID(output_select),
+														ID(z),
+														ID(z_cin)
 													});
 						break;
 
