@@ -337,16 +337,12 @@ struct QlDSPV2TypesPass : public Pass {
 	};
 
 	// ============================================================================
-	// Return true if cell is strictly a dffre (not sdffre, dff, dffn, etc.)
+	// Return true if cell is strictly a dffre
 	// ============================================================================
 	static bool is_dffre(const RTLIL::Cell *cell)
 	{
-		const std::string &t = cell->type.str();
-		// must contain "dffre" but must NOT contain "sdffre" or "SDFFRE"
-		if (t.find("sdffre") != std::string::npos) return false;
-		if (t.find("SDFFRE") != std::string::npos) return false;
-		return t.find("dffre")  != std::string::npos ||
-			t.find("DFFRE")  != std::string::npos;
+		return cell->type == IdString("\\dffre") ||
+			cell->type == IdString("\\DFFRE");
 	}
 
 	// ============================================================================
@@ -426,7 +422,7 @@ struct QlDSPV2TypesPass : public Pass {
 	}
 
 	// ============================================================================
-	// Return true if bit comes from a dffre Q output (strict: not sdffre etc.)
+	// Return true if bit comes from a dffre Q output
 	// Fills ff_cell and q_idx on success.
 	// ============================================================================
 	static bool get_dffre_q_driver(RTLIL::Module *module,
@@ -505,10 +501,8 @@ struct QlDSPV2TypesPass : public Pass {
 	}
 
 	// ============================================================================
-	// Problem 1 — Insert a shared dummy buffer when a bit drives the same
-	// bit index of port "a" on multiple DSPs, and is not dffre-driven.
-	//
-	//   src_bit --> buffer --> buf_wire --> all DSP a[i] sinks at same bit index
+	// Insert a shared dummy buffer when a bit drives the same
+	// bit index of port "a" on multiple DSPs.
 	// ============================================================================
 	static void insert_dummy_buffer(
 		RTLIL::Module *module,
@@ -608,7 +602,7 @@ struct QlDSPV2TypesPass : public Pass {
 			buffered);
 	}
 	// ============================================================================
-	// Problem 2 — Duplicate dffre when one bit drives multiple bit positions
+	// Duplicate dffre when one bit drives multiple bit positions
 	// of the SAME port (a, b, or c) on the SAME DSP.
 	// ============================================================================
 	static void duplicate_shared_dffres(RTLIL::Module *module,
@@ -737,7 +731,7 @@ struct QlDSPV2TypesPass : public Pass {
 	}
 
 	// ============================================================================
-	// Problem 3 — Duplicate dffre when one bit drives:
+	// Duplicate dffre when one bit drives:
 	//   (a) multiple different DSP ports (a, b, c) across any DSPs, OR
 	//   (b) any DSP port (a, b, c) AND any non-DSP cell.
 	//
@@ -752,7 +746,6 @@ struct QlDSPV2TypesPass : public Pass {
 
 		SigMap sigmap(module);
 
-		// Ports we care about on DSPs
 		const pool<RTLIL::IdString> dsp_ports = {
 			IdString("\\a"), IdString("\\b"), IdString("\\c")
 		};
@@ -842,7 +835,7 @@ struct QlDSPV2TypesPass : public Pass {
 
 			// --------------------------------------------------------
 			// Group DSP sinks by port name only.
-			// Same port on multiple DSPs is fine (buffers handle that),
+			// Same port on multiple DSPs is fine,
 			// only different ports need separate registers.
 			// --------------------------------------------------------
 			dict<RTLIL::IdString, std::vector<DSPUsage>> dsp_groups;
@@ -930,17 +923,17 @@ struct QlDSPV2TypesPass : public Pass {
 			}
 
 
-			// Problem 2 — one FF bit driving multiple positions of same port (a, b, c)
+			// one FF bit driving multiple positions of same port (a, b, c)
 			const pool<RTLIL::IdString> abc_ports = {
 				IdString("\\a"), IdString("\\b"), IdString("\\c")
 			};
 			for (auto cell : dsp_cells)
 				duplicate_shared_dffres(module, cell, abc_ports);
 
-			// Problem 3 — cross-port and cross-cell fanout
+			// cross-port and cross-cell fanout
 			duplicate_dffre_per_dsp_port(module);
 
-			// Problem 1 — buffers on port a only, same bit index only
+			// buffers on port a only, same bit index only
 			protect_shared_dsp_input(module);
 
 			for (RTLIL::Cell* cell: module->selected_cells())
