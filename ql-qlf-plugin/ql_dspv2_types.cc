@@ -360,44 +360,44 @@ struct QlDSPV2TypesPass : public Pass {
 		SigMap sigmap(module);
 		dict<RTLIL::SigBit, std::vector<DSPUsage>> usage_map;
 
-		log("=== collect_dsp_usages START (filter size=%d) ===\n",
+		log_debug("=== collect_dsp_usages START (filter size=%d) ===\n",
 			GetSize(port_filter));
 
 		for (auto cell : module->cells()) {
 			if (cell->type.str().find("QL_DSPV2") == std::string::npos)
 				continue;
 
-			log("  DSP cell=%s\n", log_id(cell));
+			log_debug("  DSP cell=%s\n", log_id(cell));
 
 			for (auto &conn : cell->connections()) {
 				RTLIL::IdString port = conn.first;
 
 				if (!cell->input(port)) {
-					log("    port=%s skip (not input)\n", log_id(port));
+					log_debug("    port=%s skip (not input)\n", log_id(port));
 					continue;
 				}
 				if (!port_filter.empty() && !port_filter.count(port)) {
-					log("    port=%s skip (not in filter)\n", log_id(port));
+					log_debug("    port=%s skip (not in filter)\n", log_id(port));
 					continue;
 				}
 
 				SigSpec sig = sigmap(conn.second);
-				log("    port=%s width=%d\n", log_id(port), GetSize(sig));
+				log_debug("    port=%s width=%d\n", log_id(port), GetSize(sig));
 
 				for (int i = 0; i < GetSize(sig); i++) {
 					SigBit bit = sigmap(sig[i]);
 					if (bit.wire == nullptr) {
-						log("      bit[%d] skip (constant)\n", i);
+						log_debug("      bit[%d] skip (constant)\n", i);
 						continue;
 					}
 					usage_map[bit].push_back({cell, port, i});
-					log("      bit[%d]=%s -> recorded (total usages=%d)\n",
+					log_debug("      bit[%d]=%s -> recorded (total usages=%d)\n",
 						i, log_signal(bit), GetSize(usage_map[bit]));
 				}
 			}
 		}
 
-		log("=== collect_dsp_usages END total_bits=%d ===\n\n",
+		log_debug("=== collect_dsp_usages END total_bits=%d ===\n\n",
 			GetSize(usage_map));
 		return usage_map;
 	}
@@ -416,7 +416,7 @@ struct QlDSPV2TypesPass : public Pass {
 				continue;
 			for (auto b : sigmap(cell->getPort(ID(out)))) {
 				if (sigmap(b) == sigmap(bit)) {
-					log("  is_buffer_output: bit=%s already buffered by cell=%s\n",
+					log_debug("  is_buffer_output: bit=%s already buffered by cell=%s\n",
 						log_signal(bit), log_id(cell));
 					return true;
 				}
@@ -435,7 +435,7 @@ struct QlDSPV2TypesPass : public Pass {
 									int &q_idx)
 	{
 		if (bit.wire == nullptr) {
-			log("  get_dffre_q_driver: bit has no wire, skip\n");
+			log_debug("  get_dffre_q_driver: bit has no wire, skip\n");
 			return false;
 		}
 
@@ -451,14 +451,14 @@ struct QlDSPV2TypesPass : public Pass {
 				if (sigmap(qsig[i]) == sigmap(bit)) {
 					ff_cell = cell;
 					q_idx   = i;
-					log("  get_dffre_q_driver: bit=%s -> FF=%s Q[%d]\n",
+					log_debug("  get_dffre_q_driver: bit=%s -> FF=%s Q[%d]\n",
 						log_signal(bit), log_id(cell), i);
 					return true;
 				}
 			}
 		}
 
-		log("  get_dffre_q_driver: bit=%s -> no dffre driver found\n",
+		log_debug("  get_dffre_q_driver: bit=%s -> no dffre driver found\n",
 			log_signal(bit));
 		return false;
 	}
@@ -484,7 +484,7 @@ struct QlDSPV2TypesPass : public Pass {
 				log_id(orig_ff), q_idx)),
 			1);
 
-		log("  duplicate_ff_bit: orig_ff=%s q_idx=%d new_wire=%s\n",
+		log_debug("  duplicate_ff_bit: orig_ff=%s q_idx=%d new_wire=%s\n",
 			log_id(orig_ff), q_idx, log_id(new_q));
 
 		RTLIL::Cell *dup_ff = module->addCell(
@@ -499,7 +499,7 @@ struct QlDSPV2TypesPass : public Pass {
 			: SigSpec());
 		dup_ff->setPort("\\Q", SigSpec(new_q));
 
-		log("  created dup_ff=%s Q=%s\n", log_id(dup_ff), log_id(new_q));
+		log_debug("  created dup_ff=%s Q=%s\n", log_id(dup_ff), log_id(new_q));
 
 		return SigBit(new_q);
 	}
@@ -518,7 +518,7 @@ struct QlDSPV2TypesPass : public Pass {
 		static int buf_count = 0;
 		std::string idx = stringf("%d", buf_count++);
 
-		log("  insert_dummy_buffer: src_bit=%s DSP=%s port=%s bit[%d] buf_idx=%s\n",
+		log_debug("  insert_dummy_buffer: src_bit=%s DSP=%s port=%s bit[%d] buf_idx=%s\n",
 			log_signal(src_bit), log_id(usage.cell), log_id(usage.port),
 			usage.bit_idx, idx.c_str());
 
@@ -530,13 +530,13 @@ struct QlDSPV2TypesPass : public Pass {
 		buf->setPort(ID(in),  SigSpec(src_bit));
 		buf->setPort(ID(out), SigSpec(buf_wire));
 
-		log("    buffer cell=%s wire=%s\n", log_id(buf), log_id(buf_wire));
+		log_debug("    buffer cell=%s wire=%s\n", log_id(buf), log_id(buf_wire));
 
 		SigSpec sig = usage.cell->getPort(usage.port);
 		sig[usage.bit_idx] = SigBit(buf_wire);
 		usage.cell->setPort(usage.port, sig);
 
-		log("    rewire DSP=%s port=%s bit[%d] -> %s\n",
+		log_debug("    rewire DSP=%s port=%s bit[%d] -> %s\n",
 			log_id(usage.cell), log_id(usage.port), usage.bit_idx, log_id(buf_wire));
 	}
 
@@ -544,7 +544,7 @@ struct QlDSPV2TypesPass : public Pass {
 	{
 		const RTLIL::IdString port_a = IdString("\\a");
 
-		log("=== protect_shared_dsp_input START ===\n");
+		log_debug("=== protect_shared_dsp_input START ===\n");
 
 		pool<RTLIL::IdString> filter = {port_a};
 		auto usage_map = collect_dsp_usages(module, filter);
@@ -556,18 +556,18 @@ struct QlDSPV2TypesPass : public Pass {
 			SigBit bit    = it.first;
 			auto  &usages = it.second;
 
-			log("  bit=%s usages=%d\n", log_signal(bit), GetSize(usages));
+			log_debug("  bit=%s usages=%d\n", log_signal(bit), GetSize(usages));
 
 			if (GetSize(usages) <= 1) {
-				log("    skip (not shared)\n");
+				log_debug("    skip (not shared)\n");
 				continue;
 			}
 			if (is_buffer_output(module, bit)) {
-				log("    skip (already buffered)\n");
+				log_debug("    skip (already buffered)\n");
 				continue;
 			}
 			if (processed.count(bit)) {
-				log("    skip (already processed)\n");
+				log_debug("    skip (already processed)\n");
 				continue;
 			}
 
@@ -578,7 +578,7 @@ struct QlDSPV2TypesPass : public Pass {
 			dict<int, std::vector<DSPUsage>> by_bit_idx;
 			for (auto &u : usages) {
 				by_bit_idx[u.bit_idx].push_back(u);
-				log("    usage: DSP=%s port=%s bit[%d]\n",
+				log_debug("    usage: DSP=%s port=%s bit[%d]\n",
 					log_id(u.cell), log_id(u.port), u.bit_idx);
 			}
 
@@ -586,11 +586,11 @@ struct QlDSPV2TypesPass : public Pass {
 				int  bit_index        = bi.first;
 				auto &same_idx_usages = bi.second;
 
-				log("    bit_index=%d shared_count=%d\n",
+				log_debug("    bit_index=%d shared_count=%d\n",
 					bit_index, GetSize(same_idx_usages));
 
 				if (GetSize(same_idx_usages) <= 1) {
-					log("      skip (only one DSP at this bit index)\n");
+					log_debug("      skip (only one DSP at this bit index)\n");
 					continue;
 				}
 
@@ -604,7 +604,7 @@ struct QlDSPV2TypesPass : public Pass {
 			processed.insert(bit);
 		}
 
-		log("=== protect_shared_dsp_input END buffers_inserted=%d ===\n\n",
+		log_debug("=== protect_shared_dsp_input END buffers_inserted=%d ===\n\n",
 			buffered);
 	}
 	// ============================================================================
@@ -617,7 +617,7 @@ struct QlDSPV2TypesPass : public Pass {
 	{
 		SigMap sigmap(module);
 
-		log("=== duplicate_shared_dffres START cell=%s ===\n",
+		log_debug("=== duplicate_shared_dffres START cell=%s ===\n",
 			log_id(target_cell));
 
 		// Build dffre-only Q driver map
@@ -627,62 +627,62 @@ struct QlDSPV2TypesPass : public Pass {
 			if (!cell->hasPort(ID::Q)) continue;
 
 			SigSpec qsig = sigmap(cell->getPort(ID::Q));
-			log("  FF candidate: cell=%s Q-width=%d\n",
+			log_debug("  FF candidate: cell=%s Q-width=%d\n",
 				log_id(cell), GetSize(qsig));
 
 			for (int i = 0; i < GetSize(qsig); i++) {
 				SigBit bit = qsig[i];
 				if (bit.wire) {
 					driver_map[bit] = cell;
-					log("    driver_map: bit=%s -> FF=%s\n",
+					log_debug("    driver_map: bit=%s -> FF=%s\n",
 						log_signal(bit), log_id(cell));
 				} else {
-					log("    bit[%d] skip (constant)\n", i);
+					log_debug("    bit[%d] skip (constant)\n", i);
 				}
 			}
 		}
-		log("driver_map size=%d\n", GetSize(driver_map));
+		log_debug("driver_map size=%d\n", GetSize(driver_map));
 
 		for (auto port : input_ports) {
 			if (!target_cell->hasPort(port)) {
-				log("SKIP port=%s (not present on cell=%s)\n",
+				log_debug("SKIP port=%s (not present on cell=%s)\n",
 					log_id(port), log_id(target_cell));
 				continue;
 			}
 
 			SigSpec new_sig = target_cell->getPort(port);
-			log("\n--- port=%s width=%d ---\n", log_id(port), GetSize(new_sig));
+			log_debug("\n--- port=%s width=%d ---\n", log_id(port), GetSize(new_sig));
 
 			dict<RTLIL::Cell*, std::vector<int>> groups;
 			for (int i = 0; i < GetSize(new_sig); i++) {
 				SigBit b = sigmap(new_sig[i]);
-				log("  bit[%d]=%s", i, log_signal(b));
+				log_debug("  bit[%d]=%s", i, log_signal(b));
 
 				if (b.wire == nullptr) {
-					log(" -> skip (constant)\n");
+					log_debug(" -> skip (constant)\n");
 					continue;
 				}
 				if (!driver_map.count(b)) {
-					log(" -> no dffre driver\n");
+					log_debug(" -> no dffre driver\n");
 					continue;
 				}
 				RTLIL::Cell *drv = driver_map[b];
 				groups[drv].push_back(i);
-				log(" -> FF=%s (group size now %d)\n",
+				log_debug(" -> FF=%s (group size now %d)\n",
 					log_id(drv), GetSize(groups[drv]));
 			}
 
-			log("Groups before filtering:\n");
+			log_debug("Groups before filtering:\n");
 			for (auto &it : groups) {
-				log("  FF=%s bits=[", log_id(it.first));
-				for (auto idx : it.second) log(" %d", idx);
-				log(" ] size=%d\n", GetSize(it.second));
+				log_debug("  FF=%s bits=[", log_id(it.first));
+				for (auto idx : it.second) log_debug(" %d", idx);
+				log_debug(" ] size=%d\n", GetSize(it.second));
 			}
 
 			bool changed = false;
 			for (auto &it : groups) {
 				if (it.second.size() < 2) {
-					log("  SKIP singleton group FF=%s\n", log_id(it.first));
+					log_debug("  SKIP singleton group FF=%s\n", log_id(it.first));
 					continue;
 				}
 
@@ -692,47 +692,47 @@ struct QlDSPV2TypesPass : public Pass {
 				SigSpec qsig       = sigmap(drv->getPort(ID::Q));
 				SigBit  driven_bit = sigmap(new_sig[idxs[0]]);
 
-				log("  Resolving q_idx for FF=%s driven_bit=%s Q-width=%d\n",
+				log_debug("  Resolving q_idx for FF=%s driven_bit=%s Q-width=%d\n",
 					log_id(drv), log_signal(driven_bit), GetSize(qsig));
 
 				int q_idx = -1;
 				for (int i = 0; i < GetSize(qsig); i++) {
 					SigBit qbit = sigmap(qsig[i]);
-					log("    Q[%d]=%s\n", i, log_signal(qbit));
+					log_debug("    Q[%d]=%s\n", i, log_signal(qbit));
 					if (qbit == driven_bit) { q_idx = i; break; }
 				}
 
 				if (q_idx < 0) {
-					log("  ERROR: could not resolve q_idx for FF=%s bit=%s -- SKIP\n",
+					log_debug("  ERROR: could not resolve q_idx for FF=%s bit=%s -- SKIP\n",
 						log_id(drv), log_signal(driven_bit));
 					continue;
 				}
 
-				log("  q_idx=%d resolved OK\n", q_idx);
-				log("  Duplicating FF=%s for bit positions:", log_id(drv));
-				for (auto i : idxs) log(" %d", i);
-				log("\n");
+				log_debug("  q_idx=%d resolved OK\n", q_idx);
+				log_debug("  Duplicating FF=%s for bit positions:", log_id(drv));
+				for (auto i : idxs) log_debug(" %d", i);
+				log_debug("\n");
 
 				for (int k = 1; k < (int)idxs.size(); k++) {
 					int    bit_index = idxs[k];
 					SigBit new_q     = duplicate_ff_bit(module, drv, q_idx);
 					new_sig[bit_index] = new_q;
 					changed = true;
-					log("    bit[%d] -> new wire=%s\n",
+					log_debug("    bit[%d] -> new wire=%s\n",
 						bit_index, log_signal(new_q));
 				}
 			}
 
 			if (changed) {
-				log("Updating port=%s on cell=%s\n",
+				log_debug("Updating port=%s on cell=%s\n",
 					log_id(port), log_id(target_cell));
 				target_cell->setPort(port, new_sig);
 			} else {
-				log("No changes for port=%s\n", log_id(port));
+				log_debug("No changes for port=%s\n", log_id(port));
 			}
 		}
 
-		log("=== duplicate_shared_dffres END cell=%s ===\n\n",
+		log_debug("=== duplicate_shared_dffres END cell=%s ===\n\n",
 			log_id(target_cell));
 	}
 
@@ -747,7 +747,7 @@ struct QlDSPV2TypesPass : public Pass {
 	// ============================================================================
 	static void duplicate_dffre_per_dsp_port(RTLIL::Module *module)
 	{
-		log("=== duplicate_dffre_per_dsp_port START module=%s ===\n",
+		log_debug("=== duplicate_dffre_per_dsp_port START module=%s ===\n",
 			log_id(module));
 
 		SigMap sigmap(module);
@@ -769,13 +769,13 @@ struct QlDSPV2TypesPass : public Pass {
 				SigBit bit = sigmap(qsig[i]);
 				if (bit.wire) {
 					dffre_q_map[bit] = {cell, i};
-					log("  dffre_q_map: bit=%s -> FF=%s Q[%d]\n",
+					log_debug("  dffre_q_map: bit=%s -> FF=%s Q[%d]\n",
 						log_signal(bit), log_id(cell), i);
 				}
 			}
 		}
 
-		log("  dffre_q_map size=%d\n", GetSize(dffre_q_map));
+		log_debug("  dffre_q_map size=%d\n", GetSize(dffre_q_map));
 
 		// ----------------------------------------------------------------
 		// For each dffre Q bit, collect DSP sinks (a/b/c only)
@@ -805,11 +805,11 @@ struct QlDSPV2TypesPass : public Pass {
 
 					if (is_dsp) {
 						sink_map[bit].dsp.push_back({cell, port, i});
-						log("  dsp sink: bit=%s DSP=%s port=%s bit[%d]\n",
+						log_debug("  dsp sink: bit=%s DSP=%s port=%s bit[%d]\n",
 							log_signal(bit), log_id(cell), log_id(port), i);
 					} else {
 						sink_map[bit].other.push_back({cell, port});
-						log("  other sink: bit=%s cell=%s port=%s\n",
+						log_debug("  other sink: bit=%s cell=%s port=%s\n",
 							log_signal(bit), log_id(cell), log_id(port));
 					}
 				}
@@ -827,16 +827,16 @@ struct QlDSPV2TypesPass : public Pass {
 			int dsp_count   = GetSize(sinks.dsp);
 			int other_count = GetSize(sinks.other);
 
-			log("  bit=%s FF=%s Q[%d] dsp_sinks=%d other_sinks=%d\n",
+			log_debug("  bit=%s FF=%s Q[%d] dsp_sinks=%d other_sinks=%d\n",
 				log_signal(bit), log_id(ff_cell), q_idx, dsp_count, other_count);
 
 			if (dsp_count == 0) {
-				log("    skip (no DSP sinks)\n");
+				log_debug("    skip (no DSP sinks)\n");
 				continue;
 			}
 
 			if (dsp_count + other_count <= 1) {
-				log("    skip (single sink)\n");
+				log_debug("    skip (single sink)\n");
 				continue;
 			}
 
@@ -848,22 +848,22 @@ struct QlDSPV2TypesPass : public Pass {
 			dict<RTLIL::IdString, std::vector<DSPUsage>> dsp_groups;
 			for (auto &u : sinks.dsp) {
 				dsp_groups[u.port].push_back(u);
-				log("    dsp usage: DSP=%s port=%s bit[%d]\n",
+				log_debug("    dsp usage: DSP=%s port=%s bit[%d]\n",
 					log_id(u.cell), log_id(u.port), u.bit_idx);
 			}
 
 			for (auto &os : sinks.other)
-				log("    other usage: cell=%s port=%s\n",
+				log_debug("    other usage: cell=%s port=%s\n",
 					log_id(os.first), log_id(os.second));
 
-			log("    dsp_groups=%d other_sinks=%d\n",
+			log_debug("    dsp_groups=%d other_sinks=%d\n",
 				GetSize(dsp_groups), other_count);
 
 			// --------------------------------------------------------
 			// Nothing to do if only one DSP port group and no other sinks
 			// --------------------------------------------------------
 			if (GetSize(dsp_groups) == 1 && other_count == 0) {
-				log("    skip (single DSP port group, no other sinks)\n");
+				log_debug("    skip (single DSP port group, no other sinks)\n");
 				continue;
 			}
 
@@ -875,7 +875,7 @@ struct QlDSPV2TypesPass : public Pass {
 			bool original_used_for_other = (other_count > 0);
 
 			if (original_used_for_other)
-				log("    original FF=%s kept for non-DSP sinks\n",
+				log_debug("    original FF=%s kept for non-DSP sinks\n",
 					log_id(ff_cell));
 
 			bool first_dsp_group = true;
@@ -885,13 +885,13 @@ struct QlDSPV2TypesPass : public Pass {
 
 				// Keep original FF for first DSP group if no other sinks
 				if (!original_used_for_other && first_dsp_group) {
-					log("    keep original FF=%s for port=%s (%d sinks)\n",
+					log_debug("    keep original FF=%s for port=%s (%d sinks)\n",
 						log_id(ff_cell), log_id(dsp_port), GetSize(usages));
 					first_dsp_group = false;
 					continue;
 				}
 
-				log("    duplicate FF=%s for port=%s (%d sinks)\n",
+				log_debug("    duplicate FF=%s for port=%s (%d sinks)\n",
 					log_id(ff_cell), log_id(dsp_port), GetSize(usages));
 
 				SigBit new_q = duplicate_ff_bit(module, ff_cell, q_idx);
@@ -904,7 +904,7 @@ struct QlDSPV2TypesPass : public Pass {
 							u.bit_idx, GetSize(sig));
 					sig[u.bit_idx] = new_q;
 					u.cell->setPort(u.port, sig);
-					log("      rewire DSP=%s port=%s bit[%d] -> %s\n",
+					log_debug("      rewire DSP=%s port=%s bit[%d] -> %s\n",
 						log_id(u.cell), log_id(u.port), u.bit_idx,
 						log_signal(new_q));
 				}
@@ -913,7 +913,7 @@ struct QlDSPV2TypesPass : public Pass {
 			}
 		}
 
-		log("=== duplicate_dffre_per_dsp_port END duplications=%d ===\n\n",
+		log_debug("=== duplicate_dffre_per_dsp_port END duplications=%d ===\n\n",
 			dup_total);
 	}
 
@@ -951,79 +951,79 @@ struct QlDSPV2TypesPass : public Pass {
 				RTLIL::Const mode_bits = cell->getParam(ID(MODE_BITS));
 
                 int COEFF_0    = mode_bits.extract(0, 31).as_int();
-				log("COEFF_0: %d.\n", COEFF_0);
+				log_debug("COEFF_0: %d.\n", COEFF_0);
                 int ACC_FIR    = mode_bits.extract(32, 6).as_int();
-				log("ACC_FIR: %d.\n", ACC_FIR);
+				log_debug("ACC_FIR: %d.\n", ACC_FIR);
                 int ROUND      = mode_bits.extract(38, 3).as_int();
-				log("ROUND: %d.\n", ROUND);
+				log_debug("ROUND: %d.\n", ROUND);
                 int ZC_SHIFT   = mode_bits.extract(41, 5).as_int();
-				log("ZC_SHIFT: %d.\n", ZC_SHIFT);
+				log_debug("ZC_SHIFT: %d.\n", ZC_SHIFT);
                 int ZREG_SHIFT = mode_bits.extract(46, 5).as_int();
-				log("ZREG_SHIFT: %d.\n", ZREG_SHIFT);
+				log_debug("ZREG_SHIFT: %d.\n", ZREG_SHIFT);
                 int SHIFT_REG  = mode_bits.extract(51, 6).as_int();
-				log("SHIFT_REG: %d.\n", SHIFT_REG);
+				log_debug("SHIFT_REG: %d.\n", SHIFT_REG);
                 
                 bool SATURATE  = mode_bits.extract(57).as_bool();
 				if (SATURATE)
-					log("STARUATE Enabled.\n");
+					log_debug("STARUATE Enabled.\n");
                 bool SUBTRACT  = mode_bits.extract(58).as_bool();
 				if (SUBTRACT)
-					log("SUBTRACT Enabled.\n");
+					log_debug("SUBTRACT Enabled.\n");
                 bool PRE_ADD   = mode_bits.extract(59).as_bool();
                 if (PRE_ADD)
-					log("PRE_ADD Enabled.\n");
+					log_debug("PRE_ADD Enabled.\n");
                 bool A_SEL     = mode_bits.extract(60).as_bool();
 				if (A_SEL)
-					log("A_SEL Enabled.\n");
+					log_debug("A_SEL Enabled.\n");
                 bool A_REG     = mode_bits.extract(61).as_bool();
 				if (A_REG)
-					log("A_REG Enabled.\n");
+					log_debug("A_REG Enabled.\n");
                 bool A1_REG    = mode_bits.extract(62).as_bool();
 				if (A1_REG)
-					log("A1_REG Enabled.\n");
+					log_debug("A1_REG Enabled.\n");
                 bool A2_REG    = mode_bits.extract(63).as_bool();
 				if (A2_REG)
-					log("A2_REG Enabled.\n");
+					log_debug("A2_REG Enabled.\n");
 
                 bool B_SEL     = mode_bits.extract(64).as_bool();
 				if (B_SEL)
-					log("B_SEL Enabled.\n");
+					log_debug("B_SEL Enabled.\n");
                 bool B_REG     = mode_bits.extract(65).as_bool();
 				if (B_REG)
-					log("B_REG Enabled.\n");
+					log_debug("B_REG Enabled.\n");
                 bool B1_REG    = mode_bits.extract(66).as_bool();
 				if (B1_REG)
-					log("B1_REG Enabled.\n");
+					log_debug("B1_REG Enabled.\n");
                 bool B2_REG    = mode_bits.extract(67).as_bool();	
 				if (B2_REG)
-					log("B2_REG Enabled.\n");
+					log_debug("B2_REG Enabled.\n");
 
                 bool C_REG     = mode_bits.extract(68).as_bool();
 				if (C_REG)
-					log("C_REG Enabled.\n");
+					log_debug("C_REG Enabled.\n");
                 bool BC_REG    = mode_bits.extract(69).as_bool();
 				if (BC_REG)
-					log("BC_REG Enabled.\n");
+					log_debug("BC_REG Enabled.\n");
                 bool M_REG     = mode_bits.extract(70).as_bool();
 				if (M_REG)
-					log("M_REG Enabled.\n");
+					log_debug("M_REG Enabled.\n");
                 bool ZCIN_SEL  = mode_bits.extract(71).as_bool();
 				if (ZCIN_SEL)
-					log("ZCIN_SEL Enabled.\n");
+					log_debug("ZCIN_SEL Enabled.\n");
                 bool ACOUT_SEL = mode_bits.extract(72).as_bool();
 				if (ACOUT_SEL)
-					log("ACOUT_SEL Enabled.\n");
+					log_debug("ACOUT_SEL Enabled.\n");
                 bool BCOUT_SEL = mode_bits.extract(73).as_bool();
 				if (BCOUT_SEL)
-					log("BCOUT_SEL Enabled.\n");
+					log_debug("BCOUT_SEL Enabled.\n");
                 bool FRAC_MODE = mode_bits.extract(79).as_bool();
 				if (FRAC_MODE)
-					log("FRAC_MODE Enabled.\n");
+					log_debug("FRAC_MODE Enabled.\n");
 
 				int FEEDBACK = get_const_port_value(cell, ID(feedback));
-				log("FEEDBACK: %d.\n", FEEDBACK);
+				log_debug("FEEDBACK: %d.\n", FEEDBACK);
 				int OUTPUT_SELECT = get_const_port_value(cell, ID(output_select));
-				log("OUTPUT_SELECT: %d.\n", OUTPUT_SELECT);
+				log_debug("OUTPUT_SELECT: %d.\n", OUTPUT_SELECT);
 
 				replace_drop_net_with_keep_net(
 					module,
