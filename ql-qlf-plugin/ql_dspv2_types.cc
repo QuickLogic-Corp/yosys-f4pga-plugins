@@ -913,6 +913,8 @@ struct QlDSPV2TypesPass : public Pass {
 	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing QL_DSPV2_TYPES pass.\n");
+		
+		for (RTLIL::Module* module : design->selected_modules()){
 
 			for (RTLIL::Cell* cell: module->selected_cells())
 			{
@@ -1229,29 +1231,28 @@ struct QlDSPV2TypesPass : public Pass {
 				}
 			}
 
-            for (RTLIL::Module* module : design->selected_modules()){
-    			// Snapshot DSP cells before any modification
-    			std::vector<RTLIL::Cell*> dsp_cells;
-    			for (auto cell : module->cells()) {
-    				if (cell->type.str().find("QL_DSPV2") != std::string::npos)
-    					dsp_cells.push_back(cell);
-    			}
-    
-    			// one FF bit driving multiple positions of same port (a, b, c)
-    			const pool<RTLIL::IdString> abc_ports = {
-    				IdString("\\a"), IdString("\\b"), IdString("\\c")
-    			};
-    			for (auto cell : dsp_cells)
-    				duplicate_shared_dffres(module, cell, abc_ports);
-    
-    			// cross-port and cross-cell fanout
-    			duplicate_dffre_per_dsp_port(module);
-    
-    			// buffers on port a only, same bit index only
-    			protect_shared_dsp_input(module);
-    
-    		    }
-	        }
+            // Snapshot DSP cells before any modification
+			std::vector<RTLIL::Cell*> dsp_cells;
+			for (auto cell : module->cells()) {
+				if (cell->type.str().find("QL_DSPV2") != std::string::npos)
+					dsp_cells.push_back(cell);
+			}
+
+			// one FF bit driving multiple positions of same port (a, b, c)
+			const pool<RTLIL::IdString> abc_ports = {
+				IdString("\\a"), IdString("\\b"), IdString("\\c")
+			};
+			for (auto cell : dsp_cells)
+				duplicate_shared_dffres(module, cell, abc_ports);
+
+			// cross-port and cross-cell fanout
+			duplicate_dffre_per_dsp_port(module);
+
+			// buffers on port a only, same bit index only
+			protect_shared_dsp_input(module);
+
+		}
+	}
 
 
 } QlDSPV2TypesPass;
