@@ -94,7 +94,8 @@ struct QlDSPV2TypesPass : public Pass {
 
 	void add_bitwise_dffre_before_cell_input(RTLIL::Module *module,
 											RTLIL::Cell *cell,
-											RTLIL::IdString port)  // input port
+											RTLIL::IdString port,
+											IdString cell_type)  // input port
 	{
 		SigSpec clk, rst;
 		if (cell->hasPort(IdString("\\clk"))) clk = cell->getPort(IdString("\\clk"));
@@ -117,8 +118,8 @@ struct QlDSPV2TypesPass : public Pass {
 		// Instantiate one 1-bit dffre per bit
 		for (int i = 0; i < width; i++) {
 			Cell *dff = module->addCell(
-				module->uniquify("\\dffre"),
-				IdString("\\dffre")
+				module->uniquify(cell_type),
+				cell_type
 			);
 
 			SigBit bit_in = input_sig[i];           // original input bit
@@ -137,7 +138,8 @@ struct QlDSPV2TypesPass : public Pass {
 
 	void add_bitwise_dffre_after_cell_output(RTLIL::Module *module,
                                          RTLIL::Cell *cell,
-                                         RTLIL::IdString port)  // output port
+                                         RTLIL::IdString port,
+										 IdString cell_type)  // output port
 	{
 		SigSpec clk, rst;
 		if (cell->hasPort(IdString("\\clk"))) clk = cell->getPort(IdString("\\clk"));
@@ -160,8 +162,8 @@ struct QlDSPV2TypesPass : public Pass {
 		// Instantiate one 1-bit dffre per bit
 		for (int i = 0; i < width; i++) {
 			Cell *dff = module->addCell(
-				module->uniquify("\\dffre"),
-				IdString("\\dffre")
+				module->uniquify(cell_type),
+				cell_type
 			);
 
 			SigBit bit_in = SigBit(reg_wire, i);   // intermediate wire bit drives D
@@ -1005,58 +1007,66 @@ struct QlDSPV2TypesPass : public Pass {
 					RTLIL::IdString("\\z_cout")
 				);
 				
-				if (A1_REG && A2_REG) {
+				if (A1_REG && A2_REG) { //QL_DSPV2_A_DFFR
 					add_bitwise_dffre_before_cell_input(
 							module,
 							cell,
-							RTLIL::IdString("\\a")
+							RTLIL::IdString("\\a"),
+							RTLIL::IdString("\\QL_DSPV2_A_DFFR")
 						);
-					add_bitwise_dffre_before_cell_input(
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_A2_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\a")
+							RTLIL::IdString("\\a"),
+							RTLIL::IdString("\\QL_DSPV2_A2_DFFR")
 						);
 				}
 
 				else if (A2_REG || A_REG) {
-					add_bitwise_dffre_before_cell_input(
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_A2_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\a")
+							RTLIL::IdString("\\a"),
+							RTLIL::IdString("\\QL_DSPV2_A2_DFFR")
 						);
 				}
 
 				if (B1_REG && B2_REG) {
-					add_bitwise_dffre_before_cell_input(
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\b")
+							RTLIL::IdString("\\b"),
+							RTLIL::IdString("\\QL_DSPV2_B_DFFR")
 						);
-					add_bitwise_dffre_before_cell_input(
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B2_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\b")
+							RTLIL::IdString("\\b"),
+							RTLIL::IdString("\\QL_DSPV2_B2_DFFR")
 						);
 				}			
 				else if (B2_REG || B_REG) {
-					add_bitwise_dffre_before_cell_input(
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B2_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\b")
+							RTLIL::IdString("\\b"),
+							RTLIL::IdString("\\QL_DSPV2_B2_DFFR")
 						);
 				}
 				if (C_REG) {
-					add_bitwise_dffre_before_cell_input(
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_C_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\c")
+							RTLIL::IdString("\\c"),
+							RTLIL::IdString("\\QL_DSPV2_C_DFFR")
 						);
 				}
 				if (OUTPUT_SELECT >= 4)
-					add_bitwise_dffre_after_cell_output(
+					add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
 						module,
 						cell,
-						RTLIL::IdString("\\z")
+						RTLIL::IdString("\\z"),
+						RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
 					);
 
 				uint32_t control_word = get_control_word(FEEDBACK,
@@ -1070,6 +1080,17 @@ struct QlDSPV2TypesPass : public Pass {
 				std::string type = "QL_DSPV2";
 				switch (control_word){
 					case 0b00000000: //MULT
+						if (M_REG) {
+							add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
+								module,
+								cell,
+								RTLIL::IdString("\\z"),
+								RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
+							);
+							SigSpec sig = cell->getPort(ID(output_select));  // Tie port output_select[2] to VCC
+							sig[2] = SigBit(State::S1);
+							cell->setPort(ID(output_select), sig);
+						}
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULT"),
 												  pool<RTLIL::IdString>{ 
@@ -1231,25 +1252,25 @@ struct QlDSPV2TypesPass : public Pass {
 				}
 			}
 
-            // Snapshot DSP cells before any modification
-			std::vector<RTLIL::Cell*> dsp_cells;
-			for (auto cell : module->cells()) {
-				if (cell->type.str().find("QL_DSPV2") != std::string::npos)
-					dsp_cells.push_back(cell);
-			}
+            // // Snapshot DSP cells before any modification
+			// std::vector<RTLIL::Cell*> dsp_cells;
+			// for (auto cell : module->cells()) {
+			// 	if (cell->type.str().find("QL_DSPV2") != std::string::npos)
+			// 		dsp_cells.push_back(cell);
+			// }
 
-			// one FF bit driving multiple positions of same port (a, b, c)
-			const pool<RTLIL::IdString> abc_ports = {
-				IdString("\\a"), IdString("\\b"), IdString("\\c")
-			};
-			for (auto cell : dsp_cells)
-				duplicate_shared_dffres(module, cell, abc_ports);
+			// // one FF bit driving multiple positions of same port (a, b, c)
+			// const pool<RTLIL::IdString> abc_ports = {
+			// 	IdString("\\a"), IdString("\\b"), IdString("\\c")
+			// };
+			// for (auto cell : dsp_cells)
+			// 	duplicate_shared_dffres(module, cell, abc_ports);
 
-			// cross-port and cross-cell fanout
-			duplicate_dffre_per_dsp_port(module);
+			// // cross-port and cross-cell fanout
+			// duplicate_dffre_per_dsp_port(module);
 
-			// buffers on port a only, same bit index only
-			protect_shared_dsp_input(module);
+			// // buffers on port a only, same bit index only
+			// protect_shared_dsp_input(module);
 
 		}
 	}
