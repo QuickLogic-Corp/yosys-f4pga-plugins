@@ -401,7 +401,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (dspv2) {
                     readVelArgs += family_path + "/dspv2_sim.v";
                 } else {
-                    readVelArgs += family_path + "/dspv1_sim.v";
+                    readVelArgs += family_path + "/dsp_sim.v";
                 }
                 if(inferBram) {
                     readVelArgs += family_path + "/brams_sim.v";
