@@ -367,6 +367,13 @@ struct QlDspMacc : public Pass {
     {
         log_header(a_Design, "Executing QL_DSP_MACC pass.\n");
 
+        // Reset translation-unit-global flags explicitly at the top of
+        // execute() in addition to clear_flags(), to prevent stale state
+        // bleeding across invocations if clear_flags() is ever bypassed by
+        // the framework. Mirrors the ql_dsp_simd -dspv2 pattern.
+        use_dsp_cfg_params = false;
+        dspv2 = false;
+
         size_t argidx;
         for (argidx = 1; argidx < a_Args.size(); argidx++) {
             if (a_Args[argidx] == "-use_dsp_cfg_params") {

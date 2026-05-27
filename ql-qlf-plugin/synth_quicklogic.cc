@@ -21,6 +21,7 @@
 #include "kernel/register.h"
 #include "kernel/rtlil.h"
 #include <cmath>
+#include <fstream>
 
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
@@ -399,6 +400,29 @@ struct SynthQuickLogicPass : public ScriptPass {
             readVelArgs = family_path + "/cells_sim.v";
             if (family == "qlf_k6n10f") {
                 if (dspv2) {
+                    // Sentinel check for the design-team DSPv2 collateral drop
+                    // (QL_DSPV2.v / dspv2_sim.v / dsp_map.v / dsp_final_map.v).
+                    // dspv2_sim.v is the cleanest single sentinel; if it is
+                    // missing the subsequent read_verilog + techmap chain will
+                    // fail with a far less obvious error.
+                    //
+                    // The probe is only meaningful when -lib_path points to a
+                    // real filesystem path. The default ("+/quicklogic/") is a
+                    // Yosys share-dir prefix that std::ifstream cannot resolve;
+                    // in that case skip the probe and let read_verilog (which
+                    // does understand "+/") report the error.
+                    if (lib_path.compare(0, 2, "+/") != 0) {
+                        std::string dspv2_sim_path = lib_path + family + "/dspv2_sim.v";
+                        std::ifstream dspv2_sim_probe(dspv2_sim_path);
+                        if (!dspv2_sim_probe.good()) {
+                            log_warning("DSPv2 collateral file '%s' not found. The -dspv2 flow "
+                                        "requires the design-team-supplied drop (QL_DSPV2.v, "
+                                        "dspv2_sim.v, dsp_map.v with DSPV2IPG guard, "
+                                        "dsp_final_map.v) to be installed in %s%s/. "
+                                        "Synthesis will likely fail in subsequent passes.\n",
+                                        dspv2_sim_path.c_str(), lib_path.c_str(), family.c_str());
+                        }
+                    }
                     readVelArgs += family_path + "/dspv2_sim.v";
                 } else {
                     readVelArgs += family_path + "/dsp_sim.v";
@@ -539,6 +563,9 @@ struct SynthQuickLogicPass : public ScriptPass {
 
                     run("ql_dsp_simd -dspv2");
                     run("techmap -map " + lib_path + family + "/dsp_final_map.v -D DSPV2IPG");
+                    // ql_dsp_io_regs intentionally not invoked on the -dspv2 path
+                    // (register absorption is deferred per K-SCOPE for the 2026.2 release;
+                    // see docs/dspv2/REQUIREMENTS.md and IMPLEMENTATION.md §3.1).
                 } else if (!nodsp) {
 
                     run("wreduce t:$mul");
