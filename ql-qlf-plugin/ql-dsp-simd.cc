@@ -546,9 +546,7 @@ struct QlDspSimdPass : public Pass {
             // to a named local before calling .bits(); range-for lifetime
             // extension only covers the outermost expression and clang -O3
             // has been observed to mis-elide the inner SigSpec, leaving the
-            // bit-list referring to freed memory (the same UB that bit
-            // ql_dsp -dspv2 input-register absorption earlier; see
-            // ql-dsp.cc run_dspv2()).
+            // bit-list referring to freed memory.
             dict<RTLIL::SigBit, int> bit_users;
             for (auto cell2 : module->cells()) {
                 for (auto &conn : cell2->connections()) {

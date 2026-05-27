@@ -76,7 +76,7 @@ static void create_ql_macc_dsp(ql_dsp_macc_pm &pm)
     bool b_signed = st.mul->getParam(ID(B_SIGNED)).as_bool();
 
     // DSPv2 (QL_DSPV2) is signed-only. Reject unsigned multiplies and let them
-    // fall through to the mul2dsp+dspv2_map.v techmap (which inserts soft sign
+    // fall through to the mul2dsp+dsp_map.v techmap (which inserts soft sign
     // extension before the hard DSP).
     if (dspv2 && (!a_signed || !b_signed)) {
         return;
@@ -297,8 +297,8 @@ static void create_ql_macc_dsp(ql_dsp_macc_pm &pm)
         cell->setParam(RTLIL::escape_id("FRAC_MODE"), RTLIL::Const(1, 1));
         cell->setParam(RTLIL::escape_id("SUBTRACT"), RTLIL::Const(subtract ? 1 : 0, 1));
         // SATURATE/SHIFT_REG/ROUND/A_REG/B_REG/M_REG/... default to 0 on the
-        // wrapper; do not set them explicitly so dspv2_final_map.v / ql_dsp
-        // are free to override them later.
+        // wrapper and are not set explicitly here (MVP scope: no register
+        // absorption, no saturate/shift/round).
     } else {
         // Connect control ports
         cell->setPort(RTLIL::escape_id("unsigned_a_i"), RTLIL::SigSpec(a_signed ? RTLIL::S0 : RTLIL::S1));
