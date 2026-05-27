@@ -33,7 +33,11 @@ TESTS = \
 	qlf_k6n10f/dsp_mult \
 	qlf_k6n10f/dsp_simd \
 	qlf_k6n10f/dsp_macc \
-	qlf_k6n10f/dsp_madd
+	qlf_k6n10f/dsp_madd \
+	qlf_k6n10f/dspv2_mult \
+	qlf_k6n10f/dspv2_macc \
+	qlf_k6n10f/dspv2_simd \
+	qlf_k6n10f/dspv2_types_v1_noop
 #	qlf_k6n10_bram \
 
 SIM_TESTS = \
@@ -90,4 +94,8 @@ qlf_k6n10f-dsp_mult_verify = true
 qlf_k6n10f-dsp_simd_verify = true
 qlf_k6n10f-dsp_macc_verify = true
 qlf_k6n10f-dsp_madd_verify = true
+qlf_k6n10f-dspv2_mult_verify = true
+qlf_k6n10f-dspv2_macc_verify = true
+qlf_k6n10f-dspv2_simd_verify = true
+qlf_k6n10f-dspv2_types_v1_noop_verify = true
 #qlf_k6n10_bram_verify = true
