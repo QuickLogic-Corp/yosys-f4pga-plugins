@@ -446,12 +446,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             // Read simulation library
             readVelArgs = family_path + "/cells_sim.v";
             if (family == "qlf_k6n10f") {
-				if (dspv2) {
-					readVelArgs += family_path + "/dspv2_sim.v";
-				}
-				else {
-					readVelArgs += family_path + "/dsp_sim.v";
-				}
+                readVelArgs += family_path + "/dsp_sim.v";
                 if(inferBram) {
                     readVelArgs += family_path + "/brams_sim.v";
                     if (bramTypes) {
@@ -572,23 +567,58 @@ struct SynthQuickLogicPass : public ScriptPass {
                 } else if (!nodsp) {
 
                     run("wreduce t:$mul");
-                    run("ql_dsp_macc" + use_dsp_cfg_params);
 
-                    for (const auto &rule : dsp_rules) {
-                        run(stringf("techmap -map +/mul2dsp.v "
-                                    "-D DSP_A_MAXWIDTH=%zu -D DSP_B_MAXWIDTH=%zu "
-                                    "-D DSP_A_MINWIDTH=%zu -D DSP_B_MINWIDTH=%zu "
-                                    "-D DSP_NAME=%s",
-                                    rule.a_maxwidth, rule.b_maxwidth, rule.a_minwidth, rule.b_minwidth, rule.type.c_str()));
+                    if (dspv2) {
+                        // DSPv2 arm — ported from YosysHQ/yosys#4932
+                        // (povik/ql-dspv2 @ c68fd85b9ccceb773a4aaac2a35f7d90fbb15fc8).
+                        // Uses wider 32x18 and 16x9 multiplier shapes and the V2
+                        // pmgen pass (ql_dspv2). The ql_dsp_macc / ql_dsp_simd /
+                        // ql_dsp_io_regs helpers are re-used unchanged from V1
+                        // in this release; V2-specific helper-pass extensions
+                        // (the `-dspv2` flag on each) are deferred.
+                        //
+                        // Device-data convention (Aurora `device_data` submodule):
+                        // V1 and V2 devices ship their cell library under the
+                        // same filenames (`dsp_sim.v`, `dsp_map.v`,
+                        // `dsp_final_map.v`); the per-device file content selects
+                        // V1 vs V2 behaviour. We therefore reference the same
+                        // filenames on both arms here.
+                        run("ql_dsp_macc");
+                        run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v "
+                            "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
+                            "-D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 "
+                            "-D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10 "
+                            "-D DSP_NAME=$__MUL32X18");
                         run("chtype -set $mul t:$__soft_mul");
+                        run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v "
+                            "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
+                            "-D DSP_A_MAXWIDTH=16 -D DSP_B_MAXWIDTH=9 "
+                            "-D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4 "
+                            "-D DSP_NAME=$__MUL16X9");
+                        run("chtype -set $mul t:$__soft_mul");
+                        run("ql_dspv2");
+                        run("ql_dsp_simd");
+                        run("techmap -map " + lib_path + family + "/dsp_final_map.v");
+                        run("ql_dsp_io_regs");
+                    } else {
+                        run("ql_dsp_macc" + use_dsp_cfg_params);
+
+                        for (const auto &rule : dsp_rules) {
+                            run(stringf("techmap -map +/mul2dsp.v "
+                                        "-D DSP_A_MAXWIDTH=%zu -D DSP_B_MAXWIDTH=%zu "
+                                        "-D DSP_A_MINWIDTH=%zu -D DSP_B_MINWIDTH=%zu "
+                                        "-D DSP_NAME=%s",
+                                        rule.a_maxwidth, rule.b_maxwidth, rule.a_minwidth, rule.b_minwidth, rule.type.c_str()));
+                            run("chtype -set $mul t:$__soft_mul");
+                        }
+                        if (use_dsp_cfg_params.empty())
+                            run("techmap -map " + lib_path + family + "/dsp_map.v -D USE_DSP_CFG_PARAMS=0");
+                        else
+                            run("techmap -map " + lib_path + family + "/dsp_map.v -D USE_DSP_CFG_PARAMS=1");
+                        run("ql_dsp_simd");
+                        run("techmap -map " + lib_path + family + "/dsp_final_map.v");
+                        run("ql_dsp_io_regs");
                     }
-                    if (use_dsp_cfg_params.empty())
-                        run("techmap -map " + lib_path + family + "/dsp_map.v -D USE_DSP_CFG_PARAMS=0");
-                    else
-                        run("techmap -map " + lib_path + family + "/dsp_map.v -D USE_DSP_CFG_PARAMS=1");
-                    run("ql_dsp_simd");
-                    run("techmap -map " + lib_path + family + "/dsp_final_map.v");
-                    run("ql_dsp_io_regs");
                 }
             }
         }
