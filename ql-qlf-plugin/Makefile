@@ -19,6 +19,7 @@ PLUGIN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 NAME = ql-qlf
 SOURCES = synth_quicklogic.cc \
           ql-dspv1.cc \
+          ql-dspv2.cc \
           pp3_braminit.cc \
           quicklogic_eqn.cc \
           ql-edif.cc \
@@ -116,6 +117,7 @@ $(PMGEN_OUT_DIR):
 	mkdir -p $@
 
 DEPS := $(PMGEN_OUT_DIR)/ql-dspv1-pm.h \
+        $(PMGEN_OUT_DIR)/ql-dspv2-pm.h \
         $(PMGEN_OUT_DIR)/ql-dsp-macc.h \
         $(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-write.h \
         $(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-read.h
@@ -126,6 +128,9 @@ $(OBJECTS): $(DEPS)
 
 $(PMGEN_OUT_DIR)/ql-dspv1-pm.h: ql-dspv1.pmg
 	python3 $(PMGEN_PY) -o $@ -p ql_dspv1 ql-dspv1.pmg
+
+$(PMGEN_OUT_DIR)/ql-dspv2-pm.h: ql-dspv2.pmg
+	python3 $(PMGEN_PY) -o $@ -p ql_dspv2 ql-dspv2.pmg
 
 $(PMGEN_OUT_DIR)/ql-dsp-macc.h: ql-dsp-macc.pmg
 	python3 $(PMGEN_PY) -o $@ -p ql_dsp_macc ql-dsp-macc.pmg
