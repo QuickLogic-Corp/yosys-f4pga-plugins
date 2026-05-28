@@ -540,7 +540,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                         run("wreduce", "                         (for qlf_k6n10)");
                     }
                     run("select -clear", "                   (for qlf_k6n10)");
-                    run("ql_dsp", "                          (for qlf_k6n10)");
+                    run("ql_dspv1", "                        (for qlf_k6n10)");
                     run("chtype -set $mul t:$__soft_mul", "  (for qlf_k6n10)");
                 }
             }
