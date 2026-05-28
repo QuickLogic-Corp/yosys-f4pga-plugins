@@ -571,11 +571,18 @@ struct SynthQuickLogicPass : public ScriptPass {
                     if (dspv2) {
                         // DSPv2 arm — ported from YosysHQ/yosys#4932
                         // (povik/ql-dspv2 @ c68fd85b9ccceb773a4aaac2a35f7d90fbb15fc8).
-                        // Uses wider 32x18 and 16x9 multiplier shapes and the V2
-                        // pmgen pass (ql_dspv2). The ql_dsp_macc / ql_dsp_simd /
-                        // ql_dsp_io_regs helpers are re-used unchanged from V1
-                        // in this release; V2-specific helper-pass extensions
-                        // (the `-dspv2` flag on each) are deferred.
+                        // Uses wider 32x18 and 16x9 multiplier shapes via mul2dsp +
+                        // dsp_map.v techmap, followed by MULTACC inference via
+                        // ql_dsp_macc.
+                        //
+                        // Scope for this release (per PR #52 review): support is
+                        // limited to basic MULT (and MULTACC via ql_dsp_macc).
+                        // The cascade/register-packing pass (ql_dspv2), SIMD
+                        // packing (ql_dsp_simd) and IO-register packing
+                        // (ql_dsp_io_regs) are intentionally commented out and
+                        // deferred to a follow-up. Keeping them as commented
+                        // call sites preserves the #4932 pipeline shape for
+                        // easy re-enable.
                         //
                         // Device-data convention (Aurora `device_data` submodule):
                         // V1 and V2 devices ship their cell library under the
@@ -596,10 +603,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                             "-D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4 "
                             "-D DSP_NAME=$__MUL16X9");
                         run("chtype -set $mul t:$__soft_mul");
-                        run("ql_dspv2");
-                        run("ql_dsp_simd");
+                        // Deferred for this release — see comment above.
+                        // run("ql_dspv2");
+                        // run("ql_dsp_simd");
                         run("techmap -map " + lib_path + family + "/dsp_final_map.v");
-                        run("ql_dsp_io_regs");
+                        // run("ql_dsp_io_regs");
                     } else {
                         run("ql_dsp_macc" + use_dsp_cfg_params);
 
