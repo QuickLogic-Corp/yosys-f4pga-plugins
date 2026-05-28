@@ -588,7 +588,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                         // `dsp_final_map.v`); the per-device file content selects
                         // V1 vs V2 behaviour. We therefore reference the same
                         // filenames on both arms here.
-                        run("ql_dsp_macc");
+                        run("ql_dsp_macc -dspv2");
                         run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v "
                             "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
                             "-D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 "

@@ -10,7 +10,7 @@ PRIVATE_NAMESPACE_BEGIN
 
 bool use_dsp_cfg_params;
 
-static void create_ql_macc_dsp(ql_dsp_macc_pm &pm)
+static void create_ql_macc_dsp_v1(ql_dsp_macc_pm &pm)
 {
     auto &st = pm.st_ql_dsp_macc;
 
@@ -246,6 +246,191 @@ static void create_ql_macc_dsp(ql_dsp_macc_pm &pm)
     pm.autoremove(st.ff);
 }
 
+// ============================================================================
+// V2 variant: emits dspv2_NxMxK_cfg_ports cells (which techmap to QL_DSPV2,
+// later specialized by ql_dspv2_types). Ported from YosysHQ/yosys#4932.
+static void create_ql_macc_dsp_v2(ql_dsp_macc_pm &pm)
+{
+    auto &st = pm.st_ql_dsp_macc;
+
+    // Reject if multiplier drives anything else than either $add or $add and
+    // $mux (same gating as v1)
+    if (st.mux == nullptr && st.mul_nusers > 2) {
+        return;
+    }
+
+    bool out_ff;
+    if (st.ff_d_nusers == 2 && st.ff_q_nusers == 3) {
+        out_ff = true;
+    } else if (st.ff_d_nusers == 3 && st.ff_q_nusers == 2) {
+        out_ff = false;
+    } else {
+        return;
+    }
+
+    if (st.mux == nullptr) {
+        if (out_ff && st.add_nusers != 2)
+            return;
+        if (!out_ff && st.add_nusers != 3)
+            return;
+    } else {
+        if (st.add_nusers != 2)
+            return;
+    }
+
+    if (st.mux != nullptr) {
+        if (out_ff && st.mux_nusers != 2)
+            return;
+        if (!out_ff && st.mux_nusers != 3)
+            return;
+    }
+
+    if (st.ff->getParam(ID(CLK_POLARITY)).as_int() != 1) {
+        return;
+    }
+
+    // Gather operand widths
+    RTLIL::SigSpec sig_a = st.mul->getPort(ID(A));
+    RTLIL::SigSpec sig_b = st.mul->getPort(ID(B));
+    if (sig_a.size() < sig_b.size())
+        std::swap(sig_a, sig_b);
+
+    bool ab_signed = st.mul->getParam(ID(A_SIGNED)).as_bool();
+    log_assert(ab_signed == st.mul->getParam(ID(B_SIGNED)).as_bool());
+
+    int z_width = GetSize(st.ff->getPort(ID(Q)));
+    if (!ab_signed) {
+        if (sig_a.msb() != RTLIL::S0 && sig_a.size() < z_width)
+            sig_a.append(RTLIL::S0);
+        if (sig_b.msb() != RTLIL::S0 && sig_b.size() < z_width)
+            sig_b.append(RTLIL::S0);
+    }
+    int a_width = GetSize(sig_a);
+    int b_width = GetSize(sig_b);
+
+    // Determine DSPv2 cell size
+    RTLIL::IdString type;
+    size_t tgt_a_width;
+    size_t tgt_b_width;
+    size_t tgt_z_width;
+
+    string cell_base_name = "dspv2";
+    string cell_size_name;
+
+    if (a_width <= 2 && b_width <= 2 && z_width <= 4) {
+        return;
+    } else if (a_width <= 16 && b_width <= 9 && z_width <= 25) {
+        cell_size_name = "_16x9x32";
+        tgt_a_width = 16;
+        tgt_b_width = 9;
+        tgt_z_width = 25;
+    } else if (a_width <= 32 && b_width <= 18 && z_width <= 50) {
+        cell_size_name = "_32x18x64";
+        tgt_a_width = 32;
+        tgt_b_width = 18;
+        tgt_z_width = 50;
+    } else {
+        return;
+    }
+
+    type = RTLIL::escape_id(cell_base_name + cell_size_name + "_cfg_ports");
+    log("Inferring MACC %dx%d->%d as %s from:\n", a_width, b_width, z_width, RTLIL::unescape_id(type).c_str());
+
+    for (auto cell : {st.mul, st.add, st.mux, st.ff}) {
+        if (cell != nullptr) {
+            log(" %s (%s)\n", RTLIL::unescape_id(cell->name).c_str(), RTLIL::unescape_id(cell->type).c_str());
+        }
+    }
+
+    // Build the DSP cell name (consistent with v1 naming scheme)
+    std::string name;
+    name += RTLIL::unescape_id(st.mul->name) + "_";
+    name += RTLIL::unescape_id(st.add->name) + "_";
+    if (st.mux != nullptr) {
+        name += RTLIL::unescape_id(st.mux->name) + "_";
+    }
+    name += RTLIL::unescape_id(st.ff->name);
+
+    RTLIL::Cell *cell = pm.module->addCell(RTLIL::escape_id(name), type);
+    cell->set_bool_attribute(RTLIL::escape_id("is_inferred"), true);
+
+    RTLIL::SigSpec sig_z = out_ff ? st.ff->getPort(ID(Q)) : st.ff->getPort(ID(D));
+
+    // Connect input data ports, sign-extend
+    sig_a.extend_u0(tgt_a_width, true);
+    sig_b.extend_u0(tgt_b_width, true);
+    cell->setPort(RTLIL::escape_id("a_i"), sig_a);
+    cell->setPort(RTLIL::escape_id("b_i"), sig_b);
+    cell->setPort(RTLIL::escape_id("c_i"), RTLIL::SigSpec(RTLIL::S0, tgt_b_width));
+
+    // Connect output data port, pad if needed
+    if ((size_t)GetSize(sig_z) < tgt_z_width) {
+        auto *wire = pm.module->addWire(NEW_ID, tgt_z_width - GetSize(sig_z));
+        sig_z.append(wire);
+    }
+    cell->setPort(RTLIL::escape_id("z_o"), sig_z);
+
+    // Connect clock / reset / enable
+    cell->setPort(RTLIL::escape_id("clock_i"), st.ff->getPort(ID(CLK)));
+
+    RTLIL::SigSpec rst;
+    RTLIL::SigSpec ena;
+
+    if (st.ff->hasPort(ID(ARST))) {
+        if (st.ff->getParam(ID(ARST_POLARITY)).as_int() != 1) {
+            rst = pm.module->Not(NEW_ID, st.ff->getPort(ID(ARST)));
+        } else {
+            rst = st.ff->getPort(ID(ARST));
+        }
+    } else {
+        rst = RTLIL::SigSpec(RTLIL::S0);
+    }
+
+    if (st.ff->hasPort(ID(EN))) {
+        if (st.ff->getParam(ID(EN_POLARITY)).as_int() != 1) {
+            ena = pm.module->Not(NEW_ID, st.ff->getPort(ID(EN)));
+        } else {
+            ena = st.ff->getPort(ID(EN));
+        }
+    } else {
+        ena = RTLIL::SigSpec(RTLIL::S1);
+    }
+
+    cell->setPort(RTLIL::escape_id("reset_i"), rst);
+    cell->setPort(RTLIL::escape_id("load_acc_i"), ena);
+    cell->setPort(RTLIL::escape_id("acc_reset_i"), RTLIL::SigSpec(RTLIL::S0));
+
+    // Insert feedback_i control logic used for clearing / loading the accumulator
+    if (st.mux != nullptr) {
+        RTLIL::SigSpec sig_s = st.mux->getPort(ID(S));
+
+        log_assert(st.mux_ab == ID(A) || st.mux_ab == ID(B));
+        if (st.mux_ab == ID(A)) {
+            sig_s = pm.module->Not(NEW_ID, sig_s);
+        }
+
+        // V2 feedback bit ordering differs from V1: {S0, S0, sig_s}
+        cell->setPort(RTLIL::escape_id("feedback_i"), {RTLIL::S0, RTLIL::S0, sig_s});
+    } else {
+        cell->setPort(RTLIL::escape_id("feedback_i"), RTLIL::SigSpec(RTLIL::S0, 3));
+    }
+
+    // 3 - output post acc; 1 - output pre acc
+    cell->setPort(RTLIL::escape_id("output_select_i"), out_ff ? RTLIL::Const(1, 3) : RTLIL::Const(3, 3));
+
+    // V2 carries SUBTRACT as a parameter, not a port
+    bool subtract = (st.add->type == RTLIL::escape_id("$sub"));
+    cell->setParam(RTLIL::escape_id("SUBTRACT"), RTLIL::Const(subtract ? RTLIL::S1 : RTLIL::S0));
+
+    // Mark the cells for removal
+    pm.autoremove(st.mul);
+    pm.autoremove(st.add);
+    if (st.mux != nullptr) {
+        pm.autoremove(st.mux);
+    }
+    pm.autoremove(st.ff);
+}
+
 struct QlDspMacc : public Pass {
 
     QlDspMacc() : Pass("ql_dsp_macc", "Does something") {}
@@ -258,6 +443,9 @@ struct QlDspMacc : public Pass {
         log("    -use_dsp_cfg_params\n");
         log("        By default use DSP blocks with configuration bits available at module ports.\n");
         log("        Specifying this forces usage of DSP block with configuration bits available as module parameters\n");
+        log("\n");
+        log("    -dspv2\n");
+        log("        Target DSPv2 (dspv2_NxMxK_cfg_ports cells). Default targets DSPv1.\n");
         log("\n");
     }
 
@@ -272,10 +460,15 @@ struct QlDspMacc : public Pass {
     {
         log_header(a_Design, "Executing QL_DSP_MACC pass.\n");
 
+        bool target_dspv2 = false;
         size_t argidx;
         for (argidx = 1; argidx < a_Args.size(); argidx++) {
             if (a_Args[argidx] == "-use_dsp_cfg_params") {
                 use_dsp_cfg_params = true;
+                continue;
+            }
+            if (a_Args[argidx] == "-dspv2") {
+                target_dspv2 = true;
                 continue;
             }
 
@@ -284,7 +477,11 @@ struct QlDspMacc : public Pass {
         extra_args(a_Args, argidx, a_Design);
 
         for (auto module : a_Design->selected_modules()) {
-            ql_dsp_macc_pm(module, module->selected_cells()).run_ql_dsp_macc(create_ql_macc_dsp);
+            ql_dsp_macc_pm pm(module, module->selected_cells());
+            if (target_dspv2)
+                pm.run_ql_dsp_macc(create_ql_macc_dsp_v2);
+            else
+                pm.run_ql_dsp_macc(create_ql_macc_dsp_v1);
         }
     }
 
