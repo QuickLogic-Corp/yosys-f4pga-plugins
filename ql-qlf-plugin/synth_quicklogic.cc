@@ -511,8 +511,6 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
         }
 
-        run("ql_dspv2_types");
-
         if (check_label("map_dsp"), "(skip if -no_dsp)") {
             if (help_mode || family == "qlf_k6n10") {
                 if (help_mode || !nodsp) {
@@ -627,6 +625,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                         run("techmap -map " + lib_path + family + "/dsp_final_map.v");
                         run("ql_dsp_io_regs");
                     }
+                    // Converts generic QL_DSPV2 cells (emitted by dsp_final_map.v on
+                    // V2 devices) into mode-specific subtypes (QL_DSPV2_MULT/
+                    // MULTACC/MULTADD with REGIN/REGOUT variants). No-op on V1
+                    // designs (no QL_DSPV2 cells present), so safe to run on both
+                    // arms.
+                    run("ql_dspv2_types");
                 }
             }
         }
