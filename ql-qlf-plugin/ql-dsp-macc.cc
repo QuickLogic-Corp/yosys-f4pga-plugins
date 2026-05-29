@@ -409,7 +409,6 @@ static void create_ql_macc_dsp_v2(ql_dsp_macc_pm &pm)
             sig_s = pm.module->Not(NEW_ID, sig_s);
         }
 
-        // V2 feedback bit ordering differs from V1: {S0, S0, sig_s}
         cell->setPort(RTLIL::escape_id("feedback_i"), {RTLIL::S0, RTLIL::S0, sig_s});
     } else {
         cell->setPort(RTLIL::escape_id("feedback_i"), RTLIL::SigSpec(RTLIL::S0, 3));
