@@ -593,13 +593,13 @@ struct SynthQuickLogicPass : public ScriptPass {
                             "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
                             "-D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 "
                             "-D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10 "
-                            "-D DSP_NAME=$__MUL32X18");
+                            "-D DSP_NAME=$__QL_MUL32X18");
                         run("chtype -set $mul t:$__soft_mul");
                         run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v "
                             "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
                             "-D DSP_A_MAXWIDTH=16 -D DSP_B_MAXWIDTH=9 "
                             "-D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4 "
-                            "-D DSP_NAME=$__MUL16X9");
+                            "-D DSP_NAME=$__QL_MUL16X9");
                         run("chtype -set $mul t:$__soft_mul");
                         // Deferred for this release — see comment above.
                         // run("ql_dspv2");
