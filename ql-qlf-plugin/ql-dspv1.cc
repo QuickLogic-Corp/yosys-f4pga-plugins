@@ -23,11 +23,11 @@
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
 
-#include "pmgen/ql-dsp-pm.h"
+#include "pmgen/ql-dspv1-pm.h"
 
-void create_ql_dsp(ql_dsp_pm &pm)
+void create_ql_dspv1(ql_dspv1_pm &pm)
 {
-    auto &st = pm.st_ql_dsp;
+    auto &st = pm.st_ql_dspv1;
 
     log("Checking %s.%s for QL DSP inference.\n", log_id(pm.module), log_id(st.mul));
 
@@ -127,14 +127,14 @@ void create_ql_dsp(ql_dsp_pm &pm)
     pm.autoremove(st.add);
 }
 
-struct QlDspPass : public Pass {
-    QlDspPass() : Pass("ql_dsp", "ql: map multipliers") {}
+struct QlDspv1Pass : public Pass {
+    QlDspv1Pass() : Pass("ql_dspv1", "ql: map multipliers (DSPv1)") {}
 
     void help() override
     {
         //   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
         log("\n");
-        log("    ql_dsp [options] [selection]\n");
+        log("    ql_dspv1 [options] [selection]\n");
         log("\n");
         log("Map multipliers ($mul/QL_DSP) and multiply-accumulate ($mul/QL_DSP + $add)\n");
         log("cells into ql DSP resources.\n");
@@ -155,7 +155,7 @@ struct QlDspPass : public Pass {
 
     void execute(std::vector<std::string> args, RTLIL::Design *design) override
     {
-        log_header(design, "Executing ql_DSP pass (map multipliers).\n");
+        log_header(design, "Executing ql_dspv1 pass (map multipliers).\n");
 
         size_t argidx;
         for (argidx = 1; argidx < args.size(); argidx++) {
@@ -164,8 +164,8 @@ struct QlDspPass : public Pass {
         extra_args(args, argidx, design);
 
         for (auto module : design->selected_modules())
-            ql_dsp_pm(module, module->selected_cells()).run_ql_dsp(create_ql_dsp);
+            ql_dspv1_pm(module, module->selected_cells()).run_ql_dspv1(create_ql_dspv1);
     }
-} QlDspPass;
+} QlDspv1Pass;
 
 PRIVATE_NAMESPACE_END
