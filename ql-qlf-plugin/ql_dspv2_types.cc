@@ -51,7 +51,7 @@ struct QlDSPV2TypesPass : public Pass {
         return true;
     }
 
-s	static int get_const_port_value(RTLIL::Module *module, RTLIL::Cell *cell, RTLIL::IdString port_name)
+	static int get_const_port_value(RTLIL::Module *module, RTLIL::Cell *cell, RTLIL::IdString port_name)
 	{
 		if (!cell->hasPort(port_name))
 			log_error("Cell %s: port %s not found!\n",
