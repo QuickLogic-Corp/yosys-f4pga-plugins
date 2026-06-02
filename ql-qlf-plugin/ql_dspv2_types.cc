@@ -920,8 +920,13 @@ struct QlDSPV2TypesPass : public Pass {
 
 			for (RTLIL::Cell* cell: module->selected_cells())
 			{
-				if (cell->type != ID(QL_DSPV2) || !cell->hasParam(ID(MODE_BITS)))
+				if (cell->type != ID(QL_DSPV2))
 					continue;
+				
+				if(!cell->hasParam(ID(MODE_BITS))){
+					log("Did not find any mode bits for cell %s with type %s\n", log_id(cell->name), log_id(cell->type));
+				}
+
 
 				RTLIL::Const mode_bits = cell->getParam(ID(MODE_BITS));
 
@@ -1097,7 +1102,6 @@ struct QlDSPV2TypesPass : public Pass {
 				
 
 				log_debug("Control Word: %d\n", control_word);
-				std::string type = "QL_DSPV2";
 				switch (control_word){
 					case 0b00000000: //MULT
 						if (M_REG) {
@@ -1253,6 +1257,7 @@ struct QlDSPV2TypesPass : public Pass {
 						break;
 
 					default:
+						log("Did not find any matching QL_DSPV2 models for %s\n", log_id(cell->name));
 						make_gnd_bits_unconn(
 											module,
 											cell,
