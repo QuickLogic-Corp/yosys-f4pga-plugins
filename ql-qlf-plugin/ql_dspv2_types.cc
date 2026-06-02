@@ -925,6 +925,7 @@ struct QlDSPV2TypesPass : public Pass {
 				
 				if(!cell->hasParam(ID(MODE_BITS))){
 					log("Did not find any mode bits for cell %s with type %s\n", log_id(cell->name), log_id(cell->type));
+                    continue;
 				}
 
 
