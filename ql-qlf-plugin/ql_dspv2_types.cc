@@ -51,14 +51,13 @@ struct QlDSPV2TypesPass : public Pass {
         return true;
     }
 
-	static int get_const_port_value(RTLIL::Module *module, RTLIL::Cell *cell, RTLIL::IdString port_name)
+	static int get_const_port_value(RTLIL::Cell *cell, RTLIL::IdString port_name)
 	{
 		if (!cell->hasPort(port_name))
 			log_error("Cell %s: port %s not found!\n",
 					log_id(cell), log_id(port_name));
 
-		SigMap sigmap(module);
-		RTLIL::SigSpec sig = sigmap(cell->getPort(port_name));
+		RTLIL::SigSpec sig = cell->getPort(port_name);
 
 		log_debug("Cell %s %s = %s\n",
 			log_id(cell), log_id(port_name), log_signal(sig));
@@ -996,9 +995,9 @@ struct QlDSPV2TypesPass : public Pass {
 				if (FRAC_MODE)
 					log_debug("FRAC_MODE Enabled.\n");
 
-				int FEEDBACK = get_const_port_value(module, cell, ID(feedback));
+				int FEEDBACK = get_const_port_value(cell, ID(feedback));
 				log_debug("FEEDBACK: %d.\n", FEEDBACK);
-				int OUTPUT_SELECT = get_const_port_value(module, cell, ID(output_select));
+				int OUTPUT_SELECT = get_const_port_value(cell, ID(output_select));
 				log_debug("OUTPUT_SELECT: %d.\n", OUTPUT_SELECT);
 
 				replace_drop_net_with_keep_net(
@@ -1180,24 +1179,6 @@ struct QlDSPV2TypesPass : public Pass {
 					
 
 					case 0b00000010: //PREADDER_MULT
-						if (M_REG) {
-							add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
-								module,
-								cell,
-								RTLIL::IdString("\\z"),
-								RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
-							);
-							
-							// Tie port output_select[2] to VCC
-							SigSpec sig = cell->getPort(ID(output_select));  
-							sig[2] = SigBit(State::S1);
-							cell->setPort(ID(output_select), sig);
-
-							// Setting M_REG bit to 0
-							RTLIL::Const val = cell->getParam(ID(MODE_BITS));
-							val.bits()[70] = RTLIL::State::S0;
-							cell->setParam(ID(MODE_BITS), val);
-						}
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_PREADDER_MULT"),
 												  pool<RTLIL::IdString>{ 
