@@ -1,4 +1,4 @@
-pattern ql_dspv1
+pattern ql_dsp
 
 state <SigBit> clock
 state <bool> clock_pol cd_signed o_lo
