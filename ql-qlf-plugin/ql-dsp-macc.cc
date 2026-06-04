@@ -289,6 +289,24 @@ static void create_ql_macc_dsp_v2(ql_dsp_macc_pm &pm)
         return;
     }
 
+    // TEMPORARY: Reject MAC-with-clear/load patterns whose accumulator mux is
+    // driven by a dynamic select. Such a mux would force the DSPv2 'feedback_i'
+    // port to a runtime (non-constant) value, but the downstream
+    // ql_dspv2_types pass currently requires 'feedback' to be a constant config
+    // value (see get_const_port_value() in ql_dspv2_types.cc) and aborts
+    // synthesis otherwise. Until the type-mapping pass supports a dynamic
+    // feedback port, bypass DSP inference here and leave the pattern as soft
+    // logic.
+    if (st.mux != nullptr) {
+        RTLIL::SigSpec mux_sel = st.mux->getPort(ID(S));
+        SigMap sigmap(pm.module);
+        if (!sigmap(mux_sel).is_fully_const()) {
+            log_debug("Skipping DSPv2 MACC inference: feedback mux select is "
+                      "not constant, would require dynamic 'feedback' port.\n");
+            return;
+        }
+    }
+
     // Gather operand widths
     RTLIL::SigSpec sig_a = st.mul->getPort(ID(A));
     RTLIL::SigSpec sig_b = st.mul->getPort(ID(B));
