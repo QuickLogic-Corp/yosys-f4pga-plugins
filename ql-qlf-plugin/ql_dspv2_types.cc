@@ -51,13 +51,14 @@ struct QlDSPV2TypesPass : public Pass {
         return true;
     }
 
-	static int get_const_port_value(RTLIL::Cell *cell, RTLIL::IdString port_name)
+	static int get_const_port_value(RTLIL::Module *module, RTLIL::Cell *cell, RTLIL::IdString port_name)
 	{
 		if (!cell->hasPort(port_name))
 			log_error("Cell %s: port %s not found!\n",
 					log_id(cell), log_id(port_name));
 
-		RTLIL::SigSpec sig = cell->getPort(port_name);
+		SigMap sigmap(module);
+		RTLIL::SigSpec sig = sigmap(cell->getPort(port_name));
 
 		log_debug("Cell %s %s = %s\n",
 			log_id(cell), log_id(port_name), log_signal(sig));
@@ -94,7 +95,8 @@ struct QlDSPV2TypesPass : public Pass {
 
 	void add_bitwise_dffre_before_cell_input(RTLIL::Module *module,
 											RTLIL::Cell *cell,
-											RTLIL::IdString port)  // input port
+											RTLIL::IdString port,
+											IdString cell_type)  // input port
 	{
 		SigSpec clk, rst;
 		if (cell->hasPort(IdString("\\clk"))) clk = cell->getPort(IdString("\\clk"));
@@ -117,8 +119,8 @@ struct QlDSPV2TypesPass : public Pass {
 		// Instantiate one 1-bit dffre per bit
 		for (int i = 0; i < width; i++) {
 			Cell *dff = module->addCell(
-				module->uniquify("\\dffre"),
-				IdString("\\dffre")
+				module->uniquify(cell_type),
+				cell_type
 			);
 
 			SigBit bit_in = input_sig[i];           // original input bit
@@ -137,7 +139,8 @@ struct QlDSPV2TypesPass : public Pass {
 
 	void add_bitwise_dffre_after_cell_output(RTLIL::Module *module,
                                          RTLIL::Cell *cell,
-                                         RTLIL::IdString port)  // output port
+                                         RTLIL::IdString port,
+										 IdString cell_type)  // output port
 	{
 		SigSpec clk, rst;
 		if (cell->hasPort(IdString("\\clk"))) clk = cell->getPort(IdString("\\clk"));
@@ -160,8 +163,8 @@ struct QlDSPV2TypesPass : public Pass {
 		// Instantiate one 1-bit dffre per bit
 		for (int i = 0; i < width; i++) {
 			Cell *dff = module->addCell(
-				module->uniquify("\\dffre"),
-				IdString("\\dffre")
+				module->uniquify(cell_type),
+				cell_type
 			);
 
 			SigBit bit_in = SigBit(reg_wire, i);   // intermediate wire bit drives D
@@ -999,9 +1002,9 @@ struct QlDSPV2TypesPass : public Pass {
 				if (FRAC_MODE)
 					log_debug("FRAC_MODE Enabled.\n");
 
-				int FEEDBACK = get_const_port_value(cell, ID(feedback));
+				int FEEDBACK = get_const_port_value(module, cell, ID(feedback));
 				log_debug("FEEDBACK: %d.\n", FEEDBACK);
-				int OUTPUT_SELECT = get_const_port_value(cell, ID(output_select));
+				int OUTPUT_SELECT = get_const_port_value(module, cell, ID(output_select));
 				log_debug("OUTPUT_SELECT: %d.\n", OUTPUT_SELECT);
 
 				replace_drop_net_with_keep_net(
@@ -1011,58 +1014,86 @@ struct QlDSPV2TypesPass : public Pass {
 					RTLIL::IdString("\\z_cout")
 				);
 				
-				if (A1_REG && A2_REG) {
+				if (A1_REG && A2_REG) { //QL_DSPV2_A_DFFR
 					add_bitwise_dffre_before_cell_input(
 							module,
 							cell,
-							RTLIL::IdString("\\a")
+							RTLIL::IdString("\\a"),
+							RTLIL::IdString("\\QL_DSPV2_A_DFFR")
 						);
-					add_bitwise_dffre_before_cell_input(
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_A2_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\a")
+							RTLIL::IdString("\\a"),
+							RTLIL::IdString("\\QL_DSPV2_A2_DFFR")
+						);
+				}
+				
+				else if (A_REG) {
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_A_DFFR
+							module,
+							cell,
+							RTLIL::IdString("\\a"),
+							RTLIL::IdString("\\QL_DSPV2_A_DFFR")
 						);
 				}
 
-				else if (A2_REG || A_REG) {
+				else if (A2_REG && !A_REG) { //QL_DSPV2_A2_DFFR
 					add_bitwise_dffre_before_cell_input(
 							module,
 							cell,
-							RTLIL::IdString("\\a")
+							RTLIL::IdString("\\a"),
+							RTLIL::IdString("\\QL_DSPV2_A2_DFFR")
 						);
 				}
 
 				if (B1_REG && B2_REG) {
-					add_bitwise_dffre_before_cell_input(
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\b")
+							RTLIL::IdString("\\b"),
+							RTLIL::IdString("\\QL_DSPV2_B_DFFR")
 						);
-					add_bitwise_dffre_before_cell_input(
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B2_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\b")
+							RTLIL::IdString("\\b"),
+							RTLIL::IdString("\\QL_DSPV2_B2_DFFR")
 						);
 				}			
-				else if (B2_REG || B_REG) {
-					add_bitwise_dffre_before_cell_input(
+				else if (B_REG) {
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\b")
+							RTLIL::IdString("\\b"),
+							RTLIL::IdString("\\QL_DSPV2_B_DFFR")
 						);
 				}
+
+				else if (B2_REG && !B_REG) {
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B2_DFFR
+							module,
+							cell,
+							RTLIL::IdString("\\b"),
+							RTLIL::IdString("\\QL_DSPV2_B2_DFFR")
+						);
+				}
+
 				if (C_REG) {
-					add_bitwise_dffre_before_cell_input(
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_C_DFFR
 							module,
 							cell,
-							RTLIL::IdString("\\c")
+							RTLIL::IdString("\\c"),
+							RTLIL::IdString("\\QL_DSPV2_C_DFFR")
 						);
 				}
+
 				if (OUTPUT_SELECT >= 4)
-					add_bitwise_dffre_after_cell_output(
+					add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
 						module,
 						cell,
-						RTLIL::IdString("\\z")
+						RTLIL::IdString("\\z"),
+						RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
 					);
 
 				uint32_t control_word = get_control_word(FEEDBACK,
@@ -1075,6 +1106,24 @@ struct QlDSPV2TypesPass : public Pass {
 				log_debug("Control Word: %d\n", control_word);
 				switch (control_word){
 					case 0b00000000: //MULT
+						if (M_REG) {
+							add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
+								module,
+								cell,
+								RTLIL::IdString("\\z"),
+								RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
+							);
+							
+							// Tie port output_select[2] to VCC
+							SigSpec sig = cell->getPort(ID(output_select));  
+							sig[2] = SigBit(State::S1);
+							cell->setPort(ID(output_select), sig);
+
+							// Setting M_REG bit to 0
+							RTLIL::Const val = cell->getParam(ID(MODE_BITS));
+							val.bits()[70] = RTLIL::State::S0;
+							cell->setParam(ID(MODE_BITS), val);
+						}
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULT"),
 												  pool<RTLIL::IdString>{ 
@@ -1136,6 +1185,24 @@ struct QlDSPV2TypesPass : public Pass {
 					
 
 					case 0b00000010: //PREADDER_MULT
+						if (M_REG) {
+							add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
+								module,
+								cell,
+								RTLIL::IdString("\\z"),
+								RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
+							);
+							
+							// Tie port output_select[2] to VCC
+							SigSpec sig = cell->getPort(ID(output_select));  
+							sig[2] = SigBit(State::S1);
+							cell->setPort(ID(output_select), sig);
+
+							// Setting M_REG bit to 0
+							RTLIL::Const val = cell->getParam(ID(MODE_BITS));
+							val.bits()[70] = RTLIL::State::S0;
+							cell->setParam(ID(MODE_BITS), val);
+						}
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_PREADDER_MULT"),
 												  pool<RTLIL::IdString>{ 
@@ -1237,25 +1304,25 @@ struct QlDSPV2TypesPass : public Pass {
 				}
 			}
 
-            // Snapshot DSP cells before any modification
-			std::vector<RTLIL::Cell*> dsp_cells;
-			for (auto cell : module->cells()) {
-				if (cell->type.str().find("QL_DSPV2") != std::string::npos)
-					dsp_cells.push_back(cell);
-			}
+            // // Snapshot DSP cells before any modification
+			// std::vector<RTLIL::Cell*> dsp_cells;
+			// for (auto cell : module->cells()) {
+			// 	if (cell->type.str().find("QL_DSPV2") != std::string::npos)
+			// 		dsp_cells.push_back(cell);
+			// }
 
-			// one FF bit driving multiple positions of same port (a, b, c)
-			const pool<RTLIL::IdString> abc_ports = {
-				IdString("\\a"), IdString("\\b"), IdString("\\c")
-			};
-			for (auto cell : dsp_cells)
-				duplicate_shared_dffres(module, cell, abc_ports);
+			// // one FF bit driving multiple positions of same port (a, b, c)
+			// const pool<RTLIL::IdString> abc_ports = {
+			// 	IdString("\\a"), IdString("\\b"), IdString("\\c")
+			// };
+			// for (auto cell : dsp_cells)
+			// 	duplicate_shared_dffres(module, cell, abc_ports);
 
-			// cross-port and cross-cell fanout
-			duplicate_dffre_per_dsp_port(module);
+			// // cross-port and cross-cell fanout
+			// duplicate_dffre_per_dsp_port(module);
 
-			// buffers on port a only, same bit index only
-			protect_shared_dsp_input(module);
+			// // buffers on port a only, same bit index only
+			// protect_shared_dsp_input(module);
 
 		}
 	}
