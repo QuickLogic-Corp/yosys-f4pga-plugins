@@ -567,49 +567,51 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("wreduce t:$mul");
 
                     if (dspv2) {
-                        // DSPv2 arm — ported from YosysHQ/yosys#4932
-                        // (povik/ql-dspv2 @ c68fd85b9ccceb773a4aaac2a35f7d90fbb15fc8).
-                        // Uses wider 32x18 and 16x9 multiplier shapes via mul2dsp +
-                        // dsp_map.v techmap, followed by MULTACC inference via
-                        // ql_dsp_macc.
-                        //
-                        // Scope for this release (per PR #52 review): support is
-                        // limited to basic MULT (and MULTACC via ql_dsp_macc).
-                        // The cascade/register-packing pass (ql_dspv2), SIMD
-                        // packing (ql_dsp_simd) and IO-register packing
-                        // (ql_dsp_io_regs) are intentionally commented out and
-                        // deferred to a follow-up. Keeping them as commented
-                        // call sites preserves the #4932 pipeline shape for
-                        // easy re-enable.
-                        //
-                        // Device-data convention (Aurora `device_data` submodule):
-                        // V1 and V2 devices ship their cell library under the
-                        // same filenames (`dsp_sim.v`, `dsp_map.v`,
-                        // `dsp_final_map.v`); the per-device file content selects
-                        // V1 vs V2 behaviour. We therefore reference the same
-                        // filenames on both arms here.
-                        run("ql_dsp_macc -dspv2");
-                        run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v "
-                            "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
-                            "-D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 "
-                            "-D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10 "
-                            "-D DSP_NAME=$__QL_MUL32X18");
-                        run("chtype -set $mul t:$__soft_mul");
-                        run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v "
-                            "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
-                            "-D DSP_A_MAXWIDTH=16 -D DSP_B_MAXWIDTH=9 "
-                            "-D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4 "
-                            "-D DSP_NAME=$__QL_MUL16X9");
-                        run("chtype -set $mul t:$__soft_mul");
-                        // Deferred for this release — see comment above.
-                        // run("ql_dspv2");
-                        // run("ql_dsp_simd");
-                        run("techmap -map " + lib_path + family + "/dsp_final_map.v");
-                        // run("ql_dsp_io_regs");
-                        // Converts generic QL_DSPV2 cells emitted above into
-                        // mode-specific subtypes (QL_DSPV2_MULT/MULTACC/MULTADD
-                        // with REGIN/REGOUT variants). Only meaningful on the V2
-                        // path — V1 designs never produce QL_DSPV2 cells.
+                        if(!synplify) {
+                            // DSPv2 arm — ported from YosysHQ/yosys#4932
+                            // (povik/ql-dspv2 @ c68fd85b9ccceb773a4aaac2a35f7d90fbb15fc8).
+                            // Uses wider 32x18 and 16x9 multiplier shapes via mul2dsp +
+                            // dsp_map.v techmap, followed by MULTACC inference via
+                            // ql_dsp_macc.
+                            //
+                            // Scope for this release (per PR #52 review): support is
+                            // limited to basic MULT (and MULTACC via ql_dsp_macc).
+                            // The cascade/register-packing pass (ql_dspv2), SIMD
+                            // packing (ql_dsp_simd) and IO-register packing
+                            // (ql_dsp_io_regs) are intentionally commented out and
+                            // deferred to a follow-up. Keeping them as commented
+                            // call sites preserves the #4932 pipeline shape for
+                            // easy re-enable.
+                            //
+                            // Device-data convention (Aurora `device_data` submodule):
+                            // V1 and V2 devices ship their cell library under the
+                            // same filenames (`dsp_sim.v`, `dsp_map.v`,
+                            // `dsp_final_map.v`); the per-device file content selects
+                            // V1 vs V2 behaviour. We therefore reference the same
+                            // filenames on both arms here.
+                            run("ql_dsp_macc -dspv2");
+                            run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v "
+                                "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
+                                "-D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 "
+                                "-D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10 "
+                                "-D DSP_NAME=$__QL_MUL32X18");
+                            run("chtype -set $mul t:$__soft_mul");
+                            run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v "
+                                "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
+                                "-D DSP_A_MAXWIDTH=16 -D DSP_B_MAXWIDTH=9 "
+                                "-D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4 "
+                                "-D DSP_NAME=$__QL_MUL16X9");
+                            run("chtype -set $mul t:$__soft_mul");
+                            // Deferred for this release — see comment above.
+                            // run("ql_dspv2");
+                            // run("ql_dsp_simd");
+                            run("techmap -map " + lib_path + family + "/dsp_final_map.v");
+                            // run("ql_dsp_io_regs");
+                            // Converts generic QL_DSPV2 cells emitted above into
+                            // mode-specific subtypes (QL_DSPV2_MULT/MULTACC/MULTADD
+                            // with REGIN/REGOUT variants). Only meaningful on the V2
+                            // path — V1 designs never produce QL_DSPV2 cells.
+                        }
                         run("ql_dspv2_types");
                     } else {
                         run("ql_dsp_macc" + use_dsp_cfg_params);
