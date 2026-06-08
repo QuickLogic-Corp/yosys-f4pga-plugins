@@ -357,6 +357,20 @@ struct QlDSPV2TypesPass : public Pass {
 		}
 	}
 
+	static void set_param_bit(RTLIL::Cell *cell, const RTLIL::IdString &param, int bit_index, RTLIL::State state = RTLIL::State::S0)
+	{
+		RTLIL::Const val = cell->getParam(param);
+		val.bits()[bit_index] = state;
+		cell->setParam(param, val);
+	}
+
+	static void set_port_bit(RTLIL::Cell *cell, const RTLIL::IdString &port, int bit_index, RTLIL::State state = RTLIL::State::S0)
+	{
+		SigSpec sig = cell->getPort(port);
+		sig[bit_index] = SigBit(state);
+		cell->setPort(port, sig);
+	}
+
 	// ============================================================================
 	// Shared types
 	// ============================================================================
@@ -1044,7 +1058,17 @@ struct QlDSPV2TypesPass : public Pass {
 					RTLIL::IdString("\\z_cout")
 				);
 				
-				if (A1_REG && A2_REG) { //QL_DSPV2_A_DFFR
+				if (A_REG) {
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_A_DFFR
+							module,
+							cell,
+							RTLIL::IdString("\\a"),
+							RTLIL::IdString("\\QL_DSPV2_A_DFFR")
+						);
+					// Setting A_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 61, RTLIL::State::S0);
+				}
+				else if (A1_REG && A2_REG) { //QL_DSPV2_A_DFFR
 					add_bitwise_dffre_before_cell_input(
 							module,
 							cell,
@@ -1057,15 +1081,9 @@ struct QlDSPV2TypesPass : public Pass {
 							RTLIL::IdString("\\a"),
 							RTLIL::IdString("\\QL_DSPV2_A2_DFFR")
 						);
-				}
-				
-				else if (A_REG) {
-					add_bitwise_dffre_before_cell_input( //QL_DSPV2_A_DFFR
-							module,
-							cell,
-							RTLIL::IdString("\\a"),
-							RTLIL::IdString("\\QL_DSPV2_A_DFFR")
-						);
+					// Setting A1_REG and A2_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 62, RTLIL::State::S0);
+					set_param_bit(cell, ID(MODE_BITS), 63, RTLIL::State::S0);
 				}
 
 				else if (A2_REG && !A_REG) { //QL_DSPV2_A2_DFFR
@@ -1075,9 +1093,21 @@ struct QlDSPV2TypesPass : public Pass {
 							RTLIL::IdString("\\a"),
 							RTLIL::IdString("\\QL_DSPV2_A2_DFFR")
 						);
+					// Setting A2_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 63, RTLIL::State::S0);
 				}
 
-				if (B1_REG && B2_REG) {
+				if (B_REG) {
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B_DFFR
+							module,
+							cell,
+							RTLIL::IdString("\\b"),
+							RTLIL::IdString("\\QL_DSPV2_B_DFFR")
+						);
+					// Setting B_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 65, RTLIL::State::S0);
+				}
+				else if (B1_REG && B2_REG) {
 					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B_DFFR
 							module,
 							cell,
@@ -1090,14 +1120,9 @@ struct QlDSPV2TypesPass : public Pass {
 							RTLIL::IdString("\\b"),
 							RTLIL::IdString("\\QL_DSPV2_B2_DFFR")
 						);
-				}			
-				else if (B_REG) {
-					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B_DFFR
-							module,
-							cell,
-							RTLIL::IdString("\\b"),
-							RTLIL::IdString("\\QL_DSPV2_B_DFFR")
-						);
+					// Setting B1_REG and B2_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 66, RTLIL::State::S0);
+					set_param_bit(cell, ID(MODE_BITS), 67, RTLIL::State::S0);
 				}
 
 				else if (B2_REG && !B_REG) {
@@ -1107,6 +1132,8 @@ struct QlDSPV2TypesPass : public Pass {
 							RTLIL::IdString("\\b"),
 							RTLIL::IdString("\\QL_DSPV2_B2_DFFR")
 						);
+					// Setting B2_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 67, RTLIL::State::S0);
 				}
 
 				if (C_REG) {
@@ -1116,15 +1143,31 @@ struct QlDSPV2TypesPass : public Pass {
 							RTLIL::IdString("\\c"),
 							RTLIL::IdString("\\QL_DSPV2_C_DFFR")
 						);
+					// Setting C_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 68, RTLIL::State::S0);
 				}
 
-				if (OUTPUT_SELECT >= 4)
+				if (M_REG) {
 					add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
 						module,
 						cell,
 						RTLIL::IdString("\\z"),
 						RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
 					);
+					// Setting M_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 70, RTLIL::State::S0);
+				}
+
+				if (OUTPUT_SELECT >= 4){
+					add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
+						module,
+						cell,
+						RTLIL::IdString("\\z"),
+						RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
+					);
+					// Tie port output_select[2] to GND
+					set_port_bit(cell, ID(output_select), 2, State::S0);
+				}
 
 				uint32_t control_word = get_control_word(FEEDBACK,
 														 OUTPUT_SELECT,
@@ -1136,24 +1179,6 @@ struct QlDSPV2TypesPass : public Pass {
 				log_debug("Control Word: %d\n", control_word);
 				switch (control_word){
 					case 0b00000000: //MULT
-						if (M_REG) {
-							add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
-								module,
-								cell,
-								RTLIL::IdString("\\z"),
-								RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
-							);
-							
-							// Tie port output_select[2] to VCC
-							SigSpec sig = cell->getPort(ID(output_select));  
-							sig[2] = SigBit(State::S1);
-							cell->setPort(ID(output_select), sig);
-
-							// Setting M_REG bit to 0
-							RTLIL::Const val = cell->getParam(ID(MODE_BITS));
-							val.bits()[70] = RTLIL::State::S0;
-							cell->setParam(ID(MODE_BITS), val);
-						}
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULT"),
 												  pool<RTLIL::IdString>{ 
@@ -1215,24 +1240,6 @@ struct QlDSPV2TypesPass : public Pass {
 					
 
 					case 0b00000010: //PREADDER_MULT
-						if (M_REG) {
-							add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
-								module,
-								cell,
-								RTLIL::IdString("\\z"),
-								RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
-							);
-							
-							// Tie port output_select[2] to VCC
-							SigSpec sig = cell->getPort(ID(output_select));  
-							sig[2] = SigBit(State::S1);
-							cell->setPort(ID(output_select), sig);
-
-							// Setting M_REG bit to 0
-							RTLIL::Const val = cell->getParam(ID(MODE_BITS));
-							val.bits()[70] = RTLIL::State::S0;
-							cell->setParam(ID(MODE_BITS), val);
-						}
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_PREADDER_MULT"),
 												  pool<RTLIL::IdString>{ 
