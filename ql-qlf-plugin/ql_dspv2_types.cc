@@ -60,6 +60,25 @@ struct QlDSPV2TypesPass : public Pass {
 		SigMap sigmap(module);
 		RTLIL::SigSpec sig = sigmap(cell->getPort(port_name));
 
+		// SigMap resolves wire aliases but not VCC/GND cell outputs.
+		// Build a per-bit map for those drivers.
+		dict<SigBit, State> const_drivers;
+		for (auto *drv : module->cells()) {
+			if (drv->type == ID(VCC)) {
+				for (auto &bit : sigmap(drv->getPort(ID(P))))
+					const_drivers[bit] = State::S1;
+			} else if (drv->type == ID(GND)) {
+				for (auto &bit : sigmap(drv->getPort(ID(G))))
+					const_drivers[bit] = State::S0;
+			}
+		}
+
+		for (auto &bit : sig) {
+			auto it = const_drivers.find(bit);
+			if (it != const_drivers.end())
+				bit = SigBit(it->second);
+		}
+
 		log_debug("Cell %s %s = %s\n",
 			log_id(cell), log_id(port_name), log_signal(sig));
 
