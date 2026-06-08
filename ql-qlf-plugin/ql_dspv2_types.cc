@@ -51,18 +51,8 @@ struct QlDSPV2TypesPass : public Pass {
         return true;
     }
 
-	static int get_const_port_value(RTLIL::Module *module, RTLIL::Cell *cell, RTLIL::IdString port_name)
+	static void build_const_drivers(RTLIL::Module *module, SigMap &sigmap, dict<SigBit, State> &const_drivers)
 	{
-		if (!cell->hasPort(port_name))
-			log_error("Cell %s: port %s not found!\n",
-					log_id(cell), log_id(port_name));
-
-		SigMap sigmap(module);
-		RTLIL::SigSpec sig = sigmap(cell->getPort(port_name));
-
-		// SigMap resolves wire aliases but not VCC/GND cell outputs.
-		// Build a per-bit map for those drivers.
-		dict<SigBit, State> const_drivers;
 		for (auto *drv : module->cells()) {
 			if (drv->type == ID(VCC)) {
 				for (auto &bit : sigmap(drv->getPort(ID(P))))
@@ -72,6 +62,16 @@ struct QlDSPV2TypesPass : public Pass {
 					const_drivers[bit] = State::S0;
 			}
 		}
+	}
+
+	static int get_const_port_value(RTLIL::Cell *cell, RTLIL::IdString port_name,
+							SigMap &sigmap, const dict<SigBit, State> &const_drivers)
+	{
+		if (!cell->hasPort(port_name))
+			log_error("Cell %s: port %s not found!\n",
+					log_id(cell), log_id(port_name));
+
+		RTLIL::SigSpec sig = sigmap(cell->getPort(port_name));
 
 		for (auto &bit : sig) {
 			auto it = const_drivers.find(bit);
@@ -937,7 +937,9 @@ struct QlDSPV2TypesPass : public Pass {
 		log_header(design, "Executing QL_DSPV2_TYPES pass.\n");
 		
 		for (RTLIL::Module* module : design->selected_modules()){
-
+			SigMap sigmap(module);
+			dict<SigBit, State> const_drivers;
+			build_const_drivers(module, sigmap, const_drivers);
 			for (RTLIL::Cell* cell: module->selected_cells())
 			{
 				if (cell->type != ID(QL_DSPV2))
@@ -1021,9 +1023,9 @@ struct QlDSPV2TypesPass : public Pass {
 				if (FRAC_MODE)
 					log_debug("FRAC_MODE Enabled.\n");
 
-				int FEEDBACK = get_const_port_value(module, cell, ID(feedback));
+				int FEEDBACK = get_const_port_value(cell, ID(feedback), sigmap, const_drivers);
 				log_debug("FEEDBACK: %d.\n", FEEDBACK);
-				int OUTPUT_SELECT = get_const_port_value(module, cell, ID(output_select));
+				int OUTPUT_SELECT = get_const_port_value(cell, ID(output_select), sigmap, const_drivers);
 				log_debug("OUTPUT_SELECT: %d.\n", OUTPUT_SELECT);
 
 				replace_drop_net_with_keep_net(
