@@ -51,14 +51,33 @@ struct QlDSPV2TypesPass : public Pass {
         return true;
     }
 
-	static int get_const_port_value(RTLIL::Module *module, RTLIL::Cell *cell, RTLIL::IdString port_name)
+	static void build_const_drivers(RTLIL::Module *module, SigMap &sigmap, dict<SigBit, State> &const_drivers)
+	{
+		for (auto *drv : module->cells()) {
+			if (drv->type == ID(VCC)) {
+				for (auto &bit : sigmap(drv->getPort(ID(P))))
+					const_drivers[bit] = State::S1;
+			} else if (drv->type == ID(GND)) {
+				for (auto &bit : sigmap(drv->getPort(ID(G))))
+					const_drivers[bit] = State::S0;
+			}
+		}
+	}
+
+	static int get_const_port_value(RTLIL::Cell *cell, RTLIL::IdString port_name,
+							SigMap &sigmap, const dict<SigBit, State> &const_drivers)
 	{
 		if (!cell->hasPort(port_name))
 			log_error("Cell %s: port %s not found!\n",
 					log_id(cell), log_id(port_name));
 
-		SigMap sigmap(module);
 		RTLIL::SigSpec sig = sigmap(cell->getPort(port_name));
+
+		for (auto &bit : sig) {
+			auto it = const_drivers.find(bit);
+			if (it != const_drivers.end())
+				bit = SigBit(it->second);
+		}
 
 		log_debug("Cell %s %s = %s\n",
 			log_id(cell), log_id(port_name), log_signal(sig));
@@ -282,12 +301,11 @@ struct QlDSPV2TypesPass : public Pass {
 		}
 	}
 
-	void make_gnd_bits_unconn(RTLIL::Module *module,
-                          RTLIL::Cell *cell,
-                          const pool<RTLIL::IdString> &ports)
+	void make_gnd_bits_unconn(RTLIL::Cell *cell,
+							const pool<RTLIL::IdString> &ports,
+							SigMap &sigmap,
+							const dict<SigBit, State> &const_drivers)
 	{
-		SigMap sigmap(module);
-
 		log_debug("Processing cell %s (%s)\n",
 			log_id(cell->name), log_id(cell->type));
 
@@ -305,9 +323,19 @@ struct QlDSPV2TypesPass : public Pass {
 
 			for (int i = 0; i < sig.size(); i++)
 			{
-				RTLIL::SigBit bit = sig[i];
+				RTLIL::SigBit bit = sigmap(sig[i]);
 
-				if (sigmap(bit) == RTLIL::State::S0)
+				// Check internal S0 state
+				bool is_gnd = (bit == RTLIL::State::S0);
+
+				// Check black-box GND cell driver
+				if (!is_gnd) {
+					auto it = const_drivers.find(bit);
+					if (it != const_drivers.end() && it->second == State::S0)
+						is_gnd = true;
+				}
+
+				if (is_gnd)
 				{
 					log_debug("    bit %d -> GND replaced with \\unconn\n", i);
 					new_sig.append(SigSpec());
@@ -315,7 +343,7 @@ struct QlDSPV2TypesPass : public Pass {
 				}
 				else
 				{
-					new_sig.append(bit);
+					new_sig.append(sig[i]);
 				}
 			}
 
@@ -918,7 +946,9 @@ struct QlDSPV2TypesPass : public Pass {
 		log_header(design, "Executing QL_DSPV2_TYPES pass.\n");
 		
 		for (RTLIL::Module* module : design->selected_modules()){
-
+			SigMap sigmap(module);
+			dict<SigBit, State> const_drivers;
+			build_const_drivers(module, sigmap, const_drivers);
 			for (RTLIL::Cell* cell: module->selected_cells())
 			{
 				if (cell->type != ID(QL_DSPV2))
@@ -1002,9 +1032,9 @@ struct QlDSPV2TypesPass : public Pass {
 				if (FRAC_MODE)
 					log_debug("FRAC_MODE Enabled.\n");
 
-				int FEEDBACK = get_const_port_value(module, cell, ID(feedback));
+				int FEEDBACK = get_const_port_value(cell, ID(feedback), sigmap, const_drivers);
 				log_debug("FEEDBACK: %d.\n", FEEDBACK);
-				int OUTPUT_SELECT = get_const_port_value(module, cell, ID(output_select));
+				int OUTPUT_SELECT = get_const_port_value(cell, ID(output_select), sigmap, const_drivers);
 				log_debug("OUTPUT_SELECT: %d.\n", OUTPUT_SELECT);
 
 				replace_drop_net_with_keep_net(
@@ -1218,11 +1248,12 @@ struct QlDSPV2TypesPass : public Pass {
 					case 0b01111110: //PREADDER_MULTADD
 					case 0b01110110: //PREADDER_MULTADD
 						make_gnd_bits_unconn(
-											module,
-											cell,
-											pool<RTLIL::IdString>{ 
-												ID(z_cin),
-											});
+						cell,
+						pool<RTLIL::IdString>{
+							ID(z_cin),
+						},
+						sigmap,
+						const_drivers);
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_PREADDER_MULTADD"),
 												  pool<RTLIL::IdString>{ 
@@ -1239,11 +1270,12 @@ struct QlDSPV2TypesPass : public Pass {
 					case 0b01111100: //MULTADD
 					case 0b01110100: //MULTADD
 						make_gnd_bits_unconn(
-											module,
-											cell,
-											pool<RTLIL::IdString>{ 
-												ID(z_cin),
-											});
+						cell,
+						pool<RTLIL::IdString>{
+							ID(z_cin),
+						},
+						sigmap,
+						const_drivers);
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD"),
 												  pool<RTLIL::IdString>{ 
@@ -1259,11 +1291,12 @@ struct QlDSPV2TypesPass : public Pass {
 					case 0b01111101: //MULTADD_NEG
 					case 0b01110101: //MULTADD_NEG
 						make_gnd_bits_unconn(
-											module,
-											cell,
-											pool<RTLIL::IdString>{ 
-												ID(z_cin),
-											});
+						cell,
+						pool<RTLIL::IdString>{
+							ID(z_cin),
+						},
+						sigmap,
+						const_drivers);
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULTADD_NEG"),
 												  pool<RTLIL::IdString>{ 
@@ -1279,11 +1312,12 @@ struct QlDSPV2TypesPass : public Pass {
 					default:
 						log("Did not find any matching QL_DSPV2 models for %s\n", log_id(cell->name));
 						make_gnd_bits_unconn(
-											module,
-											cell,
-											pool<RTLIL::IdString>{ 
-												ID(z_cin),
-											});
+							cell,
+							pool<RTLIL::IdString>{
+								ID(z_cin),
+							},
+							sigmap,
+							const_drivers);
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2"),
 												 pool<RTLIL::IdString>{ 
