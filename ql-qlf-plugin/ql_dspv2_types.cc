@@ -128,34 +128,45 @@ struct QlDSPV2TypesPass : public Pass {
 
 		log("\nAdding bitwise dffre BEFORE %s.%s, width=%d\n", log_id(cell), log_id(port), width);
 
-		// Create intermediate wire that will connect to the cell input
-		Wire *reg_wire = module->addWire(
-			module->uniquify(stringf("\\%s_%s_reg", log_id(cell), log_id(port))),
-			width
-		);
+		// First pass: resolve each bit and determine which need a register
+		std::vector<SigBit> resolved(width);
+		std::vector<bool> is_const(width, false);
+		int reg_count = 0;
 
-		// Rewire cell input to use the register output
-		cell->setPort(port, reg_wire);
-
-		// Instantiate one 1-bit dffre per bit
 		for (int i = 0; i < width; i++) {
-			SigBit bit_in = input_sig[i];
-			SigBit bit_in_resolved = sigmap(bit_in);
-
-			// Check if this bit is driven by GND (either internal S0 or black-box GND cell)
-			bool is_gnd = (bit_in_resolved == RTLIL::State::S0);
-			if (!is_gnd) {
-				auto it = const_drivers.find(bit_in_resolved);
-				if (it != const_drivers.end() && it->second == State::S0)
-					is_gnd = true;
+			resolved[i] = sigmap(input_sig[i]);
+			if (resolved[i].wire == nullptr) {
+				is_const[i] = true;
+			} else {
+				auto it = const_drivers.find(resolved[i]);
+				if (it != const_drivers.end())
+					is_const[i] = true;
 			}
+			if (!is_const[i]) reg_count++;
+		}
 
-			if (is_gnd) {
-				log_debug("Skipping bit %d of port %s: driven by GND\n", i, log_id(port));
+		// Create wire only for bits that actually need a register
+		Wire *reg_wire = nullptr;
+		if (reg_count > 0)
+			reg_wire = module->addWire(
+				module->uniquify(stringf("\\%s_%s_reg", log_id(cell), log_id(port))),
+				reg_count
+			);
+
+		// Build the new port SigSpec and add DFFREs only for non-constant bits
+		SigSpec new_port;
+		int reg_idx = 0;
+
+		for (int i = 0; i < width; i++) {
+			if (is_const[i]) {
+				new_port.append(resolved[i]);
+				log_debug("Skipping bit %d of port %s: constant (%s)\n", i, log_id(port), log_signal(resolved[i]));
 				continue;
 			}
 
-			SigBit bit_out = SigBit(reg_wire, i);
+			SigBit bit_in  = input_sig[i];
+			SigBit bit_out = SigBit(reg_wire, reg_idx++);
+			new_port.append(bit_out);
 
 			Cell *dff = module->addCell(
 				module->uniquify(cell_type),
@@ -170,6 +181,8 @@ struct QlDSPV2TypesPass : public Pass {
 
 			log_debug("Added bit %d dffre BEFORE: D=%s, Q=%s\n", i, log_signal(bit_in), log_signal(bit_out));
 		}
+
+		cell->setPort(port, new_port);
 	}
 
 
