@@ -113,9 +113,11 @@ struct QlDSPV2TypesPass : public Pass {
 	}
 
 	void add_bitwise_dffre_before_cell_input(RTLIL::Module *module,
-											RTLIL::Cell *cell,
-											RTLIL::IdString port,
-											IdString cell_type)  // input port
+                                          RTLIL::Cell *cell,
+                                          RTLIL::IdString port,
+                                          IdString cell_type,
+                                          SigMap &sigmap,
+                                          const dict<SigBit, State> &const_drivers)
 	{
 		SigSpec clk, rst;
 		if (cell->hasPort(IdString("\\clk"))) clk = cell->getPort(IdString("\\clk"));
@@ -137,13 +139,28 @@ struct QlDSPV2TypesPass : public Pass {
 
 		// Instantiate one 1-bit dffre per bit
 		for (int i = 0; i < width; i++) {
+			SigBit bit_in = input_sig[i];
+			SigBit bit_in_resolved = sigmap(bit_in);
+
+			// Check if this bit is driven by GND (either internal S0 or black-box GND cell)
+			bool is_gnd = (bit_in_resolved == RTLIL::State::S0);
+			if (!is_gnd) {
+				auto it = const_drivers.find(bit_in_resolved);
+				if (it != const_drivers.end() && it->second == State::S0)
+					is_gnd = true;
+			}
+
+			if (is_gnd) {
+				log_debug("Skipping bit %d of port %s: driven by GND\n", i, log_id(port));
+				continue;
+			}
+
+			SigBit bit_out = SigBit(reg_wire, i);
+
 			Cell *dff = module->addCell(
 				module->uniquify(cell_type),
 				cell_type
 			);
-
-			SigBit bit_in = input_sig[i];           // original input bit
-			SigBit bit_out = SigBit(reg_wire, i);   // intermediate reg wire bit
 
 			dff->setPort(IdString("\\D"), SigSpec(bit_in));
 			dff->setPort(IdString("\\Q"), SigSpec(bit_out));
@@ -1063,7 +1080,9 @@ struct QlDSPV2TypesPass : public Pass {
 							module,
 							cell,
 							RTLIL::IdString("\\a"),
-							RTLIL::IdString("\\QL_DSPV2_A_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_A_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					// Setting A_REG bit to 0
 					set_param_bit(cell, ID(MODE_BITS), 61, RTLIL::State::S0);
@@ -1073,13 +1092,17 @@ struct QlDSPV2TypesPass : public Pass {
 							module,
 							cell,
 							RTLIL::IdString("\\a"),
-							RTLIL::IdString("\\QL_DSPV2_A_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_A_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					add_bitwise_dffre_before_cell_input( //QL_DSPV2_A2_DFFR
 							module,
 							cell,
 							RTLIL::IdString("\\a"),
-							RTLIL::IdString("\\QL_DSPV2_A2_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_A2_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					// Setting A1_REG and A2_REG bit to 0
 					set_param_bit(cell, ID(MODE_BITS), 62, RTLIL::State::S0);
@@ -1091,7 +1114,9 @@ struct QlDSPV2TypesPass : public Pass {
 							module,
 							cell,
 							RTLIL::IdString("\\a"),
-							RTLIL::IdString("\\QL_DSPV2_A2_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_A2_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					// Setting A2_REG bit to 0
 					set_param_bit(cell, ID(MODE_BITS), 63, RTLIL::State::S0);
@@ -1102,7 +1127,9 @@ struct QlDSPV2TypesPass : public Pass {
 							module,
 							cell,
 							RTLIL::IdString("\\b"),
-							RTLIL::IdString("\\QL_DSPV2_B_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_B_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					// Setting B_REG bit to 0
 					set_param_bit(cell, ID(MODE_BITS), 65, RTLIL::State::S0);
@@ -1112,13 +1139,17 @@ struct QlDSPV2TypesPass : public Pass {
 							module,
 							cell,
 							RTLIL::IdString("\\b"),
-							RTLIL::IdString("\\QL_DSPV2_B_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_B_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B2_DFFR
 							module,
 							cell,
 							RTLIL::IdString("\\b"),
-							RTLIL::IdString("\\QL_DSPV2_B2_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_B2_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					// Setting B1_REG and B2_REG bit to 0
 					set_param_bit(cell, ID(MODE_BITS), 66, RTLIL::State::S0);
@@ -1130,7 +1161,9 @@ struct QlDSPV2TypesPass : public Pass {
 							module,
 							cell,
 							RTLIL::IdString("\\b"),
-							RTLIL::IdString("\\QL_DSPV2_B2_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_B2_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					// Setting B2_REG bit to 0
 					set_param_bit(cell, ID(MODE_BITS), 67, RTLIL::State::S0);
@@ -1141,7 +1174,9 @@ struct QlDSPV2TypesPass : public Pass {
 							module,
 							cell,
 							RTLIL::IdString("\\c"),
-							RTLIL::IdString("\\QL_DSPV2_C_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_C_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					// Setting C_REG bit to 0
 					set_param_bit(cell, ID(MODE_BITS), 68, RTLIL::State::S0);
