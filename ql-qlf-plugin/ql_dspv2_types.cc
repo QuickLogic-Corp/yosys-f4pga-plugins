@@ -1194,8 +1194,25 @@ struct QlDSPV2TypesPass : public Pass {
 					// Setting C_REG bit to 0
 					set_param_bit(cell, ID(MODE_BITS), 68, RTLIL::State::S0);
 				}
-
-				if (M_REG) {
+				if (M_REG && OUTPUT_SELECT >= 4) {
+					add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
+						module,
+						cell,
+						RTLIL::IdString("\\z"),
+						RTLIL::IdString("\\dffre")
+					);
+					add_bitwise_dffre_after_cell_output( //dffre
+						module,
+						cell,
+						RTLIL::IdString("\\z"),
+						RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
+					);
+					// Tie port output_select[2] to GND
+					set_port_bit(cell, ID(output_select), 2, State::S0);
+					// Setting M_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 70, RTLIL::State::S0);
+				}
+				else if (M_REG) {
 					add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
 						module,
 						cell,
@@ -1206,7 +1223,7 @@ struct QlDSPV2TypesPass : public Pass {
 					set_param_bit(cell, ID(MODE_BITS), 70, RTLIL::State::S0);
 				}
 
-				if (OUTPUT_SELECT >= 4){
+				else if (OUTPUT_SELECT >= 4){
 					add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
 						module,
 						cell,
