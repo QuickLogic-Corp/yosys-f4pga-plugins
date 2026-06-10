@@ -35,7 +35,7 @@ SOURCES = synth_quicklogic.cc \
 		  ql_sdp_bram_types.cc \
 		  ql_sdp_bramecc_types.cc \
           ql-bram-asymmetric.cc \
-          ql_opt_lut_deduc.cc
+          ql_opt_lut_dedup.cc
 
 
 include ../Makefile_plugin.common

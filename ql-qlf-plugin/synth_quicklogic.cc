@@ -977,6 +977,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 					run("opt -fast -mux_undef -undriven -fine" + noDFFArgs);
                     run("techmap -autoproc -map" + family_path + "/synplify_map.v");
                     run("opt_lut_dedup");
+                    run("opt_lut");
 					run("opt" + noDFFArgs);
                     run("opt_expr");
                     run("opt_merge");
