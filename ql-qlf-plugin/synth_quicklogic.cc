@@ -806,6 +806,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                                     run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
 
                                 else{
+                                    if (synplify) {
+                                        std::string family_path = " " + lib_path + family;
+                                        run("flatten");
+                                        run("techmap -map" + family_path + "/synplify_map.v");
+                                        run("techmap");
+                                    }
                                     run("design -save base");
                                     run("design -load base");
                                     run("tee -o abc_lut6.log abc -script +/quicklogic/abc_scripts/lut6.scr", "(for qlf_k6n10, qlf_k6n10f)");

@@ -113,9 +113,11 @@ struct QlDSPV2TypesPass : public Pass {
 	}
 
 	void add_bitwise_dffre_before_cell_input(RTLIL::Module *module,
-											RTLIL::Cell *cell,
-											RTLIL::IdString port,
-											IdString cell_type)  // input port
+                                          RTLIL::Cell *cell,
+                                          RTLIL::IdString port,
+                                          IdString cell_type,
+                                          SigMap &sigmap,
+                                          const dict<SigBit, State> &const_drivers)
 	{
 		SigSpec clk, rst;
 		if (cell->hasPort(IdString("\\clk"))) clk = cell->getPort(IdString("\\clk"));
@@ -126,24 +128,50 @@ struct QlDSPV2TypesPass : public Pass {
 
 		log("\nAdding bitwise dffre BEFORE %s.%s, width=%d\n", log_id(cell), log_id(port), width);
 
-		// Create intermediate wire that will connect to the cell input
-		Wire *reg_wire = module->addWire(
-			module->uniquify(stringf("\\%s_%s_reg", log_id(cell), log_id(port))),
-			width
-		);
+		// First pass: resolve each bit and determine which need a register
+		std::vector<SigBit> resolved(width);
+		std::vector<bool> is_const(width, false);
+		int reg_count = 0;
 
-		// Rewire cell input to use the register output
-		cell->setPort(port, reg_wire);
-
-		// Instantiate one 1-bit dffre per bit
 		for (int i = 0; i < width; i++) {
+			resolved[i] = sigmap(input_sig[i]);
+			if (resolved[i].wire == nullptr) {
+				is_const[i] = true;
+			} else {
+				auto it = const_drivers.find(resolved[i]);
+				if (it != const_drivers.end())
+					is_const[i] = true;
+			}
+			if (!is_const[i]) reg_count++;
+		}
+
+		// Create wire only for bits that actually need a register
+		Wire *reg_wire = nullptr;
+		if (reg_count > 0)
+			reg_wire = module->addWire(
+				module->uniquify(stringf("\\%s_%s_reg", log_id(cell), log_id(port))),
+				reg_count
+			);
+
+		// Build the new port SigSpec and add DFFREs only for non-constant bits
+		SigSpec new_port;
+		int reg_idx = 0;
+
+		for (int i = 0; i < width; i++) {
+			if (is_const[i]) {
+				new_port.append(resolved[i]);
+				log_debug("Skipping bit %d of port %s: constant (%s)\n", i, log_id(port), log_signal(resolved[i]));
+				continue;
+			}
+
+			SigBit bit_in  = input_sig[i];
+			SigBit bit_out = SigBit(reg_wire, reg_idx++);
+			new_port.append(bit_out);
+
 			Cell *dff = module->addCell(
 				module->uniquify(cell_type),
 				cell_type
 			);
-
-			SigBit bit_in = input_sig[i];           // original input bit
-			SigBit bit_out = SigBit(reg_wire, i);   // intermediate reg wire bit
 
 			dff->setPort(IdString("\\D"), SigSpec(bit_in));
 			dff->setPort(IdString("\\Q"), SigSpec(bit_out));
@@ -153,6 +181,8 @@ struct QlDSPV2TypesPass : public Pass {
 
 			log_debug("Added bit %d dffre BEFORE: D=%s, Q=%s\n", i, log_signal(bit_in), log_signal(bit_out));
 		}
+
+		cell->setPort(port, new_port);
 	}
 
 
@@ -355,6 +385,20 @@ struct QlDSPV2TypesPass : public Pass {
 				cell->setPort(pname, new_sig);
 			}
 		}
+	}
+
+	static void set_param_bit(RTLIL::Cell *cell, const RTLIL::IdString &param, int bit_index, RTLIL::State state = RTLIL::State::S0)
+	{
+		RTLIL::Const val = cell->getParam(param);
+		val.bits()[bit_index] = state;
+		cell->setParam(param, val);
+	}
+
+	static void set_port_bit(RTLIL::Cell *cell, const RTLIL::IdString &port, int bit_index, RTLIL::State state = RTLIL::State::S0)
+	{
+		SigSpec sig = cell->getPort(port);
+		sig[bit_index] = SigBit(state);
+		cell->setPort(port, sig);
 	}
 
 	// ============================================================================
@@ -1044,28 +1088,38 @@ struct QlDSPV2TypesPass : public Pass {
 					RTLIL::IdString("\\z_cout")
 				);
 				
-				if (A1_REG && A2_REG) { //QL_DSPV2_A_DFFR
+				if (A_REG) {
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_A_DFFR
+							module,
+							cell,
+							RTLIL::IdString("\\a"),
+							RTLIL::IdString("\\QL_DSPV2_A_DFFR"),
+							sigmap,
+							const_drivers
+						);
+					// Setting A_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 61, RTLIL::State::S0);
+				}
+				else if (A1_REG && A2_REG) { //QL_DSPV2_A_DFFR
 					add_bitwise_dffre_before_cell_input(
 							module,
 							cell,
 							RTLIL::IdString("\\a"),
-							RTLIL::IdString("\\QL_DSPV2_A_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_A_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					add_bitwise_dffre_before_cell_input( //QL_DSPV2_A2_DFFR
 							module,
 							cell,
 							RTLIL::IdString("\\a"),
-							RTLIL::IdString("\\QL_DSPV2_A2_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_A2_DFFR"),
+							sigmap,
+							const_drivers
 						);
-				}
-				
-				else if (A_REG) {
-					add_bitwise_dffre_before_cell_input( //QL_DSPV2_A_DFFR
-							module,
-							cell,
-							RTLIL::IdString("\\a"),
-							RTLIL::IdString("\\QL_DSPV2_A_DFFR")
-						);
+					// Setting A1_REG and A2_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 62, RTLIL::State::S0);
+					set_param_bit(cell, ID(MODE_BITS), 63, RTLIL::State::S0);
 				}
 
 				else if (A2_REG && !A_REG) { //QL_DSPV2_A2_DFFR
@@ -1073,31 +1127,46 @@ struct QlDSPV2TypesPass : public Pass {
 							module,
 							cell,
 							RTLIL::IdString("\\a"),
-							RTLIL::IdString("\\QL_DSPV2_A2_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_A2_DFFR"),
+							sigmap,
+							const_drivers
 						);
+					// Setting A2_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 63, RTLIL::State::S0);
 				}
 
-				if (B1_REG && B2_REG) {
+				if (B_REG) {
 					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B_DFFR
 							module,
 							cell,
 							RTLIL::IdString("\\b"),
-							RTLIL::IdString("\\QL_DSPV2_B_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_B_DFFR"),
+							sigmap,
+							const_drivers
+						);
+					// Setting B_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 65, RTLIL::State::S0);
+				}
+				else if (B1_REG && B2_REG) {
+					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B_DFFR
+							module,
+							cell,
+							RTLIL::IdString("\\b"),
+							RTLIL::IdString("\\QL_DSPV2_B_DFFR"),
+							sigmap,
+							const_drivers
 						);
 					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B2_DFFR
 							module,
 							cell,
 							RTLIL::IdString("\\b"),
-							RTLIL::IdString("\\QL_DSPV2_B2_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_B2_DFFR"),
+							sigmap,
+							const_drivers
 						);
-				}			
-				else if (B_REG) {
-					add_bitwise_dffre_before_cell_input( //QL_DSPV2_B_DFFR
-							module,
-							cell,
-							RTLIL::IdString("\\b"),
-							RTLIL::IdString("\\QL_DSPV2_B_DFFR")
-						);
+					// Setting B1_REG and B2_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 66, RTLIL::State::S0);
+					set_param_bit(cell, ID(MODE_BITS), 67, RTLIL::State::S0);
 				}
 
 				else if (B2_REG && !B_REG) {
@@ -1105,8 +1174,12 @@ struct QlDSPV2TypesPass : public Pass {
 							module,
 							cell,
 							RTLIL::IdString("\\b"),
-							RTLIL::IdString("\\QL_DSPV2_B2_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_B2_DFFR"),
+							sigmap,
+							const_drivers
 						);
+					// Setting B2_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 67, RTLIL::State::S0);
 				}
 
 				if (C_REG) {
@@ -1114,17 +1187,52 @@ struct QlDSPV2TypesPass : public Pass {
 							module,
 							cell,
 							RTLIL::IdString("\\c"),
-							RTLIL::IdString("\\QL_DSPV2_C_DFFR")
+							RTLIL::IdString("\\QL_DSPV2_C_DFFR"),
+							sigmap,
+							const_drivers
 						);
+					// Setting C_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 68, RTLIL::State::S0);
 				}
-
-				if (OUTPUT_SELECT >= 4)
+				if (M_REG && OUTPUT_SELECT >= 4) {
+					add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
+						module,
+						cell,
+						RTLIL::IdString("\\z"),
+						RTLIL::IdString("\\dffre")
+					);
+					add_bitwise_dffre_after_cell_output( //dffre
+						module,
+						cell,
+						RTLIL::IdString("\\z"),
+						RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
+					);
+					// Tie port output_select[2] to GND
+					set_port_bit(cell, ID(output_select), 2, State::S0);
+					// Setting M_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 70, RTLIL::State::S0);
+				}
+				else if (M_REG) {
 					add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
 						module,
 						cell,
 						RTLIL::IdString("\\z"),
 						RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
 					);
+					// Setting M_REG bit to 0
+					set_param_bit(cell, ID(MODE_BITS), 70, RTLIL::State::S0);
+				}
+
+				else if (OUTPUT_SELECT >= 4){
+					add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
+						module,
+						cell,
+						RTLIL::IdString("\\z"),
+						RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
+					);
+					// Tie port output_select[2] to GND
+					set_port_bit(cell, ID(output_select), 2, State::S0);
+				}
 
 				uint32_t control_word = get_control_word(FEEDBACK,
 														 OUTPUT_SELECT,
@@ -1136,24 +1244,6 @@ struct QlDSPV2TypesPass : public Pass {
 				log_debug("Control Word: %d\n", control_word);
 				switch (control_word){
 					case 0b00000000: //MULT
-						if (M_REG) {
-							add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
-								module,
-								cell,
-								RTLIL::IdString("\\z"),
-								RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
-							);
-							
-							// Tie port output_select[2] to VCC
-							SigSpec sig = cell->getPort(ID(output_select));  
-							sig[2] = SigBit(State::S1);
-							cell->setPort(ID(output_select), sig);
-
-							// Setting M_REG bit to 0
-							RTLIL::Const val = cell->getParam(ID(MODE_BITS));
-							val.bits()[70] = RTLIL::State::S0;
-							cell->setParam(ID(MODE_BITS), val);
-						}
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_MULT"),
 												  pool<RTLIL::IdString>{ 
@@ -1215,24 +1305,6 @@ struct QlDSPV2TypesPass : public Pass {
 					
 
 					case 0b00000010: //PREADDER_MULT
-						if (M_REG) {
-							add_bitwise_dffre_after_cell_output( //QL_DSPV2_Z_DFFR
-								module,
-								cell,
-								RTLIL::IdString("\\z"),
-								RTLIL::IdString("\\QL_DSPV2_Z_DFFR")
-							);
-							
-							// Tie port output_select[2] to VCC
-							SigSpec sig = cell->getPort(ID(output_select));  
-							sig[2] = SigBit(State::S1);
-							cell->setPort(ID(output_select), sig);
-
-							// Setting M_REG bit to 0
-							RTLIL::Const val = cell->getParam(ID(MODE_BITS));
-							val.bits()[70] = RTLIL::State::S0;
-							cell->setParam(ID(MODE_BITS), val);
-						}
 						transform_cell_with_ports(cell,
 												  RTLIL::escape_id("QL_DSPV2_PREADDER_MULT"),
 												  pool<RTLIL::IdString>{ 
