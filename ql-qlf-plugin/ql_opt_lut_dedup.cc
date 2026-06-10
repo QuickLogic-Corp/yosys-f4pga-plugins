@@ -13,6 +13,8 @@ struct OptLutDedupPass : public Pass {
     {
         log_header(design, "Executing OPT_LUT_DEDUP pass.\n");
 
+        int total_removed = 0;
+
         for (auto module : design->selected_modules())
         {
             SigMap sigmap(module);
@@ -39,12 +41,19 @@ struct OptLutDedupPass : public Pass {
                                 dup_remove = j;
                             }
 
-                    if (dup_keep < 0) continue; // no duplicate found
+                    if (dup_keep < 0) continue;
 
-                    log("  %s.%s: removing duplicate input %d (== input %d), "
-                        "LUT%d -> LUT%d\n",
+                    // Always visible: what changed and why
+                    log("  %s.%s: LUT%d -> LUT%d, duplicate input: %s\n",
                         log_id(module), log_id(cell),
-                        dup_remove, dup_keep, width, width-1);
+                        width, width - 1,
+                        log_signal(sigmap(A[dup_keep])));
+
+                    // Debug only: full detail
+                    log_debug("    kept index %d, removed index %d\n",
+                        dup_keep, dup_remove);
+                    log("    INIT before: %d'b%s\n",
+                        (1 << width), lut.as_string().c_str());
 
                     // Compute new INIT
                     int new_width = width - 1;
@@ -60,7 +69,7 @@ struct OptLutDedupPass : public Pass {
                             if (bit < dup_remove)
                                 val = (new_idx >> bit) & 1;
                             else if (bit == dup_remove)
-                                val = (new_idx >> dup_keep) & 1; // mirror kept input
+                                val = (new_idx >> dup_keep) & 1;
                             else
                                 val = (new_idx >> (bit - 1)) & 1;
 
@@ -68,6 +77,9 @@ struct OptLutDedupPass : public Pass {
                         }
                         new_lut.bits()[new_idx] = lut.bits()[old_idx];
                     }
+
+                    log("    INIT after : %d'b%s\n",
+                        new_size, new_lut.as_string().c_str());
 
                     // Build new A without the removed input
                     SigSpec new_A;
@@ -78,10 +90,13 @@ struct OptLutDedupPass : public Pass {
                     cell->setParam(ID(LUT),   new_lut);
                     cell->setPort(ID(A),       new_A);
 
-                    any_changed = true; // re-scan for more duplicates
+                    any_changed = true;
+                    total_removed++;
                 }
             }
         }
+
+        log("OPT_LUT_DEDUP: removed %d duplicate input(s).\n", total_removed);
     }
 } OptLutDedupPass;
 
