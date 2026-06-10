@@ -806,18 +806,18 @@ struct SynthQuickLogicPass : public ScriptPass {
                                     run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
 
                                 else{
-                                    run("design -save base");
-                                    run("design -load base");
-                                    run("tee -o abc_lut6.log abc -script +/quicklogic/abc_scripts/lut6.scr", "(for qlf_k6n10, qlf_k6n10f)");
-                                    run("design -save lut6");
-                                    run("write_blif lut6.blif");
-                                    run("design -load base");
                                     if (synplify) {
                                         std::string family_path = " " + lib_path + family;
                                         run("flatten");
                                         run("techmap -map" + family_path + "/synplify_map.v");
                                         run("techmap");
                                     }
+                                    run("design -save base");
+                                    run("design -load base");
+                                    run("tee -o abc_lut6.log abc -script +/quicklogic/abc_scripts/lut6.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                    run("design -save lut6");
+                                    run("write_blif lut6.blif");
+                                    run("design -load base");
                                     if(de == "delay")
                                         run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/dde.scr", "(for qlf_k6n10, qlf_k6n10f)");
                                     if(de == "area")
