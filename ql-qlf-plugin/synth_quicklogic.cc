@@ -804,79 +804,9 @@ struct SynthQuickLogicPass : public ScriptPass {
                             if(custom_abc_script == ""){
                                 if(de == "")
                                     run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
-
-                                else{
-                                    if (synplify) {
-                                        std::string family_path = " " + lib_path + family;
-                                        run("flatten");
-                                        run("techmap -map" + family_path + "/synplify_map.v");
-                                        run("techmap");
-                                    }
-                                    run("design -save base");
-                                    run("design -load base");
-                                    run("tee -o abc_lut6.log abc -script +/quicklogic/abc_scripts/lut6.scr", "(for qlf_k6n10, qlf_k6n10f)");
-                                    run("design -save lut6");
-                                    run("write_blif lut6.blif");
-                                    run("design -load base");
-                                    if(de == "delay")
-                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/dde.scr", "(for qlf_k6n10, qlf_k6n10f)");
-                                    if(de == "area")
-                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/ade.scr", "(for qlf_k6n10, qlf_k6n10f)");
-                                    if(de == "mixed")
-                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/mde.scr", "(for qlf_k6n10, qlf_k6n10f)");
-                                    run("design -save de");
-                                    run("write_blif de.blif");
-                                    
-                                    if (!check_equivalence("abc_de.log")) {
-                                        log("Networks are not Equivalent. Cannot use DE for this module.\n");
-                                        run("design -load lut6");
-                                    }
-                                    else {
-                                        log("Networks are Equivalent after using DE.\n");
-                                        auto [lut6_nd, lut6_lev] = extract_abc_metrics("abc_lut6.log");                                    
-                                        auto [de_nd, de_lev] = extract_abc_metrics("abc_de.log");
-                                        
-                                        if(de == "delay") {
-                                            if(de_lev <= lut6_lev)
-                                                run("design -load de");
-                                            else
-                                                run("design -load lut6");
-                                        }
-                                        else if (de == "area") {
-                                            if(de_nd <= lut6_nd)
-                                                run("design -load de");
-                                            else
-                                                run("design -load lut6");
-                                        }
-                                        else if (de == "mixed") {
-                                            if(de_nd <= lut6_nd && de_lev <= lut6_lev)
-                                                run("design -load de");
-                                            else if(de_nd >= lut6_nd && de_lev >= lut6_lev)
-                                                run("design -load lut6");
-                                            else{
-                                                int dmin = std::min(de_lev, lut6_lev);
-                                                int dmax = std::max(de_lev, lut6_lev);
-                                                double D_de = (dmax == dmin) ? 0.0 : (de_lev - dmin) / (dmax - dmin);
-                                                double D_lut6 = (dmax == dmin) ? 0.0 : (lut6_lev - dmin) / (dmax - dmin);
-
-                                                int amin = std::min(de_nd, lut6_nd);
-                                                int amax = std::max(de_nd, lut6_nd);
-                                                double A_de = (amax == amin) ? 0.0 :
-                                                (std::log(de_nd) - std::log(amin)) /
-                                                (std::log(amax) - std::log(amin));
-                                                double A_lut6 = (amax == amin) ? 0.0 :
-                                                (std::log(lut6_nd) - std::log(amin)) /
-                                                (std::log(amax) - std::log(amin));
-
-                                                double de_score = 0.5 * A_de + 0.5 * D_de;
-                                                double lut6_score = 0.5 * A_lut6 + 0.5 * D_lut6;
-                                                if (de_score <= lut6_score)
-                                                    run("design -load de");
-                                                else 
-                                                    run("design -load lut6");
-                                            }
-                                        }
-                                    }
+                                else {
+                                    run("abc_select -de " + de +
+                                        (synplify ? " -synplify -family_path " + lib_path + " -family " + family : ""));
                                 }
                             }
                             else{
