@@ -7,6 +7,10 @@ on:
     types: [closed]
     branches: [main]
 
+# All cross-repo work uses the GitHub App token; the default GITHUB_TOKEN
+# needs no permissions here.
+permissions: {}
+
 jobs:
   trigger:
     if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'trigger-tabbycad-release')
