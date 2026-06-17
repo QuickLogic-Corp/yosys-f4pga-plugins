@@ -1,0 +1,48 @@
+# Triggers a tabbycad release when a PR with the 'trigger-tabbycad-release'
+# label is merged into main.
+name: trigger-tabbycad-release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+# All cross-repo work uses the GitHub App token; the default GITHUB_TOKEN
+# needs no permissions here.
+permissions: {}
+
+jobs:
+  trigger:
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'trigger-tabbycad-release')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate app token (QuickLogic-Corp)
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_KEY }}
+          owner: QuickLogic-Corp
+
+      - name: Dispatch to tabbycad-quicklogic-build
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          jq -n \
+            --arg sha       "$SHA" \
+            --arg pr_number "$PR_NUMBER" \
+            --arg pr_title  "$PR_TITLE" \
+            '{
+              event_type: "yosys-plugins-updated",
+              client_payload: {
+                sha: $sha,
+                pr_number: $pr_number,
+                pr_title: $pr_title
+              }
+            }' \
+          | gh api repos/QuickLogic-Corp/tabbycad-quicklogic-build/dispatches \
+              --method POST --input -
