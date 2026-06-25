@@ -37,7 +37,9 @@ SOURCES = synth_quicklogic.cc \
           ql-bram-asymmetric.cc \
           ql_opt_lut_dedup.cc \
           ql_abc_stats.cc \
-          ql_abc_select.cc
+          ql_report_fanout.cc \
+          ql_report_paths.cc \
+          ql_synth_result_select.cc
 
 
 include ../Makefile_plugin.common

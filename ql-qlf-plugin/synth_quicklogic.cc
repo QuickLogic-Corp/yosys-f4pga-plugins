@@ -805,7 +805,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                                 if(de == "")
                                     run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
                                 else {
-                                    run("abc_select -de " + de +
+                                    run("synth_result_select -write_blif -de " + de +
                                         (synplify ? " -synplify -family_path " + lib_path + " -family " + family : ""));
                                 }
                             }
@@ -922,6 +922,8 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("clean");
                 }
             }
+            run("report_paths -top 10 -o synthesis_critical_paths.rpt");
+            run("report_fanout -top 10 -o synthesis_fanout.rpt");
             if (check_label("blif", "(if -blif)")) {
                 if (help_mode || !blif_file.empty()) {
                     run(stringf("write_blif -param %s", help_mode ? "<file-name>" : blif_file.c_str()));
