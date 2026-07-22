@@ -20,6 +20,7 @@ NAME = ql-qlf
 SOURCES = synth_quicklogic.cc \
           ql-dspv1.cc \
           ql-dspv2.cc \
+          ql-dspv2-to-dspv4.cc \
           pp3_braminit.cc \
           quicklogic_eqn.cc \
           ql-edif.cc \
@@ -68,6 +69,10 @@ VERILOG_MODULES = $(COMMON)/cells_sim.v         \
                   $(QLF_K6N10F_DIR)/cells_sim.v \
                   $(QLF_K6N10F_DIR)/dsp_sim.v \
                   $(QLF_K6N10F_DIR)/dspv2_sim.v \
+                  $(QLF_K6N10F_DIR)/dspv4_sim.v \
+                  $(QLF_K6N10F_DIR)/QL_DSP4.v \
+                  $(QLF_K6N10F_DIR)/QL_DSP4_leaves.v \
+                  $(QLF_K6N10F_DIR)/dsp4_logical_map.v \
                   $(QLF_K6N10F_DIR)/primitives_sim.v \
                   $(QLF_K6N10F_DIR)/brams_sim.v \
                   $(QLF_K6N10F_DIR)/bram_types_sim.v \

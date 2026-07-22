@@ -168,6 +168,12 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        By default use dsp version1 support for designs \n");
         log("        Specifying this will use dsp version2 support.\n");
         log("\n");
+        log("    -dspv4\n");
+        log("        Target the DSP version4 (DSP-V4) hard block. On the -synplify\n");
+        log("        flow this converts the QL_DSPV2 cells Synplify infers into\n");
+        log("        generic monolithic QL_DSP4 base cells (runs ql_dspv2_to_dspv4 in place\n");
+        log("        of ql_dspv2_types). Phase-1 scope.\n");
+        log("\n");
         log("    -no_tdpram\n");
         log("        By default infer TDP BRAM for architectures that support them.\n");
         log("        Specifying this switch infer SDP BRAM only.\n");
@@ -201,6 +207,7 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool ioff;
 	bool bramecc;
 	bool dspv2;
+	bool dspv4;
     bool notdpram;
     bool noOpt;
     bool synplify;
@@ -227,6 +234,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         ioff = false;
 		bramecc = false;
 		dspv2 = false;
+		dspv4 = false;
         notdpram = false;
         noOpt = false;
         synplify = false;
@@ -380,6 +388,10 @@ struct SynthQuickLogicPass : public ScriptPass {
                 dspv2 = true;
                 continue;
             }
+            if (args[argidx] == "-dspv4") {
+                dspv4 = true;
+                continue;
+            }
             if (args[argidx] == "-no_tdpram") {
                 notdpram = true;
                 continue;
@@ -446,7 +458,14 @@ struct SynthQuickLogicPass : public ScriptPass {
             // Read simulation library
             readVelArgs = family_path + "/cells_sim.v";
             if (family == "qlf_k6n10f") {
-                readVelArgs += family_path + (dspv2 ? "/dspv2_sim.v" : "/dsp_sim.v");
+                // DSP behavioural models from family_path (device_data). The V4
+                // conversion consumes QL_DSPV2 cells (defined in dspv2_sim.v, the
+                // same input model the V2 flow reads) and emits QL_DSP4, so the V4
+                // path reads both the V2 input model and the V4 model.
+                if (dspv4)
+                    readVelArgs += family_path + "/dspv2_sim.v" + family_path + "/dspv4_sim.v";
+                else
+                    readVelArgs += family_path + (dspv2 ? "/dspv2_sim.v" : "/dsp_sim.v");
                 if(inferBram) {
                     readVelArgs += family_path + "/brams_sim.v";
                     if (bramTypes) {
@@ -462,8 +481,22 @@ struct SynthQuickLogicPass : public ScriptPass {
             // some block ram cell models. After all the only part of the cells
             // library required here is cell port definitions plus specify blocks.
             run("read_verilog -lib -specify -nomem2reg " + readVelArgs);
-			if (synplify && !dspv2) {
+			if (synplify && !dspv2 && !dspv4) {
+			    // Full behavioural QL_DSPV2.v is only used by the dspv2->dspv1
+			    // translation path.
 			    run("read_verilog " + family_path + "/QL_DSPV2.v");
+			}
+			if (dspv4 && family == "qlf_k6n10f") {
+			    // V4 path: read the QL_DSP4 base-cell primitive (the conversion
+			    // output). The QL_DSPV2 input interface comes from dspv2_sim.v and
+			    // QL_DSP4's behavioural body (dsp4_top) from dspv4_sim.v, both read
+			    // above. QL_DSPV2.v itself is not needed on this path.
+			    run("read_verilog -lib -specify -nomem2reg" + family_path + "/QL_DSP4.v");
+			    // Phase-2 dsp4_logical leaf primitives (QL_DSP4_MULT / _ALU_* /
+			    // _PREADD|PRESUB / _RSS / bit-sliced *_DFFR[E]). The decompose
+			    // techmap (map_dsp) rewrites QL_DSP4 into these; read as black
+			    // boxes so they carry through to write_blif for VPR packing.
+			    run("read_verilog -lib -specify -nomem2reg" + family_path + "/QL_DSP4_leaves.v");
 			}
             run(stringf("hierarchy -check %s", help_mode ? "-top <top>" : top_opt.c_str()));
         }
@@ -566,7 +599,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
                     run("wreduce t:$mul");
 
-                    if (dspv2) {
+                    if (dspv2 || dspv4) {
                         if(!synplify) {
                             // DSPv2 arm — ported from YosysHQ/yosys#4932
                             // (povik/ql-dspv2 @ c68fd85b9ccceb773a4aaac2a35f7d90fbb15fc8).
@@ -612,7 +645,20 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // with REGIN/REGOUT variants). Only meaningful on the V2
                             // path — V1 designs never produce QL_DSPV2 cells.
                         }
-                        run("ql_dspv2_types");
+                        if (dspv4) {
+                            // V4 path: convert the generic QL_DSPV2 cells into
+                            // monolithic QL_DSP4 base cells (per-cell + cascade-pair
+                            // fusion) in place of the V2 mode-subtype specialization.
+                            run("ql_dspv2_to_dspv4");
+                            // Phase 2: decompose each monolithic QL_DSP4 into the
+                            // dsp4_logical operating-mode leaf cells (mult / alu /
+                            // pre-adder / rss / bit-sliced registers) so the netlist
+                            // packs onto the DSPV4 tile. Pure Verilog techmap.
+                            run("techmap -map " + lib_path + family + "/dsp4_logical_map.v");
+                            run("opt_clean -purge");
+                        } else {
+                            run("ql_dspv2_types");
+                        }
                     } else {
                         run("ql_dsp_macc" + use_dsp_cfg_params);
 

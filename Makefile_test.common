@@ -54,7 +54,7 @@ $(1)/ok: $(1)/$$(notdir $(1).v)
 	yosys -c "run-$$(notdir $(1)).tcl" -q -q -l $$(notdir $(1)).log; \
 	RETVAL=$$$$?; \
 	rm -f run-$$(notdir $(1)).tcl; \
-	if [ ! -z "$$($(1)_negative)" ] && [ $$($(1)_negative) -eq 1 ]; then \
+	if [ ! -z "$$($$(subst /,-,$(1)_negative))" ] && [ $$($$(subst /,-,$(1)_negative)) -eq 1 ]; then \
 		if [ $$$$RETVAL -ne 0 ]; then \
 			printf "Negative test %-20s \e[32mPASSED\e[0m @ %s\n" $(1) $(CURDIR); \
 			true; \
@@ -120,7 +120,7 @@ $(1)/synth: $(1)/$$(notdir $(1).v)
 	yosys -c "run-$$(notdir $(1)).tcl" -q -q -l $$(notdir $(1)).log; \
 	RETVAL=$$$$?; \
 	rm -f run-$$(notdir $(1)).tcl; \
-	if [ ! -z "$$($(1)_negative)" ] && [ $$($(1)_negative) -eq 1 ]; then \
+	if [ ! -z "$$($$(subst /,-,$(1)_negative))" ] && [ $$($$(subst /,-,$(1)_negative)) -eq 1 ]; then \
 		if [ $$$$RETVAL -ne 0 ]; then \
 			printf "Negative test %-20s \e[32mPASSED\e[0m @ %s\n" $(1) $(CURDIR); \
 			true; \
