@@ -1041,6 +1041,46 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (check_label("blif", "(if -blif)")) {
                 if (help_mode || !blif_file.empty()) {
                     run(stringf("write_blif -param %s", help_mode ? "<file-name>" : blif_file.c_str()));
+                    if (dspv4 && !help_mode && !blif_file.empty()) {
+                        // ---------------------------------------------------------------
+                        // DSP-V4 BLIF buffer cleanup (round-trip).
+                        //
+                        // PROBLEM: several DSP-V4 leaf outputs are wide hard-block buses
+                        // whose low bits are driven straight to a top-level output port -
+                        // e.g. the accumulator register QL_DSP4_ACC_DFFRE.Q (which ALSO
+                        // feeds back into QL_DSP4_ALU_ADD.Z), or QL_DSP4_ALU_ADD.ALU_OUT.
+                        // A module output can't be a bit-slice of a wider internal net, so
+                        // write_blif materialises each such output bit as a 1-input
+                        // `.names` identity buffer (`.names src dst\n1 1`). Every one of
+                        // those buffers is packed as a standalone LUT1 in VPR -> wasted CLB
+                        // resources (e.g. ~36 LUTs for a 36-bit accumulate output).
+                        //
+                        // WHY WE CAN'T JUST opt_clean IN MEMORY: at this point the buffer
+                        // is a net *alias* (connect), and its driver is a KEPT public wire
+                        // (the register/ALU output net) that has extra fanout (the ALU
+                        // feedback). opt_clean/opt_expr/opt_merge/splitnets - in every
+                        // combination - keep that public multi-fanout net as canonical and
+                        // re-emit the port as a buffered copy. So no in-memory pass folds it
+                        // (without also anonymising every net name via `rename -hide`).
+                        //
+                        // FIX (round-trip): write the BLIF, then read it back. On read-back
+                        // the port aliases come in as identity $lut CELLS (not connects) and
+                        // the internal nets get non-public names, so now `opt_expr` collapses
+                        // the identity $luts to plain connections and `opt_clean -purge`
+                        // merges each toward the (public) output-port name - dropping the
+                        // buffer while preserving the port names. Then rewrite the BLIF.
+                        //
+                        // design -push/-pop wraps the round-trip in a scratch design so the
+                        // real in-memory netlist (needed by any later -edif/-verilog output
+                        // label) is left completely untouched.
+                        // ---------------------------------------------------------------
+                        run("design -push");                                    // save the real design, start a scratch one
+                        run("read_blif " + blif_file);                          // reload our BLIF: aliases -> identity $lut cells
+                        run("opt_expr");                                        // collapse the identity $luts to connections
+                        run("opt_clean -purge");                                // merge toward the output-port names (drops buffers)
+                        run(stringf("write_blif -param %s", blif_file.c_str())); // rewrite the buffer-free BLIF
+                        run("design -pop");                                     // restore the real design untouched
+                    }
                 }
             }
         }
