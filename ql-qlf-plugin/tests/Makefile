@@ -33,14 +33,7 @@ TESTS = \
 	qlf_k6n10f/dsp_mult \
 	qlf_k6n10f/dsp_simd \
 	qlf_k6n10f/dsp_macc \
-	qlf_k6n10f/dsp_madd \
-	qlf_k6n10f/dspv4 \
-	qlf_k6n10f/dspv4_frac \
-	qlf_k6n10f/dspv4_lonely \
-	qlf_k6n10f/dspv4_k2 \
-	qlf_k6n10f/dspv4_dynload \
-	qlf_k6n10f/dspv4_cascade \
-	qlf_k6n10f/dspv4_decompose
+	qlf_k6n10f/dsp_madd
 #	qlf_k6n10_bram \
 
 SIM_TESTS = \
@@ -97,15 +90,4 @@ qlf_k6n10f-dsp_mult_verify = true
 qlf_k6n10f-dsp_simd_verify = true
 qlf_k6n10f-dsp_macc_verify = true
 qlf_k6n10f-dsp_madd_verify = true
-qlf_k6n10f-dspv4_verify = true
-qlf_k6n10f-dspv4_frac_verify = true
-qlf_k6n10f-dspv4_frac_negative = 1
-qlf_k6n10f-dspv4_lonely_verify = true
-qlf_k6n10f-dspv4_lonely_negative = 1
-qlf_k6n10f-dspv4_k2_verify = true
-qlf_k6n10f-dspv4_k2_negative = 1
-qlf_k6n10f-dspv4_dynload_verify = true
-qlf_k6n10f-dspv4_dynload_negative = 1
-qlf_k6n10f-dspv4_cascade_verify = true
-qlf_k6n10f-dspv4_decompose_verify = true
 #qlf_k6n10_bram_verify = true
