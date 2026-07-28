@@ -297,6 +297,39 @@ struct QlDspV2ToV4Pass : public Pass {
     static RTLIL::Const c6(uint32_t v) { return RTLIL::Const(int(v), 6); }
     static RTLIL::Const c1(bool v) { return RTLIL::Const(v ? 1 : 0, 1); }
 
+    // The QL_DSP4 output ports (everything else on the cell is an input). Used by
+    // the cascade-fanout legalizer to find the cell driving a cascade net and to
+    // clone a feeder with fresh, private outputs.
+    static const pool<RTLIL::IdString> &dsp4_output_ports()
+    {
+        static const pool<RTLIL::IdString> ports = {ID(P),     ID(ACOUT),    ID(BCOUT), ID(PCOUT),
+                                                    ID(CCOUT), ID(SIGNCOUT), ID(COUT)};
+        return ports;
+    }
+
+    // The QL_DSP4 input that carries the ALU addend and is realized on the tile's
+    // dedicated pcin_i cascade in the dsp4_logical arch: PCIN when OPMODE selects
+    // Z=PCIN (per-cell MULTADD), C when OPMODE selects Z=C (fused CONCAT+MULTADD --
+    // the fused addend also enters the ALU via pcin_i, confirmed in the packed
+    // .net). Any net on this port MUST be point-to-point (fanout 1): a physical DSP
+    // cascade wire cannot fork, and VPR aborts placement ("appears in 2 placement
+    // macros") if two chain heads share it. Returns an empty IdString for cells
+    // with no inter-cell cascade addend (Z=ACC feedback, or Z open).
+    static RTLIL::IdString cascade_addend_port(RTLIL::Cell *dsp)
+    {
+        if (dsp->type != ID(QL_DSP4) || !dsp->hasParam(ID(OPMODE)))
+            return RTLIL::IdString();
+        RTLIL::Const om = dsp->getParam(ID(OPMODE));
+        if (GetSize(om) < 7)
+            return RTLIL::IdString();
+        int zsel = om.extract(4, 3).as_int(); // OPMODE[6:4]
+        if (zsel == 1)                         // 001 = PCIN
+            return ID(PCIN);
+        if (zsel == 3) // 011 = C (fused concat addend, routed via pcin_i)
+            return ID(C);
+        return RTLIL::IdString();
+    }
+
     // Set the register-config parameters common to per-cell and fused cells.
     // A/B input registers: reproduce the V2 operand register COUNT (a_stages/
     // b_stages, which fold A_REG/A1_REG/A2_REG) on the V4 operand path. V4's two
@@ -669,6 +702,146 @@ struct QlDspV2ToV4Pass : public Pass {
         // at the end of execute() to avoid freeing cells while pointers are live.
     }
 
+    // ---- cascade-fanout legalization (Bucket D fix, approach (a)) ----------
+
+    // Enforce the dedicated-cascade fanout-1 invariant. Synplify keeps each
+    // accumulate chain's cascade seed private (every z_cout drives exactly one
+    // z_cin); a value shared across chains (e.g. a common a*b product Synplify
+    // computes once and routes to several chains) is legal there because the
+    // sharing is on GENERAL ROUTING, upstream of each chain's own private cascade
+    // injector. Our per-cell / fused mapping instead binds that shared feeder
+    // straight onto the ALU addend, which the dsp4_logical tile realizes on the
+    // dedicated pcin_i cascade -- turning a legal shared bus into an illegal
+    // fanout>1 cascade net that VPR cannot place ("appears in 2 placement macros").
+    //
+    // Restore Synplify's structure -- one private, single-fanout cascade head per
+    // chain -- by replicating the feeder DSP once per extra consumer. The replica
+    // shares the feeder's inputs (fanout on general routing is fine) and drives a
+    // fresh, private output into just one consumer, so every cascade-addend net
+    // ends up point-to-point. This only fires when a feeder is genuinely shared
+    // across cascade chains (the `wrap`+`shared`+`cascade` case); ordinary cascade
+    // chains have a distinct driver per stage and are left untouched.
+    void legalize_cascade_fanout(RTLIL::Module *module)
+    {
+        SigMap sigmap(module);
+
+        // Driver map: each QL_DSP4 output bit -> the cell that drives it.
+        dict<SigBit, RTLIL::Cell *> driver_of;
+        for (RTLIL::Cell *cell : module->cells()) {
+            if (cell->type != ID(QL_DSP4))
+                continue;
+            for (auto &conn : cell->connections()) {
+                if (!dsp4_output_ports().count(conn.first))
+                    continue;
+                for (SigBit b : sigmap(conn.second))
+                    if (b.wire != nullptr)
+                        driver_of[b] = cell;
+            }
+        }
+
+        // Group cascade consumers by the single cell that drives their addend net.
+        // A normal cascade chain has a distinct driver per stage (fanout 1) and so
+        // never groups; only a shared feeder collects more than one consumer.
+        dict<RTLIL::Cell *, std::vector<std::pair<RTLIL::Cell *, RTLIL::IdString>>> consumers_of;
+        for (RTLIL::Cell *cell : module->cells()) {
+            RTLIL::IdString port = cascade_addend_port(cell);
+            if (port.empty() || !cell->hasPort(port))
+                continue;
+            RTLIL::Cell *drv = nullptr;
+            bool single_driver = true;
+            for (SigBit b : sigmap(cell->getPort(port))) {
+                if (b.wire == nullptr)
+                    continue;
+                auto it = driver_of.find(b);
+                RTLIL::Cell *d = (it != driver_of.end()) ? it->second : nullptr;
+                if (d == nullptr)
+                    continue;
+                if (drv == nullptr)
+                    drv = d;
+                else if (drv != d)
+                    single_driver = false;
+            }
+            if (drv != nullptr && single_driver)
+                consumers_of[drv].push_back(std::make_pair(cell, port));
+        }
+
+        int replicas = 0;
+        for (auto &grp : consumers_of) {
+            RTLIL::Cell *feeder = grp.first;
+            std::vector<std::pair<RTLIL::Cell *, RTLIL::IdString>> &cons = grp.second;
+            if (GetSize(cons) <= 1)
+                continue;
+            // Leave the first consumer on the original feeder; give each of the rest
+            // its own private copy so its cascade-addend net becomes fanout 1.
+            for (int i = 1; i < GetSize(cons); i++) {
+                RTLIL::Cell *consumer = cons[i].first;
+                RTLIL::IdString port = cons[i].second;
+
+                RTLIL::Cell *clone = module->addCell(module->uniquify(RTLIL::escape_id(feeder->name.str() + "_casc_dup")), feeder->type);
+                clone->parameters = feeder->parameters;
+                clone->attributes = feeder->attributes;
+
+                // Copy inputs verbatim (shared fabric routing); give every output a
+                // fresh wire and record old-bit -> new-bit so we can repoint just
+                // this consumer's addend (handles the sign-extend / reorder that
+                // emit_fused / emit_per_cell apply to the addend spec).
+                dict<SigBit, SigBit> sub;
+                for (auto &conn : feeder->connections()) {
+                    if (dsp4_output_ports().count(conn.first)) {
+                        RTLIL::Wire *w = module->addWire(NEW_ID, GetSize(conn.second));
+                        clone->setPort(conn.first, w);
+                        SigSpec oldbits = sigmap(conn.second);
+                        SigSpec newbits(w);
+                        for (int j = 0; j < GetSize(oldbits); j++)
+                            if (oldbits[j].wire != nullptr)
+                                sub[oldbits[j]] = newbits[j];
+                    } else {
+                        clone->setPort(conn.first, conn.second);
+                    }
+                }
+
+                SigSpec addend = consumer->getPort(port);
+                SigSpec repointed;
+                for (SigBit b : addend) {
+                    SigBit sb = sigmap(b);
+                    repointed.append(sub.count(sb) ? sub.at(sb) : b);
+                }
+                consumer->setPort(port, repointed);
+                replicas++;
+                log("  cascade legalize: replicated feeder %s -> %s for %s.%s (private "
+                    "single-fanout cascade head)\n",
+                    log_id(feeder->name), log_id(clone->name), log_id(consumer->name), log_id(port));
+            }
+        }
+        if (replicas)
+            log("  cascade legalize: added %d feeder replica(s) to keep every dedicated "
+                "cascade net fanout-1.\n",
+                replicas);
+
+        // Safety net: assert the invariant. A residual shared cascade addend whose
+        // feeder we could not replicate (e.g. not driven by a QL_DSP4) is a hard
+        // error here -- caught in synthesis rather than as an opaque VPR placement
+        // abort much later in the flow.
+        dict<SigBit, RTLIL::Cell *> casc_sink;
+        for (RTLIL::Cell *cell : module->cells()) {
+            RTLIL::IdString port = cascade_addend_port(cell);
+            if (port.empty() || !cell->hasPort(port))
+                continue;
+            for (SigBit b : sigmap(cell->getPort(port))) {
+                if (b.wire == nullptr)
+                    continue;
+                auto it = casc_sink.find(b);
+                if (it != casc_sink.end() && it->second != cell)
+                    log_error("ql_dspv2_to_dspv4: dedicated DSP cascade net %s feeds the cascade "
+                              "addend of both %s and %s (fanout > 1). A physical DSP cascade wire "
+                              "is point-to-point and cannot be placed; the shared feeder could not "
+                              "be privately replicated (Bucket D invariant).\n",
+                              log_signal(b), log_id(it->second->name), log_id(cell->name));
+                casc_sink[b] = cell;
+            }
+        }
+    }
+
     // ---- driver ------------------------------------------------------------
 
     void execute(std::vector<std::string> args, RTLIL::Design *design) override
@@ -778,6 +951,12 @@ struct QlDspV2ToV4Pass : public Pass {
             // pointer and reprocess the pass's own output (corruption / crash).
             for (RTLIL::Cell *cell : v2cells)
                 module->remove(cell);
+
+            // Every QL_DSPV2 cell is now a QL_DSP4. Enforce the dedicated-cascade
+            // fanout-1 invariant on the emitted netlist: replicate any feeder that
+            // a shared value drove onto more than one chain's cascade addend, so no
+            // physical cascade wire fans out (Bucket D).
+            legalize_cascade_fanout(module);
         }
     }
 } QlDspV2ToV4Pass;
