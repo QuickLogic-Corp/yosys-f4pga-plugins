@@ -1006,7 +1006,7 @@ struct QlDSPV2TypesPass : public Pass {
 
 				RTLIL::Const mode_bits = cell->getParam(ID(MODE_BITS));
 
-                int COEFF_0    = mode_bits.extract(0, 31).as_int();
+                int COEFF_0    = mode_bits.extract(0, 32).as_int(); // COEFF_0[31:0] is 32 bits
 				log_debug("COEFF_0: %d.\n", COEFF_0);
                 int ACC_FIR    = mode_bits.extract(32, 6).as_int();
 				log_debug("ACC_FIR: %d.\n", ACC_FIR);
