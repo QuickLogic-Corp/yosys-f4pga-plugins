@@ -120,3 +120,15 @@ The plugin adds the following command:
 * reg_clock_gating
 
 Detailed help on the supported command(s) can be obtained by running `help <command_name>` in Yosys.
+
+## Releasing to TabbyCAD / Aurora (QuickLogic)
+
+Merging a change here can automatically produce a new TabbyCAD release and open a
+version-bump PR in `aurora2` — **only if you opt in**:
+
+1. Add the label **`trigger-tabbycad-release`** to your PR before merging it into `main`.
+2. On merge, a TabbyCAD release build (~2h, all platforms) is kicked off automatically and,
+   when it finishes, an automated bump PR is opened in `QL-Proprietary/aurora2`.
+
+Merging **without** the label does nothing. Full reference (manual trigger, versioning,
+prerequisites): `tabbycad-quicklogic-build/docs/automated-release-pipeline.md`.
