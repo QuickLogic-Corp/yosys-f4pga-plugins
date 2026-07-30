@@ -159,6 +159,15 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("    -ioff\n");
         log("        By default flip-flops in the IO is not used for the designs that\n");
         log("        are feasible. Specifying this will force synthesis to use IOFFs.\n");
+        log("        Requires a GPIO v3.0 architecture when the promoted registers carry a\n");
+        log("        reset, since those become io_sdffr/io_sdffnr cells.\n");
+        log("\n");
+        log("    -ioff_min_shared_reset <number>\n");
+        log("        Forwarded to ql_ioff as -min_shared_reset. A boundary register whose\n");
+        log("        active-low reset pin would need a dedicated inverter LUT is normally\n");
+        log("        left in the CLB; this promotes it anyway once <number> or more such\n");
+        log("        registers share the same inverter. 0 (the default) disables the\n");
+        log("        override, 1 disables the polarity rule entirely. Inert without -ioff.\n");
         log("\n");
         log("    -bramecc\n");
         log("        By default use BRAM without ECC support for designs \n");
@@ -195,6 +204,7 @@ struct SynthQuickLogicPass : public ScriptPass {
     }
 
     string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script, de;
+    int ioff_min_shared_reset;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -232,6 +242,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         nosdff = false;
         noffenable = false;
         ioff = false;
+        ioff_min_shared_reset = 0;
 		bramecc = false;
 		dspv2 = false;
 		dspv4 = false;
@@ -378,6 +389,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (args[argidx] == "-ioff") {
                 ioff = true;
+                continue;
+            }
+            if (args[argidx] == "-ioff_min_shared_reset" && argidx + 1 < args.size()) {
+                ioff_min_shared_reset = std::stoi(args[++argidx]);
                 continue;
             }
             if (args[argidx] == "-bramecc") {
@@ -974,7 +989,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 		
 		if (check_label("iomap", "(for qlf_k6n10f)") && (family == "qlf_k6n10f" || help_mode)) {
 			if (ioff ) {
-				run("ql_ioff");
+				run(stringf("ql_ioff -min_shared_reset %d", ioff_min_shared_reset));
 				run("opt_clean");
 			}
 		}

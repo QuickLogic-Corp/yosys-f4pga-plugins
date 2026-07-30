@@ -93,6 +93,17 @@ struct QlIoffPass : public Pass {
 		log("on the IO reset path. An inversion absorbed into a wider reset-expression LUT\n");
 		log("is free and promotes normally.\n");
 		log("\n");
+		log("    -min_shared_reset <K>\n");
+		log("        Override the polarity rule above when the inverter is shared. If K or\n");
+		log("        more promotable candidates hang off the same inverter, its cost is\n");
+		log("        amortized and the whole group is promoted. The decision is per reset\n");
+		log("        group and all-or-nothing, and counts promotable candidates rather than\n");
+		log("        raw net fan-out.\n");
+		log("\n");
+		log("        K=0 (the default) disables the override. K=1 promotes every group, so\n");
+		log("        the polarity rule becomes a no-op. K=n>=2 promotes only groups of n or\n");
+		log("        more. A negative or non-numeric value is an error.\n");
+		log("\n");
 		log("Note io_sdffr/io_sdffnr require a GPIO v3.0 architecture. Emitting them into a\n");
 		log("BLIF consumed by a v2.x architecture fails in packing with an unknown model.\n");
 		log("\n");
@@ -103,12 +114,34 @@ struct QlIoffPass : public Pass {
 		return true;
 	}
 
-	void execute(std::vector<std::string>, RTLIL::Design *design) override
+	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing QL_IOFF pass.\n");
 
 		// Threshold for the shared-inverter override. 0 disables it.
 		int min_shared_reset = 0;
+
+		size_t argidx;
+		for (argidx = 1; argidx < args.size(); argidx++) {
+			if (args[argidx] == "-min_shared_reset" && argidx + 1 < args.size()) {
+				std::string value = args[++argidx];
+				// Digit-scan rather than atoi, which silently yields 0 for
+				// garbage. Clamping would be worse still: this knob exists to
+				// be swept from scripts, so a bad value has to be loud.
+				if (value.find_first_not_of("0123456789") != std::string::npos)
+					log_error("ql_ioff: -min_shared_reset expects a non-negative integer, "
+						  "got '%s'.\n",
+						  value.c_str());
+				min_shared_reset = std::stoi(value);
+				continue;
+			}
+			break;
+		}
+		// Mandatory, and the reason is typo detection rather than [selection]
+		// support: extra_args is what rejects an unrecognized option. Without
+		// it, `ql_ioff -min_shared_rest 2` runs silently at K=0 and yields a
+		// sweep row that looks like data but is not.
+		extra_args(args, argidx, design);
 
 		ModWalker modwalker(design);
 		Module *module = design->top_module();
@@ -128,6 +161,9 @@ struct QlIoffPass : public Pass {
 		// `E && R` constant check is split so that a used reset no longer
 		// disqualifies a candidate, and the refusal reasons are separable.
 		std::vector<Candidate> candidates;
+		int declined_enable = 0;
+		int declined_async = 0;
+		int declined_dfanout = 0;
 
 		for (auto cell : module->selected_cells()) {
 			if (!cell->type.in(ID(dffre), ID(sdffre), ID(dffnre), ID(sdffnre)))
@@ -140,6 +176,7 @@ struct QlIoffPass : public Pass {
 			if (!e_const) {
 				// The IO subtile FF has no enable.
 				log_debug("not promoting %s: E is used\n", log_id(cell));
+				declined_enable++;
 				continue;
 			}
 
@@ -147,6 +184,7 @@ struct QlIoffPass : public Pass {
 			if (!r_const && !is_sync) {
 				// The IO subtile FF reset is synchronous only.
 				log_debug("not promoting %s: asynchronous reset is used\n", log_id(cell));
+				declined_async++;
 				continue;
 			}
 
@@ -168,6 +206,7 @@ struct QlIoffPass : public Pass {
 				modwalker.get_consumers(portbits, d);
 				if (GetSize(portbits) > 1) {
 					log_debug("not promoting %s: D has other consumers\n", log_id(cell));
+					declined_dfanout++;
 					continue;
 				}
 				cand.is_input = true;
@@ -195,6 +234,7 @@ struct QlIoffPass : public Pass {
 		// inverter?" is not answerable per cell, which is why the decision needs
 		// its own phase between classification and mutation.
 		dict<SigBit, std::vector<Candidate *>> groups;
+		std::vector<std::pair<SigBit, int>> declined_groups;
 
 		for (auto &cand : candidates) {
 			if (cand.resetless)
@@ -223,18 +263,26 @@ struct QlIoffPass : public Pass {
 				    "(%d >= K=%d).\n",
 				    GetSize(group), log_signal(group_it.first), GetSize(group), min_shared_reset);
 			} else {
+				declined_groups.emplace_back(group_it.first, GetSize(group));
 				// One warning per group, not per register: the actionable unit
 				// is the reset net, since the fix is a single RTL edit at its
 				// declaration. The group size doubles as the exact threshold
 				// that would flip this decision.
 				log_warning("Not promoting %d register(s) with reset %s to IO FFs: the reset is "
 					    "active-high, so an inverter LUT would sit on the IO reset path. Use an "
-					    "active-low reset to allow IO packing.\n",
-					    GetSize(group), log_signal(group_it.first));
+					    "active-low reset, or pass -min_shared_reset %d (or lower) to accept the "
+					    "inverter.\n",
+					    GetSize(group), log_signal(group_it.first), GetSize(group));
 			}
 		}
 
 		// --- Phase 3: apply --------------------------------------------------
+		dict<IdString, int> promoted;
+		promoted[ID(dff)] = 0;
+		promoted[ID(dffn)] = 0;
+		promoted[ID(io_sdffr)] = 0;
+		promoted[ID(io_sdffnr)] = 0;
+
 		for (auto &cand : candidates) {
 			if (!cand.accepted || !cand.is_input)
 				continue;
@@ -242,6 +290,7 @@ struct QlIoffPass : public Pass {
 			Cell *cell = cand.cell;
 			IdString new_type = target_type(cell->type, cand.resetless);
 			log("Promoting register %s to input IOFF (%s).\n", log_signal(cell->getPort(ID::Q)), log_id(new_type));
+			promoted[new_type]++;
 			cell->type = new_type;
 			cell->unsetPort(ID::E);
 			if (cand.resetless)
@@ -286,6 +335,7 @@ struct QlIoffPass : public Pass {
 				IdString new_type = target_type(src->type, cand->resetless);
 				log("Promoting %s to output IOFF (%s).\n", log_signal(sig_n[i]), log_id(new_type));
 
+				promoted[new_type]++;
 				RTLIL::Cell *new_cell = module->addCell(NEW_ID, new_type);
 				log_assert(new_cell != nullptr);
 				new_cell->setPort(ID::C, src->getPort(ID::C));
@@ -296,6 +346,28 @@ struct QlIoffPass : public Pass {
 				new_cell->set_bool_attribute(ID::keep);
 			}
 		}
+
+		// --- Phase 4: summary -------------------------------------------------
+		//
+		// On the normal log, so that a K sweep produces diffable output. The
+		// per-group candidate counts are the load-bearing part: totals alone say
+		// which K won, the group sizes say which K would have changed anything.
+		int total_promoted = 0;
+		for (auto &it : promoted)
+			total_promoted += it.second;
+
+		int declined_polarity = 0;
+		for (auto &it : declined_groups)
+			declined_polarity += it.second;
+
+		log("ql_ioff summary: K=%d\n", min_shared_reset);
+		log("  promoted: dff=%d dffn=%d io_sdffr=%d io_sdffnr=%d   (total %d)\n", promoted[ID(dff)],
+		    promoted[ID(dffn)], promoted[ID(io_sdffr)], promoted[ID(io_sdffnr)], total_promoted);
+		log("  declined by reset polarity: %d in %d group(s)\n", declined_polarity, GetSize(declined_groups));
+		for (auto &it : declined_groups)
+			log("    reset %s : %d candidate(s)\n", log_signal(it.first), it.second);
+		log("  declined other: E used=%d, async reset=%d, D has other consumers=%d\n", declined_enable,
+		    declined_async, declined_dfanout);
 	}
 } QlIoffPass;
 
