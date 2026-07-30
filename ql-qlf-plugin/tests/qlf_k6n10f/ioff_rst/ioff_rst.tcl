@@ -113,3 +113,18 @@ select -assert-count 2 t:sdffre
 select -assert-count 1 o:q_o
 select -assert-count 1 o:extra
 assert_all_ports_connected mixed_bus io_sdffr R {\rst_n}
+
+# -----------------------------------------------------------------------------
+# Section 8 -- equivalence checking (REQ-C5), following tests/dffs.
+#
+# Confirms promotion did not silently change reset polarity or drop the reset
+# altogether, which the structural checks above could in principle miss on a
+# path they do not cover.
+# -----------------------------------------------------------------------------
+foreach top {in_sdffr in_sdffnr out_sdffr out_sdffnr both_sdffr bus_sdffr} {
+    design -load read
+    hierarchy -top $top
+    yosys proc
+    equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v \
+        synth_quicklogic -family qlf_k6n10f -top $top -ioff
+}
