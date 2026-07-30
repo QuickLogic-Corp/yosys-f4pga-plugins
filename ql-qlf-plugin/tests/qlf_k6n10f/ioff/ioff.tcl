@@ -51,7 +51,7 @@ synth_quicklogic -family qlf_k6n10f -top resetless_out -ioff
 yosys cd resetless_out
 stat
 select -assert-count 1 t:dff
-select -assert-count 1 t:dff a:keep
+select -assert-count 1 t:dff a:keep %i
 assert_no_fabric_ffs
 assert_port_set resetless_out dff {C D Q}
 # The promoted cell drives the wire that now carries the output port name.
@@ -65,7 +65,7 @@ synth_quicklogic -family qlf_k6n10f -top resetless_out_n -ioff
 yosys cd resetless_out_n
 stat
 select -assert-count 1 t:dffn
-select -assert-count 1 t:dffn a:keep
+select -assert-count 1 t:dffn a:keep %i
 assert_no_fabric_ffs
 assert_port_set resetless_out_n dffn {C D Q}
 assert_port_connected resetless_out_n dffn Q {\q_o}

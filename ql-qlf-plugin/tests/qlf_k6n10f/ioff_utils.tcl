@@ -87,6 +87,82 @@ proc assert_all_ports_connected {tag celltype port signal} {
     }
 }
 
+# Run a yosys command with debug logging captured to a file, and return the log
+# text. Used to check that the refusal reasons are separately greppable.
+proc debug_log {tag args} {
+    set path [test_output_path "${tag}.dbg"]
+    tee -q -o $path debug {*}$args
+    set fh [open $path r]
+    set txt [read $fh]
+    close $fh
+    return $txt
+}
+
+# Run a yosys command with its normal (non-debug) log captured to a file.
+proc capture_log {tag args} {
+    set path [test_output_path "${tag}.out"]
+    tee -q -o $path {*}$args
+    set fh [open $path r]
+    set txt [read $fh]
+    close $fh
+    return $txt
+}
+
+# Assert `needle` appears literally in `txt`.
+proc assert_log_has {tag txt needle} {
+    if {[string first $needle $txt] < 0} {
+        error "assert_log_has ($tag): log does not contain \"$needle\""
+    }
+}
+
+# Assert `needle` does not appear in `txt`.
+proc assert_log_lacks {tag txt needle} {
+    if {[string first $needle $txt] >= 0} {
+        error "assert_log_lacks ($tag): log unexpectedly contains \"$needle\""
+    }
+}
+
+# Assert that no promoted IO FF has its R pin driven by a dedicated 1-input
+# inverting $lut. This is the property REQ-B9 exists to buy, and the assertion
+# that would catch a regression re-admitting the inverter.
+proc assert_no_inverter_on_reset {tag} {
+    set txt [rtlil_dump $tag]
+
+    # Collect the output nets of dedicated polarity inverters: $lut cells with
+    # WIDTH 1 and the mask 2'01 (lut[0]=1, lut[1]=0).
+    set inverter_nets {}
+    set ctype ""
+    set width ""
+    set mask ""
+    foreach line [split $txt "\n"] {
+        if {[regexp {^\s*cell\s+\\?(\S+)\s+(\S+)\s*$} $line -> t n]} {
+            set ctype $t
+            set width ""
+            set mask ""
+            continue
+        }
+        if {$ctype ne {$lut}} { continue }
+        regexp {^\s*parameter\s+\\WIDTH\s+(\S+)\s*$} $line -> width
+        regexp {^\s*parameter\s+\\LUT\s+(\S+)\s*$} $line -> mask
+        if {[regexp {^\s*connect\s+\\Y\s+(.+?)\s*$} $line -> ynet]} {
+            if {$width eq "1" && $mask eq "2'01"} {
+                lappend inverter_nets $ynet
+            }
+        }
+    }
+
+    foreach celltype {io_sdffr io_sdffnr} {
+        foreach conns [cell_connections $txt $celltype] {
+            if {![dict exists $conns R]} { continue }
+            set r [dict get $conns R]
+            if {[lsearch -exact $inverter_nets $r] >= 0} {
+                error "assert_no_inverter_on_reset ($tag): promoted $celltype has R\
+                       driven by a dedicated inverter ($r)"
+            }
+        }
+    }
+}
+
 # Assert that no fabric fallback FF cell survives in the current module.
 proc assert_no_fabric_ffs {} {
     select -assert-count 0 t:dffre
