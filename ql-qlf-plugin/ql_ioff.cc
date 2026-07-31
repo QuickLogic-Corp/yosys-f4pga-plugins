@@ -298,15 +298,27 @@ struct QlIoffPass : public Pass {
 			// Otherwise R and its connection are preserved as they are.
 		}
 
-		dict<Wire *, std::vector<Candidate *>> output_ffs;
+		dict<Wire *, dict<int, Candidate *>> accepted_slots;
 		for (auto &cand : candidates) {
 			if (!cand.accepted || cand.is_input)
 				continue;
-			for (auto &slot : cand.slots) {
-				if (!output_ffs.count(slot.first))
-					output_ffs[slot.first].resize(slot.first->width, nullptr);
-				output_ffs[slot.first][slot.second] = &cand;
-			}
+			for (auto &slot : cand.slots)
+				accepted_slots[slot.first][slot.second] = &cand;
+		}
+
+		// Walk the port outputs in module order rather than in candidate
+		// discovery order, so the replacement wires are created in the same
+		// sequence as before this pass was restructured. Otherwise a design with
+		// two promoted output ports would get its NEW_ID wire names allocated in
+		// a different order -- a gratuitous netlist diff.
+		dict<Wire *, std::vector<Candidate *>> output_ffs;
+		for (Wire *wire : module->wires()) {
+			if (!wire->port_output || !accepted_slots.count(wire))
+				continue;
+			std::vector<Candidate *> slots(wire->width, nullptr);
+			for (auto &it : accepted_slots.at(wire))
+				slots[it.first] = it.second;
+			output_ffs[wire] = slots;
 		}
 
 		for (auto &[old_port_output, ioff_cells] : output_ffs) {
