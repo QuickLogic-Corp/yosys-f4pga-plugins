@@ -307,14 +307,22 @@ struct QlDspV2ToV4Pass : public Pass {
         return ports;
     }
 
-    // The QL_DSP4 input that carries the ALU addend and is realized on the tile's
-    // dedicated pcin_i cascade in the dsp4_logical arch: PCIN when OPMODE selects
-    // Z=PCIN (per-cell MULTADD), C when OPMODE selects Z=C (fused CONCAT+MULTADD --
-    // the fused addend also enters the ALU via pcin_i, confirmed in the packed
-    // .net). Any net on this port MUST be point-to-point (fanout 1): a physical DSP
-    // cascade wire cannot fork, and VPR aborts placement ("appears in 2 placement
-    // macros") if two chain heads share it. Returns an empty IdString for cells
-    // with no inter-cell cascade addend (Z=ACC feedback, or Z open).
+    // The QL_DSP4 input that carries the ALU addend over the tile's dedicated
+    // pcin_i cascade: PCIN, selected by OPMODE Z=001 (per-cell MULTADD). Any net on
+    // this port MUST be point-to-point (fanout 1) -- pcin_i has no general-routing
+    // connectivity (fc_val=0) and its only source is the dsp_p_chain <direct> from
+    // exactly one adjacent dsp.pcout_o, so VPR aborts placement ("appears in 2
+    // placement macros") if two chain heads share it.
+    //
+    // Z=011 (C, the fused CONCAT+MULTADD addend) is deliberately NOT a cascade
+    // port. C enters the tile on general routing -- dsp_wrapper.c_i is fed from the
+    // I* buses at fc_val=0.15 -- so a shared (or constant) C net is legal, needs no
+    // replication, and must not be rejected here. A fused pair collapses into a
+    // single QL_DSP4, so there is no inter-cell cascade left to constrain: A/B carry
+    // the operands and C carries the addend, all on general routing.
+    //
+    // Returns an empty IdString for cells with no dedicated cascade addend
+    // (Z=C, Z=ACC feedback, or Z open).
     static RTLIL::IdString cascade_addend_port(RTLIL::Cell *dsp)
     {
         if (dsp->type != ID(QL_DSP4) || !dsp->hasParam(ID(OPMODE)))
@@ -325,8 +333,6 @@ struct QlDspV2ToV4Pass : public Pass {
         int zsel = om.extract(4, 3).as_int(); // OPMODE[6:4]
         if (zsel == 1)                         // 001 = PCIN
             return ID(PCIN);
-        if (zsel == 3) // 011 = C (fused concat addend, routed via pcin_i)
-            return ID(C);
         return RTLIL::IdString();
     }
 
@@ -709,10 +715,13 @@ struct QlDspV2ToV4Pass : public Pass {
     // z_cin); a value shared across chains (e.g. a common a*b product Synplify
     // computes once and routes to several chains) is legal there because the
     // sharing is on GENERAL ROUTING, upstream of each chain's own private cascade
-    // injector. Our per-cell / fused mapping instead binds that shared feeder
-    // straight onto the ALU addend, which the dsp4_logical tile realizes on the
-    // dedicated pcin_i cascade -- turning a legal shared bus into an illegal
-    // fanout>1 cascade net that VPR cannot place ("appears in 2 placement macros").
+    // injector. Our per-cell mapping instead binds that shared feeder straight onto
+    // PCIN, which the dsp4_logical tile realizes on the dedicated pcin_i cascade --
+    // turning a legal shared bus into an illegal fanout>1 cascade net that VPR
+    // cannot place ("appears in 2 placement macros").
+    //
+    // Only the PCIN (Z=001) addend is affected; the fused Z=C addend rides general
+    // routing and is exempt (see cascade_addend_port).
     //
     // Restore Synplify's structure -- one private, single-fanout cascade head per
     // chain -- by replicating the feeder DSP once per extra consumer. The replica
