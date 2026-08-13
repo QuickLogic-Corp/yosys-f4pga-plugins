@@ -15,32 +15,32 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // ===========================================================================
-// dspv4_leaves_sim.v
+// dspv4_leaves_sim.v -- GENERATED FILE, DO NOT EDIT BY HAND.
+//
+// Regenerate with:
+//     aurora2/scripts/dspv4/gen_dspv4_leaves_sim.py
+// Check for staleness (CI, VR-9):
+//     aurora2/scripts/dspv4/gen_dspv4_leaves_sim.py --check
 //
 // Behavioral simulation models for the QL_DSP4_* leaf cells emitted by the
-// DSP-V4 Phase-2 techmap (dsp4_logical_map.v).  The Phase-2 post-synthesis
+// DSP-V4 Phase-2 techmap (dsp4_logical_map.v). The Phase-2 post-synthesis
 // netlist (<design>_post_synth.v) instantiates ONLY these leaves; this file
 // gives each of them a simulatable body so the netlist can be run in a
 // functional (post-synthesis) simulation and checked against the golden RTL.
 //
-// The behavior mirrors the operating-mode datapath of the monolithic
-// behavioral model dspv4_sim.v (the compute macros `alu`, `multiplier`/`pmult`,
-// `preadder`, `rss_block`): each leaf reproduces the exact arithmetic that the
-// arch/synthesis contract assumes for that macro.  These are simulation-only
-// models -- they are NOT synthesizable and NOT the packer-visible black boxes
-// (those live in QL_DSP4_leaves.v).
+// These are simulation-only models: NOT synthesizable, and NOT the
+// packer-visible black boxes (those live in QL_DSP4_leaves.v).
 //
-// Modeling notes:
-//  * In the non-accumulate operating modes the ALU W / Z / CIN inputs are left
-//    open in the netlist (the mode's constant-0 mux input is not emitted).  An
-//    open input reads as `z`, so the ALU leaves coerce every input bit with
-//    `=== 1'b1` (1 stays 1; 0 / x / z -> 0), which reflects the intended
-//    "unused mux leg drives 0" hardware behavior instead of poisoning the sum
-//    with x.
-//  * The bit-sliced pipeline flops power up to 0 (`initial Q = 1'b0`) so the
-//    netlist and the reset-to-0 golden RTL are cycle-aligned; the netlist ties
-//    each flop's async reset R to 1'b1 (reset is a physical-mode-only feature),
-//    so this power-up value is what a functional run actually sees.
+// Derived from the DSP-V4 RTL in the ffb hardware repo. If a digest below no
+// longer matches ffb, --check fails: re-run the generator and review the diff.
+//
+//   QL_DSP4_MULT                       rtl/pmult.v              sha256:be8eb316cd852abb
+//   QL_DSP4_MULT                       rtl/multiplier.v         sha256:0c0fac870051fd5d
+//   QL_DSP4_ALU_*                      rtl/alu.v                sha256:437a990786b73d26
+//   QL_DSP4_PREADD / QL_DSP4_PRESUB    rtl/preadder.v           sha256:1814498800e884a9
+//   QL_DSP4_RSS                        rtl/rss_block.v          sha256:4934a3f41b91d330
+//   QL_DSP4_RSS                        rtl/round.v              sha256:e5ce9f93518b88d0
+//   QL_DSP4_*_DFFR / _DFFRE            rtl/DFFE_SNR_ANR.v       sha256:c7baf42afdd97f58
 // ===========================================================================
 
 `timescale 1ns / 1ps
@@ -49,19 +49,131 @@
 // Compute macros
 // ===========================================================================
 
-// 32x18 signed multiply, product returned in carry-save form: U = full signed
-// product, V = 0.  U + V is resolved downstream by the ALU (U->X, V->Y).
-module QL_DSP4_MULT (I0, I1, U, V);
-  input  wire [17:0] I0;
-  input  wire [31:0] I1;
-  output wire [49:0] U;
-  output wire [49:0] V;
-  assign U = $signed(I1) * $signed(I0);
-  assign V = 50'b0;
+// Width-50 carry-save adder (3:2 compressor), from pmult.v's `csa`
+// built out of `full_adder`. sum_o + carry_o == a + b + c - k_o*2^50.
+// The per-bit full adders are written as bitwise ops here; identical
+// logic, one line instead of a 50-way generate.
+module qldsp4_csa (a, b, c, sum_o, carry_o, k_o);
+  input  wire [49:0] a, b, c;
+  output wire [49:0] sum_o, carry_o;
+  output wire        k_o;
+  wire [49:0] cbit;
+  assign sum_o   = a ^ b ^ c;
+  assign cbit    = (a & b) | (a & c) | (b & c);
+  // carries are weighted one position up; the top carry is dropped
+  // (mod 2^50) and reported on k_o.
+  assign carry_o = {cbit[48:0], 1'b0};
+  assign k_o     = cbit[49];
 endmodule
 
-// Shared ALU core.  MODE selects the ALUMODE[1:0] arithmetic (matches
-// dspv4_sim.v `alu`, ONE50 / non-SIMD path):
+// ---------------------------------------------------------------------
+// 32x18 signed multiply in carry-save form, transcribed from
+// ffb/rtl/pmult.v (Baugh-Wooley partial products -> Wallace 3:2 tree).
+//
+//   U + V == I1 * I0 + KN * 2^50      (U, V read as UNSIGNED 50-bit)
+//
+// U is NOT the product and must not be sign-extended. The ALU resolves
+// the pair as {14{KN}, U} + {14'b0, V} -- see dsp4_top.v's x_mux/y_mux.
+// A model that returned the plain signed product with V = 0 would make
+// the correct and the incorrect extension indistinguishable, which is
+// exactly the bug this file used to hide.
+//
+// V[6:0] is structurally 0 for this 19-row tree (the low columns are too
+// sparse for a compressor to produce a carry), which is what lets the
+// MREG bank register only V[49:7].
+// ---------------------------------------------------------------------
+module QL_DSP4_MULT (I0, I1, U, V, KN);
+  input  wire [17:0] I0;   // 18-bit multiplier   (pmult 'b')
+  input  wire [31:0] I1;   // 32-bit multiplicand (pmult 'a')
+  output wire [49:0] U;
+  output wire [49:0] V;
+  output wire        KN;
+
+  wire [31:0] a = I1;
+  wire [17:0] b = I0;
+
+  // Stage 1: partial-product generation.
+  wire [49:0] r0_0, r0_1, r0_2, r0_3, r0_4, r0_5, r0_6, r0_7, r0_8, r0_9, r0_10, r0_11, r0_12, r0_13, r0_14, r0_15, r0_16, r0_17, r0_18;
+  assign r0_0 = {{18{1'b0}}, ~(a[31] & b[0]), (a[30:0] & {31{b[0]}})};
+  assign r0_1 = {{17{1'b0}}, ~(a[31] & b[1]), (a[30:0] & {31{b[1]}}), {1{1'b0}}};
+  assign r0_2 = {{16{1'b0}}, ~(a[31] & b[2]), (a[30:0] & {31{b[2]}}), {2{1'b0}}};
+  assign r0_3 = {{15{1'b0}}, ~(a[31] & b[3]), (a[30:0] & {31{b[3]}}), {3{1'b0}}};
+  assign r0_4 = {{14{1'b0}}, ~(a[31] & b[4]), (a[30:0] & {31{b[4]}}), {4{1'b0}}};
+  assign r0_5 = {{13{1'b0}}, ~(a[31] & b[5]), (a[30:0] & {31{b[5]}}), {5{1'b0}}};
+  assign r0_6 = {{12{1'b0}}, ~(a[31] & b[6]), (a[30:0] & {31{b[6]}}), {6{1'b0}}};
+  assign r0_7 = {{11{1'b0}}, ~(a[31] & b[7]), (a[30:0] & {31{b[7]}}), {7{1'b0}}};
+  assign r0_8 = {{10{1'b0}}, ~(a[31] & b[8]), (a[30:0] & {31{b[8]}}), {8{1'b0}}};
+  assign r0_9 = {{9{1'b0}}, ~(a[31] & b[9]), (a[30:0] & {31{b[9]}}), {9{1'b0}}};
+  assign r0_10 = {{8{1'b0}}, ~(a[31] & b[10]), (a[30:0] & {31{b[10]}}), {10{1'b0}}};
+  assign r0_11 = {{7{1'b0}}, ~(a[31] & b[11]), (a[30:0] & {31{b[11]}}), {11{1'b0}}};
+  assign r0_12 = {{6{1'b0}}, ~(a[31] & b[12]), (a[30:0] & {31{b[12]}}), {12{1'b0}}};
+  assign r0_13 = {{5{1'b0}}, ~(a[31] & b[13]), (a[30:0] & {31{b[13]}}), {13{1'b0}}};
+  assign r0_14 = {{4{1'b0}}, ~(a[31] & b[14]), (a[30:0] & {31{b[14]}}), {14{1'b0}}};
+  assign r0_15 = {{3{1'b0}}, ~(a[31] & b[15]), (a[30:0] & {31{b[15]}}), {15{1'b0}}};
+  assign r0_16 = {{2{1'b0}}, ~(a[31] & b[16]), (a[30:0] & {31{b[16]}}), {16{1'b0}}};
+  assign r0_17 = {1'b0, (a[31] & b[17]), ~(a[30:0] & {31{b[17]}}), {17{1'b0}}};
+  assign r0_18 = 50'h2000080020000;
+
+  // Stage 2: Wallace reduction. Layer schedule matches csa_reduce's
+  // recursion exactly, so U and V match ffb bit-for-bit
+  // (not just their sum).
+
+  // layer 1: 19 rows -> 13 (6 compressors, 1 passed through)
+  wire [49:0] r1_0, r1_1, r1_2, r1_3, r1_4, r1_5, r1_6, r1_7, r1_8, r1_9, r1_10, r1_11, r1_12;
+  wire k1_0, k1_1, k1_2, k1_3, k1_4, k1_5;
+  qldsp4_csa u_csa1_0 (.a(r0_0), .b(r0_1), .c(r0_2), .sum_o(r1_0), .carry_o(r1_1), .k_o(k1_0));
+  qldsp4_csa u_csa1_1 (.a(r0_3), .b(r0_4), .c(r0_5), .sum_o(r1_2), .carry_o(r1_3), .k_o(k1_1));
+  qldsp4_csa u_csa1_2 (.a(r0_6), .b(r0_7), .c(r0_8), .sum_o(r1_4), .carry_o(r1_5), .k_o(k1_2));
+  qldsp4_csa u_csa1_3 (.a(r0_9), .b(r0_10), .c(r0_11), .sum_o(r1_6), .carry_o(r1_7), .k_o(k1_3));
+  qldsp4_csa u_csa1_4 (.a(r0_12), .b(r0_13), .c(r0_14), .sum_o(r1_8), .carry_o(r1_9), .k_o(k1_4));
+  qldsp4_csa u_csa1_5 (.a(r0_15), .b(r0_16), .c(r0_17), .sum_o(r1_10), .carry_o(r1_11), .k_o(k1_5));
+  assign r1_12 = r0_18;
+
+  // layer 2: 13 rows -> 9 (4 compressors, 1 passed through)
+  wire [49:0] r2_0, r2_1, r2_2, r2_3, r2_4, r2_5, r2_6, r2_7, r2_8;
+  wire k2_0, k2_1, k2_2, k2_3;
+  qldsp4_csa u_csa2_0 (.a(r1_0), .b(r1_1), .c(r1_2), .sum_o(r2_0), .carry_o(r2_1), .k_o(k2_0));
+  qldsp4_csa u_csa2_1 (.a(r1_3), .b(r1_4), .c(r1_5), .sum_o(r2_2), .carry_o(r2_3), .k_o(k2_1));
+  qldsp4_csa u_csa2_2 (.a(r1_6), .b(r1_7), .c(r1_8), .sum_o(r2_4), .carry_o(r2_5), .k_o(k2_2));
+  qldsp4_csa u_csa2_3 (.a(r1_9), .b(r1_10), .c(r1_11), .sum_o(r2_6), .carry_o(r2_7), .k_o(k2_3));
+  assign r2_8 = r1_12;
+
+  // layer 3: 9 rows -> 6 (3 compressors, 0 passed through)
+  wire [49:0] r3_0, r3_1, r3_2, r3_3, r3_4, r3_5;
+  wire k3_0, k3_1, k3_2;
+  qldsp4_csa u_csa3_0 (.a(r2_0), .b(r2_1), .c(r2_2), .sum_o(r3_0), .carry_o(r3_1), .k_o(k3_0));
+  qldsp4_csa u_csa3_1 (.a(r2_3), .b(r2_4), .c(r2_5), .sum_o(r3_2), .carry_o(r3_3), .k_o(k3_1));
+  qldsp4_csa u_csa3_2 (.a(r2_6), .b(r2_7), .c(r2_8), .sum_o(r3_4), .carry_o(r3_5), .k_o(k3_2));
+
+  // layer 4: 6 rows -> 4 (2 compressors, 0 passed through)
+  wire [49:0] r4_0, r4_1, r4_2, r4_3;
+  wire k4_0, k4_1;
+  qldsp4_csa u_csa4_0 (.a(r3_0), .b(r3_1), .c(r3_2), .sum_o(r4_0), .carry_o(r4_1), .k_o(k4_0));
+  qldsp4_csa u_csa4_1 (.a(r3_3), .b(r3_4), .c(r3_5), .sum_o(r4_2), .carry_o(r4_3), .k_o(k4_1));
+
+  // layer 5: 4 rows -> 3 (1 compressor, 1 passed through)
+  wire [49:0] r5_0, r5_1, r5_2;
+  wire k5_0;
+  qldsp4_csa u_csa5_0 (.a(r4_0), .b(r4_1), .c(r4_2), .sum_o(r5_0), .carry_o(r5_1), .k_o(k5_0));
+  assign r5_2 = r4_3;
+
+  // layer 6: 3 rows -> 2 (1 compressor, 0 passed through)
+  wire [49:0] r6_0, r6_1;
+  wire k6_0;
+  qldsp4_csa u_csa6_0 (.a(r5_0), .b(r5_1), .c(r5_2), .sum_o(r6_0), .carry_o(r6_1), .k_o(k6_0));
+
+  assign U = r6_0;
+  assign V = r6_1;
+
+  // K is the dropped 2^50 carry, ORed across every layer. At most one can
+  // fire, so the OR is the exact count. multiplier.v exports it inverted.
+  wire k = k1_0 | k1_1 | k1_2 | k1_3 | k1_4 | k1_5 | k2_0 | k2_1 | k2_2 | k2_3 | k3_0 | k3_1 | k3_2 | k4_0 | k4_1 | k5_0 | k6_0;
+  assign KN = ~k;
+endmodule
+
+// Shared ALU core, from ffb/rtl/alu.v with ALUMODE baked in and the SIMD
+// segmented path omitted (the techmap emits a distinct cell per ALUMODE, and
+// USE_SIMD modes are rejected by _TECHMAP_FAIL_ rather than lowered):
 //   00 ADD      : ALU_OUT = W + X + Y + Z + CIN
 //   01 REV_SUB  : ALU_OUT = -Z + (W + X + Y + CIN) - 1
 //   10 NOT_SUM  : ALU_OUT = -(Z + W + X + Y + CIN) - 1
@@ -101,8 +213,8 @@ module qldsp4_alu_core #(
   wire [64:0] full_sum = {1'b0, z_eff} + {1'b0, wxy_eff} + cin_eff;
   assign ALU_OUT = full_sum[63:0];
 
-  // CARRYOUT[3] = carry into bit 50 (the 50-bit P / PCOUT cascade boundary);
-  // the other carry bits are SIMD-only and 0 here.
+  // CARRYOUT[3] = carry out of bit 49 (the 50-bit P / PCOUT cascade boundary,
+  // alu.v's CASC_BIT); the other carry bits are SIMD-only and 0 here.
   wire cascade_carry = full_sum[50] ^ z_eff[50] ^ wxy_eff[50];
   assign CARRYOUT = {cascade_carry, 3'b000};
 endmodule
@@ -143,8 +255,9 @@ module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
                                      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
 endmodule
 
-// Pre-adder core (matches dspv4_sim.v `preadder`): AD = saturate(I0 +/- I1).
-// INMODE3 = 0 -> add, 1 -> subtract.  I0 = 27-bit (D), I1 = 32-bit operand.
+// Pre-adder, from ffb/rtl/preadder.v: AD = saturate(I0 +/- I1), with I0 the
+// 27-bit D operand and I1 the 32-bit operand. INMODE3 = 0 -> add, 1 -> subtract.
+// Only same-sign addition can overflow, so only those two cases clamp.
 module qldsp4_preadder #(
     parameter INMODE3 = 1'b0
 ) (
@@ -180,21 +293,119 @@ module QL_DSP4_PRESUB (I0, I1, AD);
   qldsp4_preadder #(.INMODE3(1'b1)) u (.I0(I0), .I1(I1), .AD(AD));
 endmodule
 
-// Round / arithmetic-right-shift / saturate.  The leaf carries no config ports
-// (ROUND / SHIFT / SATURATE are baked to 0 in the operating modes exercised by
-// the unit designs), so this reduces to a straight 64->50 window pass-through.
-module QL_DSP4_RSS (ACC_IN, ACC_OUT);
-  input  wire [63:0] ACC_IN;
-  output wire [49:0] ACC_OUT;
-  assign ACC_OUT = ACC_IN[49:0];
+// Rounder, from ffb/rtl/round.v. Rounds so the low `frac_bits_i` bits can be
+// truncated by the shift downstream; the mode only decides how an exact 0.5
+// breaks. Values that are not exactly 0.5 always go to the nearest integer.
+module qldsp4_round (a_i, round_mode_i, frac_bits_i, z_o);
+  input  wire [63:0] a_i;
+  input  wire [ 2:0] round_mode_i;
+  input  wire [ 5:0] frac_bits_i;
+  output wire [63:0] z_o;
+
+  localparam [2:0] RMODE_NONE = 3'b000;  // no rounding
+  localparam [2:0] RMODE_RHUA = 3'b001;  // round half up, asymmetrical
+  localparam [2:0] RMODE_RHUS = 3'b010;  // round half up, symmetrical
+  localparam [2:0] RMODE_RHDS = 3'b011;  // round half down, symmetrical
+  localparam [2:0] RMODE_RHE  = 3'b100;  // round half even
+  localparam [2:0] RMODE_RHO  = 3'b101;  // round half odd
+
+  wire signed [63:0] a_in    = $signed(a_i);
+  wire               a_sign  = a_in[63];
+  wire signed [63:0] onehalf = (frac_bits_i == 6'b0)
+                             ? 64'b0
+                             : ({{63{1'b0}}, 1'b1} << (frac_bits_i - 1));
+  wire        [63:0] int_mask  = ({64{1'b1}} << frac_bits_i);
+  wire        [63:0] frac_mask = ~int_mask;
+  wire signed [63:0] a_frac    = a_i & frac_mask;
+  wire signed [63:0] a_int     = a_in >>> frac_bits_i;
+  reg  signed [63:0] z_out;
+
+  always @* begin
+    case (round_mode_i)
+      RMODE_NONE: z_out = a_in;
+      RMODE_RHUA: z_out = a_in + onehalf;
+      RMODE_RHUS: // negative and exactly 0.5 -> leave; else add 1/2
+        if ((a_sign == 1'b1) && (a_frac == onehalf)) z_out = a_in;
+        else z_out = a_in + onehalf;
+      RMODE_RHDS: // positive and exactly 0.5 -> leave; else add 1/2
+        if ((a_sign == 1'b0) && (a_frac == onehalf)) z_out = a_in;
+        else z_out = a_in + onehalf;
+      RMODE_RHE:  // even and exactly 0.5 -> leave; else add 1/2
+        if ((a_int[0] == 1'b0) && (a_frac == onehalf)) z_out = a_in;
+        else z_out = a_in + onehalf;
+      RMODE_RHO:  // odd and exactly 0.5 -> leave; else add 1/2
+        if ((a_int[0] == 1'b1) && (a_frac == onehalf)) z_out = a_in;
+        else z_out = a_in + onehalf;
+      default: z_out = a_in;
+    endcase
+  end
+
+  assign z_o = z_out;
 endmodule
 
-// ===========================================================================
-// Pipeline registers (bit-sliced: one 1-bit instance per data bit)
+// Round / arithmetic-right-shift / saturate, from ffb/rtl/rss_block.v.
+// Windows the 64-bit accumulator down to the 50-bit P output.
+//
+// ROUND / SHIFT / SATURATE arrive as *parameters*, not ports: on this path
+// configuration reaches a leaf as a parameter (the precedent is QL_DSPV2_MULT's
+// MODE_BITS), and ports would need routing from a constant source that the
+// operating mode has no provision for. The techmap passes the QL_DSP4
+// parameters straight through. The physical macro QL_DSPPHY_RSS packs them as
+// one word, mode = {SATURATE, SHIFT[5:0], ROUND[2:0]}; keeping them separate
+// and named here matches QL_DSP4's own parameter names and stays readable in
+// the BLIF, and that packing is then one documented rule for the FASM side.
+module QL_DSP4_RSS (ACC_IN, ACC_OUT);
+  parameter [2:0] ROUND    = 3'b000;
+  parameter [5:0] SHIFT    = 6'b000000;
+  parameter       SATURATE = 1'b0;
+
+  input  wire [63:0] ACC_IN;
+  output wire [49:0] ACC_OUT;
+
+  localparam Z_WIDTH = 50;
+
+  wire signed [63:0] acc_round;
+  qldsp4_round u_round (
+      .a_i         (ACC_IN),
+      .round_mode_i(ROUND),
+      .frac_bits_i (SHIFT),
+      .z_o         (acc_round)
+  );
+
+  wire signed [63:0] acc_shift = (acc_round >>> SHIFT);
+  reg  signed [63:0] acc_saturate;
+
+  always @* begin
+    if (!SATURATE) begin
+      acc_saturate = acc_shift;
+    end else begin
+      // In range iff every bit above the 50-bit window matches the sign bit.
+      if ((|acc_shift[63:Z_WIDTH-1] == 1'b0) ||
+          (&acc_shift[63:Z_WIDTH-1] == 1'b1)) begin
+        acc_saturate = {{(64 - Z_WIDTH) {1'b0}}, {acc_shift[Z_WIDTH-1:0]}};
+      end else begin
+        // Clamp to the largest magnitude of the correct sign.
+        acc_saturate = {
+          {(64 - Z_WIDTH) {1'b0}},
+          {acc_shift[63], {Z_WIDTH - 1{~acc_shift[63]}}}
+        };
+      end
+    end
+  end
+
+  // dsp4_top takes P from rss_block's low 50 bits.
+  assign ACC_OUT = acc_saturate[49:0];
+endmodule
+
+// =========================================================================
+// Pipeline registers (bit-sliced: one 1-bit instance per data bit), from
+// ffb/rtl/DFFE_SNR_ANR.v reduced to the ports the operating mode exposes.
 //   *_DFFRE : async reset R (active-low), clock-enable E
 //   *_DFFR  : async reset R (active-low), no enable
-// Q powers up to 0 for cycle-alignment with the reset-to-0 golden RTL.
-// ===========================================================================
+// Q powers up to 0 so the netlist stays cycle-aligned with the reset-to-0
+// golden RTL: the netlist ties each flop's R to 1'b1 (local sync reset and
+// scan are physical-mode-only), so power-up is what a functional run sees.
+// =========================================================================
 
 `define QL_DSP4_DFFRE(NAME) \
 module NAME (D, E, R, clk, Q);      \
@@ -227,6 +438,5 @@ endmodule
 `QL_DSP4_DFFR(QL_DSP4_AD_DFFR)
 `QL_DSP4_DFFR(QL_DSP4_M_DFFR)
 `QL_DSP4_DFFR(QL_DSP4_MV_DFFR)
+`QL_DSP4_DFFR(QL_DSP4_MK_DFFR)
 `QL_DSP4_DFFR(QL_DSP4_CO_DFFR)
-`QL_DSP4_DFFR(QL_DSP4_CCO_DFFR)
-`QL_DSP4_DFFR(QL_DSP4_SCO_DFFR)

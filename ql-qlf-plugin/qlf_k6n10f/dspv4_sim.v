@@ -327,23 +327,27 @@ endmodule
 // BEGIN ../rtl/multiplier.v
 // --- BEGIN AUTO-GENERATED PORT DEFINITION (do not edit) ---
 module multiplier #(
-    parameter I0_WIDTH = 18,
-    parameter I1_WIDTH = 32,
-    parameter U_WIDTH  = 50,
-    parameter V_WIDTH  = 50
+  parameter I0_WIDTH = 18,
+  parameter I1_WIDTH = 32,
+  parameter U_WIDTH = 50,
+  parameter V_WIDTH = 50
 ) (
-    input  [I0_WIDTH-1:0] I0,
-    input  [I1_WIDTH-1:0] I1,
-    output [ U_WIDTH-1:0] U,
-    output [ V_WIDTH-1:0] V
+  input [I0_WIDTH-1:0] I0,
+  input [I1_WIDTH-1:0] I1,
+  output [U_WIDTH-1:0] U,
+  output [V_WIDTH-1:0] V,
+  output KN
 );
-  // --- END AUTO-GENERATED PORT DEFINITION ---
+// --- END AUTO-GENERATED PORT DEFINITION ---
 
   // The internal partial-product multiplier (pmult) uses the OPPOSITE order
   // (its I0 is the 32-bit multiplicand 'a', its I1 the 18-bit multiplier 'b'),
   // so the operands are crossed over below.
 
-  // pmult emits the product in carry-save form as two 50-bit vectors
+  // pmult emits the product in carry-save form as two 50-bit vectors plus
+  // the dropped-carry flag K; exported inverted: U + V == product + KN*2^50.
+  wire k;
+
   pmult #(
       .I0_WIDTH(I1_WIDTH),  // pmult.I0 = 32-bit  <- multiplier.I1
       .I1_WIDTH(I0_WIDTH),  // pmult.I1 = 18-bit  <- multiplier.I0
@@ -353,8 +357,11 @@ module multiplier #(
       .I0(I1),  // 32-bit operand
       .I1(I0),  // 18-bit operand
       .U (U),
-      .V (V)
+      .V (V),
+      .K (k)
   );
+
+  assign KN = ~k;
 
 endmodule
 // END ../rtl/multiplier.v
@@ -362,27 +369,88 @@ endmodule
 // ===========================================================================
 // BEGIN ./modules/pmult.v
 //----------------------------------------------------------------------------
-// BEHAVIORAL model of the partial-products multiplier pmult.
+// BEHAVIORAL model of the multiplier pmult primitive.
+//
+// Replaces the Baugh-Wooley array + Wallace/CSA tree with a verilog multiply
+// operator ('*'), then re-encodes the exact product P into a (U, V, K) triple 
+// that satisfies the SAME behaviour as the silicon pmult implementation:
+//
+//   (1) U + V == P + (1-K)*2^50                      (exact, as integers)
+//   (2) K == 1 implies P >= 0; K == 0 implies P < 0
+//   (3) V[6:0] == 0                                  (structural: the 19-row tree cannot
+//       produce carries in the sparse low columns; this allows us to not
+//       instantiate MREG flops for V[6:0])
+//
+//
+// We mask the U and V vectors s.t. they only have live even and odd bits,
+// respectively. This is so downstream consumers cannot make assumptions about 
+// which bits are and are not live.
+//
+//   U = P[6:0] plus the even bits of P[49:8]
+//   V = the odd bits of P[49:7]
+//   K = ~P[49]
+//
+// The reason we set K to be the inverse of P is because the inverse of signedness of
+// P is equal to the "was a carry dropped?" flag and reflects the value of K we will get 
+// from the silicon implementation.
+// 
+// Explanation below:
+//
+// - P >= 0, then p = P (carry was dropped) and K must be 1
+// - P < 0, then p = P + 2^50 (carry was not dropped) and K must be 0
+//
+// For cases with negative products: the carry cannot be dropped (its not
+// possible for U + V < 0). 
+//
+// NOTE: When thinking about these operations, we should basically consider
+// everything to be unsigned arithemetic and the signedness of it only is
+// resolved once we do one of the following:
+// 
+// 1. truncate to 50 bits (adds the (1-K)*2^50 term for 50 bit case)
+// 2. pad with KN (adds the (1-K)*2^50 term for 64 bit case)
+//
 //----------------------------------------------------------------------------
 module pmult #(
     parameter I0_WIDTH = 32,
     parameter I1_WIDTH = 18,
-    parameter U_WIDTH  = 50,
-    parameter V_WIDTH  = 50
+    parameter U_WIDTH  = 50,  // must equal I0_WIDTH + I1_WIDTH
+    parameter V_WIDTH  = 50   // must equal U_WIDTH
 ) (
-    input  [I0_WIDTH-1:0] I0,  // 32-bit two's-complement multiplicand 'a'
-    input  [I1_WIDTH-1:0] I1,  // 18-bit two's-complement multiplier  'b'
-    output [ U_WIDTH-1:0] U,   // carry-save SUM vector  (= product)
-    output [ V_WIDTH-1:0] V    // carry-save CARRY vector (= 0)
+    input      [I0_WIDTH-1:0] I0,  // 32-bit two's-complement multiplicand 'a'
+    input      [I1_WIDTH-1:0] I1,  // 18-bit two's-complement multiplier  'b'
+    output reg [ U_WIDTH-1:0] U,   // carry-save SUM vector
+    output reg [ V_WIDTH-1:0] V,   // carry-save CARRY vector
+    output                    K    // dropped-carry flag
 );
-  wire signed [I0_WIDTH-1:0] I0_s;
-  wire signed [I1_WIDTH-1:0] I1_s;
 
-  assign I0_s = I0;
-  assign I1_s = I1;
+  // Low V bits that are structurally zero in the hardware tree; must match
+  // MULT_V_LSB_ZEROS in dsp4_top.v (a property of the 19-row 32x18 tree).
+  localparam V_LSB_ZEROS = 7;
 
-  assign U = I0_s * I1_s;  // full signed product (I0_WIDTH+I1_WIDTH = U_WIDTH bits)
-  assign V = {V_WIDTH{1'b0}};
+  wire signed [I0_WIDTH-1:0] I0_s = I0;
+  wire signed [I1_WIDTH-1:0] I1_s = I1;
+
+  // Exact signed product; the assign truncates to P mod 2^50, which is exact
+  // when I0_WIDTH + I1_WIDTH == U_WIDTH.
+  wire [U_WIDTH-1:0] p;
+  assign p = I0_s * I1_s;
+
+  // Disjoint even/odd mask of p across U and V (U + V = U | V = P mod 2^50).
+  // The bottom bits of V which will always resolve to 0 due to structure of
+  // 19-row 32x18 CSA tree
+  always @* begin
+    for (int i = 0; i < U_WIDTH; i = i + 1) begin
+      if (i < V_LSB_ZEROS || i % 2 == 0) begin
+        U[i] = p[i];
+        V[i] = 1'b0;
+      end else begin
+        U[i] = 1'b0;
+        V[i] = p[i];
+      end
+    end
+  end
+
+  assign K = ~p[U_WIDTH-1];
 endmodule
 // END ./modules/pmult.v
 
@@ -888,6 +956,9 @@ module dsp4_top #(
   localparam MULT_A_WIDTH = 32;  // A/AD width to multiplier
   localparam MULT_B_WIDTH = 18;  // B/AD width to multiplier
   localparam MULT_P_WIDTH = MULT_A_WIDTH + MULT_B_WIDTH;  // 50 bits
+  // Structurally-zero low bits of the multiplier carry vector V (property
+  // of its 19-row reduction tree). Only V[49:7] is ever registered.
+  localparam MULT_V_LSB_ZEROS = 7;
   localparam ACC_WIDTH = 64;  // wide internal accumulator (P_WIDTH=50 = external port width)
   localparam AB_WIDTH = A_WIDTH + B_WIDTH;  // 50 bits (A:B concatenation)
 
@@ -1003,11 +1074,14 @@ module dsp4_top #(
 
   wire [MULT_P_WIDTH-1:0] mult_pp_U_out, mult_pp_V_out;
   wire [MULT_P_WIDTH-1:0] mult_pp_U_reg, mult_pp_U_sel, mult_pp_V_reg, mult_pp_V_sel;
+  wire mult_pp_KN_out, mult_pp_KN_reg, mult_pp_KN_sel;
 
   // `multiplier` wraps the partial-product multiplier (pmult).  Convention
   // here: I0 = 18-bit B operand, I1 = 32-bit A operand.  It emits the product
-  // in carry-save form (U = sum vector, V = carry vector); U + V is resolved
-  // by the ALU via the X/Y muxes below.
+  // in carry-save form (U = sum vector, V = carry vector) plus the inverted
+  // dropped-carry flag KN:  U + V == product + KN*2^50 as integers.  U + V
+  // is resolved by the ALU via the X/Y muxes below; KN pads the X-mux value
+  // so the 64-bit resolution is exact.
   multiplier #(
       .I0_WIDTH(MULT_B_WIDTH),
       .I1_WIDTH(MULT_A_WIDTH),
@@ -1017,7 +1091,8 @@ module dsp4_top #(
       .I0(b_mult),
       .I1(mult_a),
       .U (mult_pp_U_out),
-      .V (mult_pp_V_out)
+      .V (mult_pp_V_out),
+      .KN(mult_pp_KN_out)
   );
 
   // MREG (optional 1-stage pipeline on multiplier output) — DFFE_SNR_ANR banks.
@@ -1031,34 +1106,56 @@ module dsp4_top #(
       .D  (mult_pp_U_out),
       .Q  (mult_pp_U_reg)
   );
+  // V[6:0] is structurally constant 0 (dead low bits of the carry vector),
+  // so only the 43 live bits [49:7] get MREG flops; the low bits are tied
+  // to 0 after the register so no flops are ever instantiated for them.
   dff_bank #(
-      .WIDTH(MULT_P_WIDTH)
+      .WIDTH(MULT_P_WIDTH - MULT_V_LSB_ZEROS)
   ) u_mult_pp_V_reg (
       .CLK(clk),
       .R  (g_arst_n),
       .LR (l_rst_n),
       .E  (CE),
-      .D  (mult_pp_V_out),
-      .Q  (mult_pp_V_reg)
+      .D  (mult_pp_V_out[MULT_P_WIDTH-1:MULT_V_LSB_ZEROS]),
+      .Q  (mult_pp_V_reg[MULT_P_WIDTH-1:MULT_V_LSB_ZEROS])
+  );
+  assign mult_pp_V_reg[MULT_V_LSB_ZEROS-1:0] = {MULT_V_LSB_ZEROS{1'b0}};
+  // KN pipelines in lockstep with U/V so the X-mux pad stays aligned.
+  dff_bank #(
+      .WIDTH(1)
+  ) u_mult_pp_KN_reg (
+      .CLK(clk),
+      .R  (g_arst_n),
+      .LR (l_rst_n),
+      .E  (CE),
+      .D  (mult_pp_KN_out),
+      .Q  (mult_pp_KN_reg)
   );
 
-  assign mult_pp_U_sel = MREG ? mult_pp_U_reg : mult_pp_U_out;
-  assign mult_pp_V_sel = MREG ? mult_pp_V_reg : mult_pp_V_out;
+  assign mult_pp_U_sel  = MREG ? mult_pp_U_reg : mult_pp_U_out;
+  assign mult_pp_V_sel  = MREG ? mult_pp_V_reg : mult_pp_V_out;
+  assign mult_pp_KN_sel = MREG ? mult_pp_KN_reg : mult_pp_KN_out;
 
   // ========================================================================
   // W / X / Y / Z Muxes (selected by OPMODE)
   // ========================================================================
   reg [ACC_WIDTH-1:0] w_mux, x_mux, y_mux, z_mux;
 
-  // Accumulator feedback node (64b, full precision; forward declaration —
-  // defined below). This is the P value fed back into the W/X/Z muxes.
+  // ========================================================================
+  // P accumulator register (64b) — captures the RAW ALU result and feeds it
+  // back to ALU input muxes.
+  // ========================================================================
+  wire [ACC_WIDTH-1:0] p_reg;
+
+  // Accumulator select output node (goes to RSS) and to output
+  // Selects between registered and unregistered output of the ALU
   wire [ACC_WIDTH-1:0] p_acc;
 
   // -- W mux: OPMODE[8:7] --
   always @* begin
     case (OPMODE[8:7])
       2'b00:   w_mux = {ACC_WIDTH{1'b0}};  // 0 mode
-      2'b01:   w_mux = p_acc;  // P feedback (full 64b)
+      2'b01:   w_mux = p_reg;  // P feedback (full 64b)
       2'b10:   w_mux = {ACC_WIDTH{1'b0}};  // UNUSED
       2'b11:   w_mux = {{(ACC_WIDTH - C_WIDTH) {c_sel[C_WIDTH-1]}}, c_sel};  // C (sign-extended)
       default: w_mux = {ACC_WIDTH{1'b0}};
@@ -1071,9 +1168,11 @@ module dsp4_top #(
       2'b00: x_mux = {ACC_WIDTH{1'b0}};
       2'b01:
       x_mux = {
-        {(ACC_WIDTH - MULT_P_WIDTH) {mult_pp_U_sel[MULT_P_WIDTH-1]}}, mult_pp_U_sel
-      };  // U (sign-extended); paired with Y mux V value.
-      2'b10: x_mux = p_acc;  // P feedback (full 64b)
+        {(ACC_WIDTH - MULT_P_WIDTH) {mult_pp_KN_sel}}, mult_pp_U_sel
+      };  // U padded with KN (NOT sign-extended: U is unsigned; the pad
+      // repays the Baugh-Wooley +2^50 excess iff no CSA carry dropped).
+      // Paired with the Y mux V value: X + Y == exact 64-bit product.
+      2'b10: x_mux = p_reg;  // P feedback (full 64b)
       2'b11:
       x_mux = {
         {(ACC_WIDTH - AB_WIDTH) {preadd_xmux[A_WIDTH-1]}}, preadd_xmux, b_xmux
@@ -1088,8 +1187,8 @@ module dsp4_top #(
       2'b00: y_mux = {ACC_WIDTH{1'b0}};
       2'b01:
       y_mux = {
-        {(ACC_WIDTH - MULT_P_WIDTH) {mult_pp_V_sel[MULT_P_WIDTH-1]}}, mult_pp_V_sel
-      };  // V (sign-extended) paired with X mux U value.
+        {(ACC_WIDTH - MULT_P_WIDTH) {1'b0}}, mult_pp_V_sel
+      };  // V zero-extended (unsigned carry vector) paired with X mux U value.
       2'b10: y_mux = {ACC_WIDTH{1'b0}};  // UNUSED
       2'b11: y_mux = {{(ACC_WIDTH - C_WIDTH) {c_sel[C_WIDTH-1]}}, c_sel};  // C (sign-extended)
       default: y_mux = {ACC_WIDTH{1'b0}};
@@ -1099,11 +1198,11 @@ module dsp4_top #(
   // -- Z mux: OPMODE[6:4] --
   // The >>17 / MACC_EXT paths operate on the low-50 window of the
   // accumulator (P_WIDTH bits) and are sign-extended to ACC_WIDTH, so the
-  // 50-bit multi-slice MACC96 math is preserved bit-for-bit.
+  // 50-bit multi-slice MACC100 math is preserved bit-for-bit.
 
   // MACC_EXT (100): SIGNCIN sign-extension, P (low-50) shifted right by 17
   wire [ACC_WIDTH-1:0] macc_ext;
-  assign macc_ext = {{(ACC_WIDTH - P_WIDTH) {SIGNCIN}}, {17{SIGNCIN}}, p_acc[P_WIDTH-1:17]};
+  assign macc_ext = {{(ACC_WIDTH - P_WIDTH) {SIGNCIN}}, {17{SIGNCIN}}, p_reg[P_WIDTH-1:17]};
 
   // 17-bit right shift of PCIN (sign-extended)
   wire [ACC_WIDTH-1:0] pcin_shift17;
@@ -1114,15 +1213,16 @@ module dsp4_top #(
   // 17-bit right shift of P (sign-extended)
   wire [ACC_WIDTH-1:0] p_shift17;
   assign p_shift17 = {
-    {(ACC_WIDTH - P_WIDTH) {p_acc[P_WIDTH-1]}}, {17{p_acc[P_WIDTH-1]}}, p_acc[P_WIDTH-1:17]
+    {(ACC_WIDTH - P_WIDTH) {p_reg[P_WIDTH-1]}}, {17{p_reg[P_WIDTH-1]}}, p_reg[P_WIDTH-1:17]
   };
+
 
   always @* begin
     case (OPMODE[6:4])
       3'b000: z_mux = {ACC_WIDTH{1'b0}};
       3'b001:
       z_mux = {{(ACC_WIDTH - PCIN_WIDTH) {PCIN[PCIN_WIDTH-1]}}, PCIN};  // PCIN (sign-extended)
-      3'b010: z_mux = p_acc;  // P feedback (full 64b)
+      3'b010: z_mux = p_reg;  // P feedback (direct from reg) (full 64b)
       3'b011: z_mux = {{(ACC_WIDTH - C_WIDTH) {c_sel[C_WIDTH-1]}}, c_sel};  // C (sign-extended)
       3'b100: z_mux = macc_ext;  // MACC_EXT
       3'b101: z_mux = pcin_shift17;  // PCIN >> 17
@@ -1177,11 +1277,6 @@ module dsp4_top #(
       .CARRYOUT(carryout_int)
   );
 
-  // ========================================================================
-  // P accumulator register (64b) — captures the RAW ALU result so the
-  // accumulation feedback loop runs at full precision (RSS is downstream).
-  // ========================================================================
-  wire [ACC_WIDTH-1:0] p_reg;
 
   // The accumulator's local sync reset folds in the dedicated ACCRSTN: the P
   // register clears on either the local sync reset (RSTN) or ACCRSTN.

@@ -35,14 +35,22 @@
 // Compute macros
 // ===========================================================================
 
-// 32x18 signed multiply, two 50-bit partial products U (sum) and V (carry);
-// U + V = I1 * I0. The final add is deferred to the ALU (U->X mux, V->Y mux).
+// 32x18 signed multiply, two 50-bit partial products U (sum) and V (carry)
+// plus the dropped-carry flag KN:
+//
+//     U + V = I1 * I0 + KN * 2^50        (U and V read as UNSIGNED)
+//
+// The final add is deferred to the ALU (U->X mux, V->Y mux), which resolves the
+// pair as {14{KN}, U} + {14'b0, V}. U is a partial product, not the product --
+// it must NOT be sign-extended. Matches the physical macro
+// QL_DSPPHY_MULT (I0, I1, U, V, KN) and the VPR QL_DSP4_MULT model.
 (* blackbox *)
-module QL_DSP4_MULT (I0, I1, U, V);
+module QL_DSP4_MULT (I0, I1, U, V, KN);
     input  wire [17:0] I0;
     input  wire [31:0] I1;
     output wire [49:0] U;
     output wire [49:0] V;
+    output wire        KN;
 endmodule
 
 // Pre-adder, add:  AD = I0 + I1   (I0 = D[26:0], I1 = 32-bit operand).
@@ -110,8 +118,23 @@ module QL_DSP4_ALU_NOT_SUM (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
 endmodule
 
 // Round / arithmetic-right-shift / saturate: 64-bit accumulator -> 50-bit P.
+//
+// The configuration arrives as parameters rather than ports: on this path a
+// leaf takes its configuration as a parameter (precedent: QL_DSPV2_MULT's
+// MODE_BITS, which ql_dspv2_types preserves), and ports would have to be routed
+// from a constant source that the operating mode does not provide.
+//
+// The physical macro QL_DSPPHY_RSS (ACC_IN, mode, ACC_OUT) packs the three into
+// one word, mode = {SATURATE, SHIFT[5:0], ROUND[2:0]}. They are kept separate
+// and named here to match QL_DSP4's own parameter names, to make the techmap a
+// straight pass-through, and to stay self-documenting in the BLIF; that packing
+// is then one documented rule for the FASM side.
 (* blackbox *)
 module QL_DSP4_RSS (ACC_IN, ACC_OUT);
+    parameter [2:0] ROUND    = 3'b000;
+    parameter [5:0] SHIFT    = 6'b000000;
+    parameter       SATURATE = 1'b0;
+
     input  wire [63:0] ACC_IN;
     output wire [49:0] ACC_OUT;
 endmodule
@@ -211,24 +234,29 @@ module QL_DSP4_MV_DFFR (D, R, clk, Q);
     output wire Q;
 endmodule
 
+// KN pipeline register: carries the multiplier's dropped-carry flag alongside
+// the M / MV partial-product banks so the X-mux pad stays aligned under MREG.
+(* blackbox *)
+module QL_DSP4_MK_DFFR (D, R, clk, Q);
+    input  wire D;
+    input  wire R;
+    (* clkbuf_sink *) input wire clk;
+    output wire Q;
+endmodule
+
+// The single carry-out bank. dsp4_top.v gates it with COUTREG and taps CCOUT
+// off COUT[3] ("CCOUT is a tap of COUT[3], so the single carry-out register
+// bank (COUTREG) serves both outputs"), so this one cell serves both COUT and
+// the carry cascade.
+//
+// There were once QL_DSP4_CCO_DFFR and QL_DSP4_SCO_DFFR blackboxes here for a
+// separate carry / sign cascade register. They were removed: no such register
+// exists in the hardware (there is no CCOUTREG parameter anywhere, and
+// SIGNCOUT is unregistered -- `assign SIGNCOUT = p_acc[49]`), they had no VPR
+// model behind them, and the techmap never instantiated them. Confirmed with
+// the arch owner before deletion.
 (* blackbox *)
 module QL_DSP4_CO_DFFR (D, R, clk, Q);
-    input  wire D;
-    input  wire R;
-    (* clkbuf_sink *) input wire clk;
-    output wire Q;
-endmodule
-
-(* blackbox *)
-module QL_DSP4_CCO_DFFR (D, R, clk, Q);
-    input  wire D;
-    input  wire R;
-    (* clkbuf_sink *) input wire clk;
-    output wire Q;
-endmodule
-
-(* blackbox *)
-module QL_DSP4_SCO_DFFR (D, R, clk, Q);
     input  wire D;
     input  wire R;
     (* clkbuf_sink *) input wire clk;
