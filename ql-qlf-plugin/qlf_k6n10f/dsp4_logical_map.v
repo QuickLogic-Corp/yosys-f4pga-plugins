@@ -378,7 +378,18 @@ module QL_DSP4 #(
     // brought the upper accumulator bits back down -- see
     // verify_techmap.py --rss.
     wire [63:0] u_ext    = {{14{knsel}}, msel};
-    wire [63:0] v_ext    = {{14{1'b0}},  vsel};
+    // V's upper bits are padded with vsel[0], NOT with a literal 0 and NOT with
+    // vsel[49]. This mirrors the architecture exactly: vpr.xml builds
+    // vselsext_node[63:50] from vsel_node_OUT[0], and mselsext_node[63:50] from
+    // mksel_node_OUT[0] (the KN/MK node) -- so the tile has no independent pins
+    // for the upper operand bits, and anything other than the arch's own source
+    // has to be routed in, overusing 14 DSP input pins and failing to route.
+    //
+    // It is still a true zero-extension: V[6:0] are structurally zero for the
+    // 19-row 32x18 reduction tree (see QL_DSP4_MULT), so vsel[0] is constant 0 --
+    // it is the tile's zero source, delivered as a real net rather than a
+    // routed constant.
+    wire [63:0] v_ext    = {{14{vsel[0]}}, vsel};
     wire [63:0] c_ext    = {{14{c_path[49]}}, c_path};
     wire [63:0] pcin_ext = {{14{PCIN[49]}}, PCIN};
     wire [63:0] ab_ext   = {{14{a_path[31]}}, a_path, b_path};
