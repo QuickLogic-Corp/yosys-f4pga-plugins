@@ -326,9 +326,23 @@ module QL_DSP4 #(
             for (i = 0; i < 50; i = i + 1) begin : bu
                 QL_DSP4_M_DFFR  ff (.D(mult_u[i]), .R(ARSTN), .clk(CLK), .Q(msel[i]));
             end
-            for (i = 0; i < 50; i = i + 1) begin : bv
+            // Only V[49:7] is registered -- 43 flops, not 50. V[6:0] are
+            // structurally zero for the 19-row 32x18 reduction tree, so the
+            // hardware does not spend flops on them (dsp4_top.v:
+            // MULT_V_LSB_ZEROS = 7) and the tile has QL_DSP4_MV_DFFR num_pb=43.
+            // Emitting 50 makes the pp_mreg_u molecule demand more MV flops
+            // than the tile owns, and packing fails with "Can not find any
+            // logic block that can implement molecule".
+            for (i = 7; i < 50; i = i + 1) begin : bv
                 QL_DSP4_MV_DFFR ff (.D(mult_v[i]), .R(ARSTN), .clk(CLK), .Q(vsel[i]));
             end
+            // V[6:0] bypass the register, matching the arch's mv_c0_d_0..6
+            // directs (mult_V[6:0] -> vsel_node[6:0]). Passed through rather
+            // than tied to 0 so vsel[0] stays a real net: the ALU Y upper-bit
+            // pad below is {14{vsel[0]}}, and a literal 0 there has to be
+            // routed in as a constant, which is what made dsp_preadder_multadd
+            // unroutable.
+            assign vsel[6:0] = mult_v[6:0];
             // KN pipelines in lockstep with U/V (dsp4_top.v:255) so the X-mux
             // pad stays aligned with the partial products it extends.
             QL_DSP4_MK_DFFR ffk (.D(mult_kn), .R(ARSTN), .clk(CLK), .Q(knsel));
