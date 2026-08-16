@@ -438,8 +438,9 @@ module pmult #(
   // Disjoint even/odd mask of p across U and V (U + V = U | V = P mod 2^50).
   // The bottom bits of V which will always resolve to 0 due to structure of
   // 19-row 32x18 CSA tree
+  integer i;
   always @* begin
-    for (int i = 0; i < U_WIDTH; i = i + 1) begin
+    for (i = 0; i < U_WIDTH; i = i + 1) begin
       if (i < V_LSB_ZEROS || i % 2 == 0) begin
         U[i] = p[i];
         V[i] = 1'b0;
