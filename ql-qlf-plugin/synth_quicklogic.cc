@@ -166,8 +166,9 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        Forwarded to ql_ioff as -min_shared_reset. A boundary register whose\n");
         log("        active-low reset pin would need a dedicated inverter LUT is normally\n");
         log("        left in the CLB; this promotes it anyway once <number> or more such\n");
-        log("        registers share the same inverter. 0 (the default) disables the\n");
-        log("        override, 1 disables the polarity rule entirely. Inert without -ioff.\n");
+        log("        registers share the same inverter. 0 disables the override so the\n");
+        log("        polarity rule always applies; 1 (the default) disables the polarity\n");
+        log("        rule entirely. Inert without -ioff.\n");
         log("\n");
         log("    -bramecc\n");
         log("        By default use BRAM without ECC support for designs \n");
@@ -242,7 +243,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         nosdff = false;
         noffenable = false;
         ioff = false;
-        ioff_min_shared_reset = 0;
+        ioff_min_shared_reset = 1;
 		bramecc = false;
 		dspv2 = false;
 		dspv4 = false;

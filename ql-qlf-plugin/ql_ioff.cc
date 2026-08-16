@@ -100,9 +100,10 @@ struct QlIoffPass : public Pass {
 		log("        group and all-or-nothing, and counts promotable candidates rather than\n");
 		log("        raw net fan-out.\n");
 		log("\n");
-		log("        K=0 (the default) disables the override. K=1 promotes every group, so\n");
-		log("        the polarity rule becomes a no-op. K=n>=2 promotes only groups of n or\n");
-		log("        more. A negative or non-numeric value is an error.\n");
+		log("        K=0 disables the override, so the polarity rule always applies. K=1\n");
+		log("        (the default) promotes every group, making the polarity rule a no-op.\n");
+		log("        K=n>=2 promotes only groups of n or more. A negative or non-numeric\n");
+		log("        value is an error.\n");
 		log("\n");
 		log("Note io_sdffr/io_sdffnr require a GPIO v3.0 architecture. Emitting them into a\n");
 		log("BLIF consumed by a v2.x architecture fails in packing with an unknown model.\n");
@@ -118,8 +119,9 @@ struct QlIoffPass : public Pass {
 	{
 		log_header(design, "Executing QL_IOFF pass.\n");
 
-		// Threshold for the shared-inverter override. 0 disables it.
-		int min_shared_reset = 0;
+		// Threshold for the shared-inverter override. 0 disables it; 1 (the
+		// default) promotes every group, making the polarity rule a no-op.
+		int min_shared_reset = 1;
 
 		size_t argidx;
 		for (argidx = 1; argidx < args.size(); argidx++) {
