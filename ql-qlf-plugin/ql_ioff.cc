@@ -20,12 +20,27 @@ struct Candidate {
 
 // The cell type a candidate is promoted to. This four-way mapping used to be
 // duplicated verbatim in the input and output paths.
-static RTLIL::IdString target_type(RTLIL::IdString src_type, bool resetless)
+//
+// `have_io_ff` says whether the cell library defines the GPIO v3.0 IO subtile FF,
+// which decides where a *reset-less* candidate goes. v3.0 collapsed the two v2.x IO
+// flip-flops into one whose synchronous reset is hard-wired to io.lreset with no
+// mux, so those architectures declare no dff/dffn model at all and a plain dff is
+// unpackable. Target the reset FF and hold its active-low reset inactive instead.
+// v2.x libraries have no io_sdffr, and there dff/dffn still pack into io_ff/LATCH
+// exactly as before.
+static RTLIL::IdString target_type(RTLIL::IdString src_type, bool resetless, bool have_io_ff)
 {
 	bool negedge = src_type.in(ID(dffnre), ID(sdffnre));
-	if (resetless)
+	if (resetless && !have_io_ff)
 		return negedge ? ID(dffn) : ID(dff);
 	return negedge ? ID(io_sdffnr) : ID(io_sdffr);
+}
+
+// True for the two IO subtile FF types, whose R pin must be driven even when the
+// register being promoted had no reset.
+static bool is_io_ff(RTLIL::IdString type)
+{
+	return type.in(ID(io_sdffr), ID(io_sdffnr));
 }
 
 // Returns the dedicated polarity inverter driving `bit`, or nullptr when `bit`
@@ -82,10 +97,15 @@ struct QlIoffPass : public Pass {
 		log("This pass promotes qlf_k6n10f registers directly connected to a top-level I/O\n");
 		log("port to I/O FFs.\n");
 		log("\n");
-		log("A register with no reset is promoted to dff/dffn. A register with a used\n");
-		log("synchronous reset is promoted to io_sdffr/io_sdffnr, the GPIO architecture v3.0\n");
-		log("IO subtile flip-flops. Registers with an enable, or with an asynchronous reset,\n");
-		log("are never promoted: the IO subtile FF has neither.\n");
+		log("A register with a used synchronous reset is promoted to io_sdffr/io_sdffnr,\n");
+		log("the GPIO architecture v3.0 IO subtile flip-flops. Registers with an enable, or\n");
+		log("with an asynchronous reset, are never promoted: the IO subtile FF has neither.\n");
+		log("\n");
+		log("A register with no reset goes to io_sdffr/io_sdffnr as well, with its active-low\n");
+		log("reset tied to constant 1, whenever the cell library defines those primitives --\n");
+		log("v3.0 has a single IO flip-flop whose reset is hard-wired, so it declares no\n");
+		log("dff/dffn model and a plain dff cannot be packed. On a v2.x library, where the\n");
+		log("primitives are absent, a reset-less register is promoted to dff/dffn as before.\n");
 		log("\n");
 		log("The IO FF reset pin is active-low. A register whose reset would need a\n");
 		log("dedicated inverter LUT to satisfy that -- an active-high reset taken straight\n");
@@ -150,6 +170,14 @@ struct QlIoffPass : public Pass {
 		if (!module)
 			return;
 		modwalker.setup(module);
+
+		// GPIO v3.0 cell libraries define the IO subtile FF; v2.x ones do not, so
+		// its presence in the design is the architecture-version signal. Keying on
+		// the library rather than a pass option means the right thing happens per
+		// device with nothing to set: the flow reads cells_sim.v from device_data,
+		// which ships the primitives only on v3.0 devices. Both edges are required
+		// because a reset-less candidate may need either.
+		const bool have_io_ff = design->module(ID(io_sdffr)) && design->module(ID(io_sdffnr));
 
 		dict<SigBit, pool<SigBit>> output_bit_aliases;
 		for (Wire *wire : module->wires())
@@ -290,13 +318,20 @@ struct QlIoffPass : public Pass {
 				continue;
 
 			Cell *cell = cand.cell;
-			IdString new_type = target_type(cell->type, cand.resetless);
+			IdString new_type = target_type(cell->type, cand.resetless, have_io_ff);
 			log("Promoting register %s to input IOFF (%s).\n", log_signal(cell->getPort(ID::Q)), log_id(new_type));
 			promoted[new_type]++;
 			cell->type = new_type;
 			cell->unsetPort(ID::E);
-			if (cand.resetless)
-				cell->unsetPort(ID::R);
+			if (cand.resetless) {
+				// The IO subtile FF has no reset-less variant, so a reset-less
+				// register keeps an R pin and holds it inactive. R is active low,
+				// hence constant 1. dff/dffn have no R at all, so drop it there.
+				if (is_io_ff(new_type))
+					cell->setPort(ID::R, State::S1);
+				else
+					cell->unsetPort(ID::R);
+			}
 			// Otherwise R and its connection are preserved as they are.
 		}
 
@@ -346,7 +381,7 @@ struct QlIoffPass : public Pass {
 				}
 
 				Cell *src = cand->cell;
-				IdString new_type = target_type(src->type, cand->resetless);
+				IdString new_type = target_type(src->type, cand->resetless, have_io_ff);
 				log("Promoting %s to output IOFF (%s).\n", log_signal(sig_n[i]), log_id(new_type));
 
 				promoted[new_type]++;
@@ -357,6 +392,8 @@ struct QlIoffPass : public Pass {
 				new_cell->setPort(ID::Q, sig_n[i]);
 				if (!cand->resetless)
 					new_cell->setPort(ID::R, src->getPort(ID::R));
+				else if (is_io_ff(new_type))
+					new_cell->setPort(ID::R, State::S1); // active low, held inactive
 				new_cell->set_bool_attribute(ID::keep);
 			}
 		}

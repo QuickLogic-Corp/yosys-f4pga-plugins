@@ -4,6 +4,12 @@
 # 5A.7 and 5A.8 are the load-bearing cases: they are where rule R1 disagrees
 # with the alternatives that were rejected, so they are what stops a future
 # refactor from silently drifting to a different rule.
+#
+# NOTE ON K. Rule R1 only declines when the shared-inverter override is off, and
+# the shipped default is now K=1, which disables the rule entirely. Every case
+# below that expects a *decline* therefore pins `-ioff_min_shared_reset 0`
+# explicitly rather than relying on the default -- otherwise the test silently
+# stops exercising R1 the next time the default moves.
 
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
@@ -110,7 +116,7 @@ assert_no_inverter_on_reset rst_lo
 # 5A.10 The refusal is user-visible on the *normal* log, not only under -d, and
 #       is polarity-specific rather than the old generic message.
 design -load read
-set log_hi [capture_log rst_hi synth_quicklogic -family qlf_k6n10f -top rst_hi -ioff]
+set log_hi [capture_log rst_hi synth_quicklogic -family qlf_k6n10f -top rst_hi -ioff -ioff_min_shared_reset 0]
 yosys cd rst_hi
 stat
 select -assert-count 0 t:io_sdffr
@@ -121,7 +127,7 @@ assert_log_lacks rst_hi $log_hi "E or R is used"
 
 # 5A.3  Negedge variant of 5A.2.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top rst_hi_n -ioff
+synth_quicklogic -family qlf_k6n10f -top rst_hi_n -ioff -ioff_min_shared_reset 0
 yosys cd rst_hi_n
 stat
 select -assert-count 0 t:io_sdffnr
@@ -140,7 +146,7 @@ assert_no_inverter_on_reset rst_lo_out
 # 5A.5  Active-high reset on an output-side register: declined. Nothing is built
 #       and the output port is not swapped -- so no cell carries `keep`.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top rst_hi_out -ioff
+synth_quicklogic -family qlf_k6n10f -top rst_hi_out -ioff -ioff_min_shared_reset 0
 yosys cd rst_hi_out
 stat
 select -assert-count 0 t:io_sdffr
@@ -148,13 +154,16 @@ select -assert-count 1 t:sdffre
 select -assert-count 0 a:keep
 select -assert-count 1 o:q_o
 
-# 5A.6  Resetless: the polarity rule must not touch this path (REQ-B11).
+# 5A.6  Resetless: the polarity rule must not touch this path (REQ-B11). The
+#       target is io_sdffr because this library defines it -- see ioff.tcl -- and
+#       its R is tied inactive, which is precisely why R1 has nothing to weigh.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top resetless -ioff
+synth_quicklogic -family qlf_k6n10f -top resetless -ioff -ioff_min_shared_reset 0
 yosys cd resetless
 stat
-select -assert-count 1 t:dff
-select -assert-count 0 t:io_sdffr
+select -assert-count 1 t:io_sdffr
+select -assert-count 0 t:dff
+assert_all_ports_connected resetless io_sdffr R {1'1}
 
 # 5A.7  Active-high reset from fabric logic: the inversion is absorbed into the
 #       reset-expression LUT mask, so it is free and the register promotes.

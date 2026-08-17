@@ -38,7 +38,10 @@ select -assert-count 1 t:io_sdffr
 design -load read
 synth_quicklogic -family qlf_k6n10f -top flag_none -ioff
 yosys cd flag_none
-select -assert-count 1 t:dff
+# Resetless, but this library defines io_sdffr, so the reset-less path targets the
+# IO FF with its reset tied inactive rather than a plain dff -- see ioff.tcl.
+select -assert-count 1 t:io_sdffr
+select -assert-count 0 t:dff
 
 # -----------------------------------------------------------------------------
 # 6.3  -ioff -nosdff must not error. With no $_SDFF* target available,
@@ -60,8 +63,8 @@ design -load read
 synth_quicklogic -family qlf_k6n10f -top flag_none -ioff -nosdff
 yosys cd flag_none
 stat
-select -assert-count 0 t:io_sdffr
-select -assert-count 1 t:dff
+select -assert-count 1 t:io_sdffr
+select -assert-count 0 t:dff
 
 # -----------------------------------------------------------------------------
 # 6.4  -ioff -no_ff_map must not error either. With FF techmap off, none of the

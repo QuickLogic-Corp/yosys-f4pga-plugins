@@ -86,12 +86,16 @@ check_share          share_count  8   0   8
 # 5B.5  The override does not reach past the case it was written for.
 # -----------------------------------------------------------------------------
 # 5B.5a  Resetless path is untouched by K.
+#        K only gates the shared-inverter override, which needs a reset to apply
+#        to, so a reset-less register promotes identically at every K. The target
+#        is io_sdffr because this library defines it -- see ioff.tcl -- and its R
+#        is tied inactive, which is what keeps it outside the override entirely.
 foreach k {0 1 2 8} {
     design -load read
     synth_quicklogic -family qlf_k6n10f -top share_none -ioff -ioff_min_shared_reset $k
     yosys cd share_none
-    select -assert-count 1 t:dff
-    select -assert-count 0 t:io_sdffr
+    select -assert-count 1 t:io_sdffr
+    select -assert-count 0 t:dff
 }
 
 # 5B.5b  An absorbed inversion was never declined, so the override never applies
@@ -124,12 +128,16 @@ foreach k {0 1 2 8} {
 # -----------------------------------------------------------------------------
 # 5B.3  Argument plumbing.
 # -----------------------------------------------------------------------------
-# 5B.3c  Default: no option given behaves as K=0.
+# 5B.3c  Default: no option given behaves as the shipped default, K=1, so the
+#        override fires and the whole group promotes. K=0 -- the value that makes
+#        the polarity rule decline -- is pinned explicitly by the sweep table
+#        above (`check_share share8 0 0 8`), so that property survives the default
+#        moving again.
 design -load read
 synth_quicklogic -family qlf_k6n10f -top share8 -ioff
 yosys cd share8
-select -assert-count 0 t:io_sdffr
-select -assert-count 8 t:sdffre
+select -assert-count 8 t:io_sdffr
+select -assert-count 0 t:sdffre
 
 # 5B.3e  -ioff_min_shared_reset without -ioff must not enable promotion behind
 #        -ioff's back.
@@ -155,7 +163,7 @@ select -assert-count 2 t:io_sdffr
 #       K would have changed anything.
 # -----------------------------------------------------------------------------
 design -load read
-set log_k0 [capture_log share8_k0 synth_quicklogic -family qlf_k6n10f -top share8 -ioff]
+set log_k0 [capture_log share8_k0 synth_quicklogic -family qlf_k6n10f -top share8 -ioff -ioff_min_shared_reset 0]
 assert_log_has share8_k0 $log_k0 "ql_ioff summary: K=0"
 assert_log_has share8_k0 $log_k0 "io_sdffr=0"
 assert_log_has share8_k0 $log_k0 "declined by reset polarity: 8 in 1 group(s)"
