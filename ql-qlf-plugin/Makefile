@@ -25,6 +25,7 @@ SOURCES = synth_quicklogic.cc \
           quicklogic_eqn.cc \
           ql-edif.cc \
           ql_ioff.cc \
+          ql_io_translate.cc \
           ql-dsp-simd.cc \
           ql-dsp-macc.cc \
           ql-bram-split.cc \

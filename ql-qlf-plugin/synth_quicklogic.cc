@@ -989,7 +989,16 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 		
 		if (check_label("iomap", "(for qlf_k6n10f)") && (family == "qlf_k6n10f" || help_mode)) {
-			if (ioff ) {
+			// Not on the Synplify path. Deciding which boundary registers become
+			// IO flip-flops belongs to whichever tool synthesised the design, and
+			// on a Synplify netlist that is Synplify: where it has made the call we
+			// translate its output and nothing more. Note this is a statement of
+			// intent rather than a behavioural change -- ql_ioff already promoted
+			// nothing there, because Synplify ties unused E and R to a VCC cell
+			// output rather than to a literal 1, so every candidate was declined.
+			// The gate is what stops that becoming promotion by accident if the
+			// constant handling is ever made Synplify-aware.
+			if (ioff && !synplify) {
 				run(stringf("ql_ioff -min_shared_reset %d", ioff_min_shared_reset));
 				run("opt_clean");
 			}
@@ -1042,6 +1051,12 @@ struct SynthQuickLogicPass : public ScriptPass {
             std::string family_path = " " + lib_path + family;
             if (family == "qlf_k6n10f") {
                 if (synplify) {
+					// Before synplify_map.v expands IBUF_FF/OBUF_FF into a plain
+					// dff, which a GPIO v3.0 architecture has no model for. Runs
+					// first so the cells are consumed at their source and no dff
+					// intermediate ever exists; a no-op on v2.x libraries, and on
+					// any netlist Synplify produced with IO insertion disabled.
+					run("ql_io_translate");
 					run("opt -fast -mux_undef -undriven -fine" + noDFFArgs);
                     run("techmap -autoproc -map" + family_path + "/synplify_map.v");
                     run("opt_lut");

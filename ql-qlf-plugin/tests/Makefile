@@ -42,7 +42,8 @@ TESTS = \
 	qlf_k6n10f/ioff_badval \
 	qlf_k6n10f/ioff_badopt \
 	qlf_k6n10f/ioff_flags \
-	qlf_k6n10f/ioff_blif
+	qlf_k6n10f/ioff_blif \
+	qlf_k6n10f/io_translate
 #	qlf_k6n10_bram \
 
 SIM_TESTS = \
@@ -109,5 +110,6 @@ qlf_k6n10f/ioff_badval_negative = 1
 qlf_k6n10f-ioff_badopt_verify = true
 qlf_k6n10f-ioff_flags_verify = true
 qlf_k6n10f-ioff_blif_verify = true
+qlf_k6n10f-io_translate_verify = true
 qlf_k6n10f/ioff_badopt_negative = 1
 #qlf_k6n10_bram_verify = true
