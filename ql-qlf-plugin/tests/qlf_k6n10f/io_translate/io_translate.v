@@ -5,10 +5,10 @@
 // job of the pass is only to re-spell that decision as the GPIO v3.0 IO subtile
 // primitive.
 //
-// IBUF_FF/OBUF_FF are declared here rather than pulled from synplify_map.v: the
-// plugin's copy of that file does not carry them (only the generated device_data
-// copy does), and driving the pass directly keeps the test focused on the rewrite
-// rather than on the whole -synplify flow.
+// IBUF_FF/OBUF_FF are declared here rather than pulled from synplify_map.v, so the
+// test exercises the rewrite on its own without reading the map file or standing up
+// the whole -synplify flow. The declarations only need to match the port set the
+// pass reads.
 
 (* blackbox *)
 module IBUF_FF (output O, input I, input C);
