@@ -519,6 +519,15 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("prepare")) {
             if (synplify) {
+				// As early as possible: synplify_map.v expands IBUF_FF/OBUF_FF into
+				// a plain dff, and it is techmapped in more than one place -- the
+				// map_luts label does so before ABC whenever -de is set, well ahead
+				// of map_synplify. Translating here, straight off the front end,
+				// means the cells are consumed while they still exist regardless of
+				// which of those paths the run takes. On a v3.0 architecture the dff
+				// they would otherwise become has no model and packing fails with
+				// "Subckt instantiates model 'dff'".
+				run("ql_io_translate");
 				run("proc");
 				run("flatten");
 				run("opt -nodffe -nosdff");
@@ -1051,12 +1060,6 @@ struct SynthQuickLogicPass : public ScriptPass {
             std::string family_path = " " + lib_path + family;
             if (family == "qlf_k6n10f") {
                 if (synplify) {
-					// Before synplify_map.v expands IBUF_FF/OBUF_FF into a plain
-					// dff, which a GPIO v3.0 architecture has no model for. Runs
-					// first so the cells are consumed at their source and no dff
-					// intermediate ever exists; a no-op on v2.x libraries, and on
-					// any netlist Synplify produced with IO insertion disabled.
-					run("ql_io_translate");
 					run("opt -fast -mux_undef -undriven -fine" + noDFFArgs);
                     run("techmap -autoproc -map" + family_path + "/synplify_map.v");
                     run("opt_lut");
