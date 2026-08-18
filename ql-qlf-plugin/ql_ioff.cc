@@ -43,6 +43,45 @@ static bool is_io_ff(RTLIL::IdString type)
 	return type.in(ID(io_sdffr), ID(io_sdffnr));
 }
 
+// Map VCC/GND driver-cell outputs to constant bits.
+//
+// Needed because the two front ends spell an unused control pin differently. On the
+// Yosys path ffs_map.v ties E and R to a literal 1'b1, so a plain is_fully_ones()
+// answers "is this pin unused?". Synplify instead drives them from a VCC cell's
+// output net, which is electrically the same but structurally a wire -- so the
+// literal test says "used" and every candidate would be refused. The DSP passes hit
+// this first; mirrors ql_dspv2_types::build_const_drivers.
+static void build_const_drivers(RTLIL::Module *module, SigMap &sigmap, dict<SigBit, State> &const_drivers)
+{
+	for (auto *drv : module->cells()) {
+		if (drv->type == ID(VCC)) {
+			for (auto &bit : sigmap(drv->getPort(ID(P))))
+				const_drivers[bit] = State::S1;
+		} else if (drv->type == ID(GND)) {
+			for (auto &bit : sigmap(drv->getPort(ID(G))))
+				const_drivers[bit] = State::S0;
+		}
+	}
+}
+
+// True when every bit of `port` is constant 1 once VCC/GND driver cells are resolved.
+// Unlike ql_dspv2_types::get_const_port_value this returns a bool rather than
+// erroring on a non-constant port: here a genuinely used enable or reset is ordinary
+// input, not a malformed netlist.
+static bool port_is_const_ones(RTLIL::Cell *cell, RTLIL::IdString port, SigMap &sigmap,
+			       const dict<SigBit, State> &const_drivers)
+{
+	if (!cell->hasPort(port))
+		return false;
+	RTLIL::SigSpec sig = sigmap(cell->getPort(port));
+	for (auto &bit : sig) {
+		auto it = const_drivers.find(bit);
+		if (it != const_drivers.end())
+			bit = SigBit(it->second);
+	}
+	return sig.is_fully_ones();
+}
+
 // Returns the dedicated polarity inverter driving `bit`, or nullptr when `bit`
 // needs no *added* inversion to reach an active-low reset pin.
 //
@@ -74,6 +113,23 @@ static RTLIL::Cell *dedicated_inverter_driving(ModWalker &modwalker, RTLIL::SigB
 		// 1-input truth table: lut[0] = f(0), lut[1] = f(1). An inverter is
 		// (1, 0). A buffer is (0, 1) and must not match.
 		if (lut[0] == RTLIL::State::S1 && lut[1] == RTLIL::State::S0)
+			return driver;
+		return nullptr;
+	}
+
+	// The same inverter before synplify_map.v has been techmapped: Synplify emits a
+	// LUT1 blackbox carrying the truth table in INIT rather than a $lut. map_luts
+	// techmaps synplify_map.v ahead of iomap only when -de is set, so without this
+	// case the rule would silently fail open on a Synplify design built without it.
+	// synplify_map.v maps LUT1 onto $lut #(.WIDTH(1), .LUT(INIT)), so INIT carries
+	// the identical encoding and the truth-table test above applies unchanged.
+	if (driver->type == ID(LUT1)) {
+		if (!driver->hasParam(ID(INIT)))
+			return nullptr; // no truth table to read -- fail open
+		RTLIL::Const init = driver->getParam(ID(INIT));
+		if (GetSize(init) < 2)
+			return nullptr; // malformed -- fail open
+		if (init[0] == RTLIL::State::S1 && init[1] == RTLIL::State::S0)
 			return driver;
 		return nullptr;
 	}
@@ -171,6 +227,11 @@ struct QlIoffPass : public Pass {
 			return;
 		modwalker.setup(module);
 
+		// Resolve VCC/GND driver cells to constants before any pin is inspected,
+		// so the eligibility tests below read the same on both front ends.
+		dict<SigBit, State> const_drivers;
+		build_const_drivers(module, modwalker.sigmap, const_drivers);
+
 		// GPIO v3.0 cell libraries define the IO subtile FF; v2.x ones do not, so
 		// its presence in the design is the architecture-version signal. Keying on
 		// the library rather than a pass option means the right thing happens per
@@ -200,8 +261,8 @@ struct QlIoffPass : public Pass {
 				continue;
 
 			log_debug("Checking cell %s.\n", cell->name.c_str());
-			bool e_const = cell->getPort(ID::E).is_fully_ones();
-			bool r_const = cell->getPort(ID::R).is_fully_ones();
+			bool e_const = port_is_const_ones(cell, ID::E, modwalker.sigmap, const_drivers);
+			bool r_const = port_is_const_ones(cell, ID::R, modwalker.sigmap, const_drivers);
 
 			if (!e_const) {
 				// The IO subtile FF has no enable.

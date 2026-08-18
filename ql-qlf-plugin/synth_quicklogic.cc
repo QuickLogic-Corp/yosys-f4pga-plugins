@@ -1007,7 +1007,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 			// output rather than to a literal 1, so every candidate was declined.
 			// The gate is what stops that becoming promotion by accident if the
 			// constant handling is ever made Synplify-aware.
-			if (ioff && !synplify) {
+			if (ioff) {
 				run(stringf("ql_ioff -min_shared_reset %d", ioff_min_shared_reset));
 				run("opt_clean");
 			}
