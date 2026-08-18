@@ -76,6 +76,10 @@ struct V2Config {
     // Not from MODE_BITS: output register, encoded in output_select[2]
     // (output_select >= 4). Set from the port in execute().
     bool out_reg = false;
+    // Raw output_select. RSS is bypassed at osel 0 and 4 (dspv2_sim.v: the
+    // output mux takes z0 = the raw product, not z2 = acc_sat), so USE_RSS
+    // must consider it and not just the MODE_BITS round/shift/saturate fields.
+    int osel = 0;
 };
 
 enum class V2Mode { MULT, MULTACC, MULTACC_NEG, MULTADD, MULTADD_NEG, PREADDER_MULT, PREADDER_MULTADD, CONCAT_CASCADE, UNKNOWN };
@@ -372,7 +376,14 @@ struct QlDspV2ToV4Pass : public Pass {
     // Set the RSS (round/shift/saturate) config from V2 MODE_BITS (P1-FR-13).
     void set_rss_params(RTLIL::Cell *dsp, const V2Config &c)
     {
-        bool rss_active = (c.round != 0) || (c.shift_reg != 0) || c.saturate;
+        // dspv2_sim.v output mux: osel 0 -> z0 (raw product) and osel 4 -> z1,
+        // which latches z0 when output_select==4. Both bypass acc_sat, so RSS
+        // has no effect in V2 at those two encodings even when the MODE_BITS
+        // round/shift/saturate fields are set. Enabling USE_RSS there made V4
+        // shift a result V2 leaves alone.
+        bool rss_selected = (c.osel != 0) && (c.osel != 4);
+        bool rss_active = rss_selected &&
+                          ((c.round != 0) || (c.shift_reg != 0) || c.saturate);
         dsp->setParam(ID(USE_RSS), c1(rss_active));
         dsp->setParam(ID(ROUND), c3(c.round));
         dsp->setParam(ID(SHIFT), c6(c.shift_reg));
@@ -882,6 +893,7 @@ struct QlDspV2ToV4Pass : public Pass {
                 int fb = get_const_port(cell, ID(feedback), sigmap, const_drivers);
                 int os = get_const_port(cell, ID(output_select), sigmap, const_drivers);
                 c.out_reg = (os >= 4); // output_select[2] = output register
+                c.osel = os;
                 V2Mode m = classify(control_word(fb, os, c));
                 // Accumulate modes rely on load_acc; V4 has no dynamic equivalent,
                 // so it must be constant (CASE 2/3).
