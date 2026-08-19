@@ -171,15 +171,16 @@ module QL_DSP4_MULT (I0, I1, U, V, KN);
   assign KN = ~k;
 endmodule
 
-// Shared ALU core, from ffb/rtl/alu.v with ALUMODE baked in and the SIMD
-// segmented path omitted (the techmap emits a distinct cell per ALUMODE, and
-// USE_SIMD modes are rejected by _TECHMAP_FAIL_ rather than lowered):
+// Shared ALU core, from ffb/rtl/alu.v with ALUMODE baked in as MODE. The SIMD
+// segmented path is included: USE_SIMD arrives as a cell parameter, the same way
+// QL_DSP4_RSS takes ROUND/SHIFT/SATURATE.
 //   00 ADD      : ALU_OUT = W + X + Y + Z + CIN
 //   01 REV_SUB  : ALU_OUT = -Z + (W + X + Y + CIN) - 1
 //   10 NOT_SUM  : ALU_OUT = -(Z + W + X + Y + CIN) - 1
 //   11 SUB      : ALU_OUT = Z - (W + X + Y + CIN)
 module qldsp4_alu_core #(
-    parameter [1:0] MODE = 2'b00
+    parameter [1:0] MODE     = 2'b00,
+    parameter [1:0] USE_SIMD = 2'b00
 ) (
     input  wire [63:0] W,
     input  wire [63:0] X,
@@ -211,48 +212,105 @@ module qldsp4_alu_core #(
   wire        cin_eff = MODE[1] ? ~CINc : CINc;
 
   wire [64:0] full_sum = {1'b0, z_eff} + {1'b0, wxy_eff} + cin_eff;
-  assign ALU_OUT = full_sum[63:0];
+
+  // --- SIMD segmented path (alu.v). Four 12-bit segments; carry is blocked at
+  // the segment boundaries per USE_SIMD. TWO24 lets carry cross seg0->seg1 and
+  // seg2->seg3 but never the 24-bit boundary; FOUR12 blocks all of them and
+  // injects cin_eff into each segment so every one gets its own +1 for a
+  // two's-complement subtract.
+  wire [12:0] simd_s0 = {1'b0, z_eff[11:0]}  + {1'b0, wxy_eff[11:0]}  + cin_eff;
+  wire        simd_c0 = simd_s0[12];
+  wire        simd_c1_in = (USE_SIMD == 2'b10) ? cin_eff : simd_c0;
+  wire [12:0] simd_s1 = {1'b0, z_eff[23:12]} + {1'b0, wxy_eff[23:12]} + simd_c1_in;
+  wire        simd_c1 = simd_s1[12];
+  wire [12:0] simd_s2 = {1'b0, z_eff[35:24]} + {1'b0, wxy_eff[35:24]} + cin_eff;
+  wire        simd_c2 = simd_s2[12];
+  wire        simd_c3_in = (USE_SIMD == 2'b10) ? cin_eff : simd_c2;
+  wire [12:0] simd_s3 = {1'b0, z_eff[47:36]} + {1'b0, wxy_eff[47:36]} + simd_c3_in;
+  wire        simd_c3 = simd_s3[12];
+
+  wire [63:0] simd_result =
+      {14'b0, simd_s3[11:0], simd_s2[11:0], simd_s1[11:0], simd_s0[11:0]};
+
+  assign ALU_OUT = (USE_SIMD == 2'b00) ? full_sum[63:0] : simd_result;
 
   // CARRYOUT[3] = carry out of bit 49 (the 50-bit P / PCOUT cascade boundary,
-  // alu.v's CASC_BIT); the other carry bits are SIMD-only and 0 here.
+  // alu.v's CASC_BIT) in the 1x50 path. In TWO24 only [1] and [3] are the real
+  // segment carries -- [0] and [2] are intra-half intermediates and read 0. In
+  // FOUR12 all four are valid.
   wire cascade_carry = full_sum[50] ^ z_eff[50] ^ wxy_eff[50];
-  assign CARRYOUT = {cascade_carry, 3'b000};
+  assign CARRYOUT =
+      (USE_SIMD == 2'b00) ? {cascade_carry, 3'b000} :
+      (USE_SIMD == 2'b01) ? {simd_c3, 1'b0, simd_c1, 1'b0}
+                          : {simd_c3, simd_c2, simd_c1, simd_c0};
 endmodule
 
 module QL_DSP4_ALU_ADD (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+  // One combined word, matching the arch's four reserved mode bits:
+  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+  // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
+  // read here. Declared and forwarded: a parameter left unconnected silently
+  // takes the default, which is the bug class this DSP keeps producing.
+  parameter [3:0] MODE_BITS = 4'b0000;
+  wire [1:0] USE_SIMD = MODE_BITS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b00)) u (.W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
-                                     .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
+  qldsp4_alu_core #(.MODE(2'b00), .USE_SIMD(MODE_BITS[3:2])) u (
+      .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
+      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
 endmodule
 
 module QL_DSP4_ALU_REV_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+  // One combined word, matching the arch's four reserved mode bits:
+  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+  // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
+  // read here. Declared and forwarded: a parameter left unconnected silently
+  // takes the default, which is the bug class this DSP keeps producing.
+  parameter [3:0] MODE_BITS = 4'b0000;
+  wire [1:0] USE_SIMD = MODE_BITS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b01)) u (.W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
-                                     .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
+  qldsp4_alu_core #(.MODE(2'b01), .USE_SIMD(MODE_BITS[3:2])) u (
+      .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
+      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
 endmodule
 
 module QL_DSP4_ALU_NOT_SUM (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+  // One combined word, matching the arch's four reserved mode bits:
+  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+  // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
+  // read here. Declared and forwarded: a parameter left unconnected silently
+  // takes the default, which is the bug class this DSP keeps producing.
+  parameter [3:0] MODE_BITS = 4'b0000;
+  wire [1:0] USE_SIMD = MODE_BITS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b10)) u (.W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
-                                     .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
+  qldsp4_alu_core #(.MODE(2'b10), .USE_SIMD(MODE_BITS[3:2])) u (
+      .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
+      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
 endmodule
 
 module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+  // One combined word, matching the arch's four reserved mode bits:
+  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+  // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
+  // read here. Declared and forwarded: a parameter left unconnected silently
+  // takes the default, which is the bug class this DSP keeps producing.
+  parameter [3:0] MODE_BITS = 4'b0000;
+  wire [1:0] USE_SIMD = MODE_BITS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b11)) u (.W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
-                                     .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
+  qldsp4_alu_core #(.MODE(2'b11), .USE_SIMD(MODE_BITS[3:2])) u (
+      .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
+      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
 endmodule
 
 // Pre-adder, from ffb/rtl/preadder.v: AD = saturate(I0 +/- I1), with I0 the
@@ -355,9 +413,12 @@ endmodule
 // and named here matches QL_DSP4's own parameter names and stays readable in
 // the BLIF, and that packing is then one documented rule for the FASM side.
 module QL_DSP4_RSS (ACC_IN, ACC_OUT);
-  parameter [2:0] ROUND    = 3'b000;
-  parameter [5:0] SHIFT    = 6'b000000;
-  parameter       SATURATE = 1'b0;
+  // One combined config word; see QL_DSP4_leaves.v for the packing.
+  //   MODE_BITS[2:0] ROUND   MODE_BITS[8:3] SHIFT   MODE_BITS[9] SATURATE
+  parameter [9:0] MODE_BITS = 10'b0;
+  wire [2:0] ROUND    = MODE_BITS[2:0];
+  wire [5:0] SHIFT    = MODE_BITS[8:3];
+  wire       SATURATE = MODE_BITS[9];
 
   input  wire [63:0] ACC_IN;
   output wire [49:0] ACC_OUT;

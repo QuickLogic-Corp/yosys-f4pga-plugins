@@ -72,6 +72,15 @@ endmodule
 // ALU: ALU_OUT = W + X + Y + Z + CIN, ALUMODE = 00 (add).
 (* blackbox *)
 module QL_DSP4_ALU_ADD (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+    // One combined configuration word, matching the four mode bits the
+    // architecture already reserves for this cell:
+    //
+    //   MODE_BITS[1:0] ALUMODE      MODE_BITS[3:2] USE_SIMD
+    //
+    // openfpga.xml carries the ALUMODE half as each mode's default, written
+    // LSB-first -- REV_SUB is "1000", i.e. 4'b0001 = {USE_SIMD 00, ALUMODE 01}.
+    // USE_SIMD: 00 one 50-bit add, 01 dual 24-bit, 10 quad 12-bit.
+    parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
     input  wire [63:0] Y;
@@ -84,6 +93,15 @@ endmodule
 // ALU, ALUMODE = 11 (subtract):  ALU_OUT = Z - (W + X + Y + CIN).
 (* blackbox *)
 module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+    // One combined configuration word, matching the four mode bits the
+    // architecture already reserves for this cell:
+    //
+    //   MODE_BITS[1:0] ALUMODE      MODE_BITS[3:2] USE_SIMD
+    //
+    // openfpga.xml carries the ALUMODE half as each mode's default, written
+    // LSB-first -- REV_SUB is "1000", i.e. 4'b0001 = {USE_SIMD 00, ALUMODE 01}.
+    // USE_SIMD: 00 one 50-bit add, 01 dual 24-bit, 10 quad 12-bit.
+    parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
     input  wire [63:0] Y;
@@ -96,6 +114,15 @@ endmodule
 // ALU, ALUMODE = 01 (reverse subtract):  ALU_OUT = -Z + (W + X + Y + CIN) - 1.
 (* blackbox *)
 module QL_DSP4_ALU_REV_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+    // One combined configuration word, matching the four mode bits the
+    // architecture already reserves for this cell:
+    //
+    //   MODE_BITS[1:0] ALUMODE      MODE_BITS[3:2] USE_SIMD
+    //
+    // openfpga.xml carries the ALUMODE half as each mode's default, written
+    // LSB-first -- REV_SUB is "1000", i.e. 4'b0001 = {USE_SIMD 00, ALUMODE 01}.
+    // USE_SIMD: 00 one 50-bit add, 01 dual 24-bit, 10 quad 12-bit.
+    parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
     input  wire [63:0] Y;
@@ -108,6 +135,15 @@ endmodule
 // ALU, ALUMODE = 10 (not-sum):  ALU_OUT = -(Z + W + X + Y + CIN) - 1.
 (* blackbox *)
 module QL_DSP4_ALU_NOT_SUM (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+    // One combined configuration word, matching the four mode bits the
+    // architecture already reserves for this cell:
+    //
+    //   MODE_BITS[1:0] ALUMODE      MODE_BITS[3:2] USE_SIMD
+    //
+    // openfpga.xml carries the ALUMODE half as each mode's default, written
+    // LSB-first -- REV_SUB is "1000", i.e. 4'b0001 = {USE_SIMD 00, ALUMODE 01}.
+    // USE_SIMD: 00 one 50-bit add, 01 dual 24-bit, 10 quad 12-bit.
+    parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
     input  wire [63:0] Y;
@@ -131,9 +167,18 @@ endmodule
 // is then one documented rule for the FASM side.
 (* blackbox *)
 module QL_DSP4_RSS (ACC_IN, ACC_OUT);
-    parameter [2:0] ROUND    = 3'b000;
-    parameter [5:0] SHIFT    = 6'b000000;
-    parameter       SATURATE = 1'b0;
+    // One combined configuration word. The order is NOT a synthesis choice: it
+    // is the packing the physical macro already defines (see the note above),
+    //
+    //   mode = {SATURATE, SHIFT[5:0], ROUND[2:0]}
+    //   MODE_BITS[2:0] ROUND   MODE_BITS[8:3] SHIFT   MODE_BITS[9] SATURATE
+    //
+    // and openfpga.xml already reserves exactly ten bits for this cell
+    // (mode_bits="0000000000" on
+    //  dsp.dsp_wrapper[dsp4_logical].dsp.dsp_core.inreg_cell.rss_cell.QL_DSP4_RSS).
+    // DETAILED_SPEC.md Sec. 1.4 gives the same widths: ROUND 3, SHIFT 6,
+    // SATURATE 1.
+    parameter [9:0] MODE_BITS = 10'b0;
 
     input  wire [63:0] ACC_IN;
     output wire [49:0] ACC_OUT;
