@@ -33,6 +33,10 @@ TESTS = \
 	qlf_k6n10f/dsp_mult \
 	qlf_k6n10f/dsp_simd \
 	qlf_k6n10f/dsp_macc \
+	qlf_k6n10f/dspv4_mult \
+	qlf_k6n10f/dspv4_mult_add \
+	qlf_k6n10f/dspv4_mult_sub \
+	qlf_k6n10f/dspv4_macc \
 	qlf_k6n10f/dsp_madd
 #	qlf_k6n10_bram \
 
@@ -74,6 +78,10 @@ POST_SYNTH_SIM_TESTS = \
 include $(shell pwd)/../../Makefile_test.common
 
 consts_verify = true
+dspv4_mult_verify = true
+dspv4_mult_add_verify = true
+dspv4_mult_sub_verify = true
+dspv4_macc_verify = true
 dffs_verify = true
 shreg_verify = true
 iob_no_flatten_verify = true

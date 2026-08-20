@@ -422,25 +422,12 @@ struct SynthQuickLogicPass : public ScriptPass {
         if (family != "pp3" && family != "qlf_k4n8" && family != "qlf_k6n10" && family != "qlf_k6n10f")
             log_cmd_error("Invalid family specified: '%s'\n", family.c_str());
 
-        // DSP-V4 has no native Yosys inference yet (tracked as aurora2#2045).
-        // The only supported route to QL_DSP4 today is -synplify: Synplify emits
-        // QL_DSPV2 cells, ql_dspv2_to_dspv4 converts them, and dsp4_logical_map.v
-        // lowers the result to the dsp4_logical leaves.
-        //
-        // Without -synplify there is nothing to convert. Previously this fell
-        // through to the *V2* inference chain, which techmaps against dsp_map.v /
-        // dsp_final_map.v -- V1/V2 device collateral that a DSP-V4 device does not
-        // ship -- so the run died with a bare "dsp_map.v not found". Fail here
-        // instead, with a message that says what is actually unsupported.
-        if (dspv4 && !synplify)
-            log_cmd_error(
-                "DSP-V4 inference is not supported with Yosys.\n"
-                "  '-dspv4' currently requires '-synplify': the supported flow is\n"
-                "  Synplify (which infers QL_DSPV2) -> ql_dspv2_to_dspv4 -> the\n"
-                "  dsp4_logical techmap. Native Yosys DSP-V4 inference is tracked\n"
-                "  under aurora2#2045 and is not implemented yet.\n"
-                "  Workarounds: run with '-synplify', instantiate QL_DSP4 directly,\n"
-                "  or drop '-dspv4' to synthesise multipliers as soft logic.\n");
+        // DSP-V4 reaches hardware two ways, and both end at the same techmap:
+        //   -dspv4 -synplify : Synplify infers QL_DSPV2, ql_dspv2_to_dspv4
+        //                      converts, dsp4_logical_map.v lowers.
+        //   -dspv4           : ql_dspv4 infers QL_DSP4 from RTL directly,
+        //                      dsp4_logical_map.v lowers.
+        // Until Phase 2 the second had no implementation and was refused here.
 
         if (family == "qlf_k4n8") {
             nosdff = true;
@@ -634,6 +621,17 @@ struct SynthQuickLogicPass : public ScriptPass {
                         // not implemented yet, so a non-Synplify -dspv4 run has
                         // nothing to infer with and leaves multipliers soft --
                         // warned about below rather than crashing on a missing file.
+                        if (!synplify && dspv4) {
+                            // Native V4 inference (Phase 2). Emits QL_DSP4 cells
+                            // with their control word already set; the techmap
+                            // below lowers them exactly as it does the cells the
+                            // Synplify bridge produces, so the two routes cannot
+                            // drift apart.
+                            //
+                            // Multiplies the DSP cannot hold stay as $mul for the
+                            // ordinary soft path, each named by a log_debug (IN-7).
+                            run("ql_dspv4");
+                        }
                         if (!synplify && !dspv4) {
                             // DSPv2 arm — ported from YosysHQ/yosys#4932
                             // (povik/ql-dspv2 @ c68fd85b9ccceb773a4aaac2a35f7d90fbb15fc8).

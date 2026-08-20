@@ -1,0 +1,94 @@
+// ql-dspv4.pmg -- DSP-V4 inference pattern (Phase 2, IN-5).
+//
+// Matches the five Phase 2 idioms, from the smallest outwards:
+//
+//   $mul                              -> MULT
+//   $mul -> $add(C)                   -> MULT_ADD_C
+//   $mul -> $sub(C - prod)            -> MULT_SUB_C
+//   $mul -> $add -> $dff (feedback)   -> MULT_ACC,   PREG=1
+//   $mul -> $add(C) -> $add -> $dff   -> MULT_ACC_C, PREG=1
+//
+// `add` and `ff` are optional because a bare multiply is a valid match; the
+// classification in ql-dspv4.cc decides which mode a given shape is.
+//
+// The nusers guards are load-bearing, not tidiness. Absorbing a cell whose
+// output another cell still reads means the DSP swallows a value someone else
+// needs, and the netlist is quietly wrong -- it still synthesises, packs and
+// routes.
+//
+// The bound is 2, not the 3 the macc pattern uses: nusers counts the driver
+// plus the readers, so 2 means "driven here, read in exactly one place" -- the
+// cell this pattern is about to absorb it into. At 3 a product that also leaves
+// the module still matched, and the DSP would swallow it.
+
+pattern ql_dspv4
+
+state <IdString> add_ba
+state <IdString> acc_ba
+state <IdString> add_mul_port
+state <bool> add_is_sub
+
+state <int> mul_nusers
+state <int> add_nusers
+
+// The multiply. Everything else hangs off this.
+match mul
+    select mul->type.in($mul)
+    select nusers(port(mul, \Y)) <= 2
+    set mul_nusers nusers(port(mul, \Y))
+endmatch
+
+// Optional add/sub consuming the product. `choice` covers commutativity; for
+// $sub the side matters and is recorded, because C - A*B has a control word
+// (MULT_SUB_C) while A*B - C does not -- see the classification.
+match add
+    select add->type.in($add, $sub)
+    choice <IdString> AB {\A, \B}
+    define <IdString> BA (AB == \A ? \B : \A)
+    index <SigSpec> port(add, AB) === port(mul, \Y)
+    select nusers(port(add, \Y)) <= 2
+    set add_nusers nusers(port(add, \Y))
+    set add_ba BA
+    set add_mul_port AB
+    set add_is_sub add->type == $sub
+    optional
+endmatch
+
+// Optional second adder, for A*B + P + C.
+//
+// Yosys builds `p + a*b + c` LEFT-associatively: the first adder takes the
+// accumulator feedback and the product, the second adds C on top. So this match
+// is the C adder, and the flop's feedback still lands on `add` -- the reverse of
+// what the shape sketch in the plan implies. Verified against a dumped netlist
+// rather than assumed.
+match acc
+    select acc->type.in($add)
+    choice <IdString> AB {\A, \B}
+    define <IdString> BA (AB == \A ? \B : \A)
+    index <SigSpec> port(acc, AB) === (add == nullptr ? SigSpec() : port(add, \Y))
+    select nusers(port(acc, \Y)) <= 2
+    set acc_ba BA
+    optional
+endmatch
+
+// Optional accumulator flop: its D takes the last adder's result and its Q feeds
+// that adder's other operand. That feedback is what distinguishes MULT_ACC from
+// MULT_ADD_C -- without it the second operand is just C.
+//
+// D comes from the last adder in the chain -- `acc` when the three-input form
+// matched, otherwise `add`. Q always feeds `add`, because that is where the
+// accumulator value re-enters. When neither matched there is nothing to accumulate, so the index is an
+// empty SigSpec, which cannot equal a real port and leaves ff unmatched.
+//
+// These two lines are long on purpose: pmgen parses one statement per line, so
+// wrapping them turns the continuation into an unrecognised statement.
+match ff
+    select ff->type.in($dff, $adff, $dffe, $adffe)
+    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : SigSpec())
+    index <SigSpec> port(ff, \Q) === (add == nullptr ? SigSpec() : port(add, add_ba))
+    optional
+endmatch
+
+code
+    accept;
+endcode
