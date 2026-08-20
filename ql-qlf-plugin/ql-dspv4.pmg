@@ -56,6 +56,10 @@ endmatch
 
 // Optional second adder, for A*B + P + C.
 //
+// Only meaningful when the chain ends in an accumulator flop. pmgen matches this
+// before `ff`, so the constraint cannot be expressed here -- ql-dspv4.cc gates
+// it on `ff` and must keep doing so. See the comment there.
+//
 // Yosys builds `p + a*b + c` LEFT-associatively: the first adder takes the
 // accumulator feedback and the product, the second adds C on top. So this match
 // is the C adder, and the flop's feedback still lands on `add` -- the reverse of
@@ -71,21 +75,29 @@ match acc
     optional
 endmatch
 
-// Optional accumulator flop: its D takes the last adder's result and its Q feeds
-// that adder's other operand. That feedback is what distinguishes MULT_ACC from
-// MULT_ADD_C -- without it the second operand is just C.
+// Optional flop on the result. Two different shapes land here:
 //
-// D comes from the last adder in the chain -- `acc` when the three-input form
-// matched, otherwise `add`. Q always feeds `add`, because that is where the
-// accumulator value re-enters. When neither matched there is nothing to accumulate, so the index is an
-// empty SigSpec, which cannot equal a real port and leaves ff unmatched.
+//   accumulator     Q feeds `add`'s other operand, so the DSP adds to its own
+//                   previous output -- MULT_ACC / MULT_ACC_C.
+//   output register a plain pipeline register on the result -- the mode is
+//                   whatever the combinational shape was, with PREG=1.
 //
-// These two lines are long on purpose: pmgen parses one statement per line, so
-// wrapping them turns the continuation into an unrecognised statement.
+// Both use the DSP's P register, so both are worth absorbing; only the feedback
+// tells them apart, and that test lives in ql-dspv4.cc rather than here. An
+// earlier version indexed on `port(ff, \Q) === port(add, add_ba)` to force the
+// accumulator case, which also meant a pipeline register on the result never
+// matched at all and stayed in fabric -- the cost that made the registered
+// cascade_* designs unroutable.
+//
+// D comes from the last cell in the chain: `acc` for the three-input form,
+// otherwise `add`, otherwise the multiply itself. The bare-multiply branch is
+// what lets `p <= a * b` be absorbed.
+//
+// This index line is long on purpose: pmgen parses one statement per line, so
+// wrapping it turns the continuation into an unrecognised statement.
 match ff
     select ff->type.in($dff, $adff, $dffe, $adffe)
-    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : SigSpec())
-    index <SigSpec> port(ff, \Q) === (add == nullptr ? SigSpec() : port(add, add_ba))
+    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
     optional
 endmatch
 

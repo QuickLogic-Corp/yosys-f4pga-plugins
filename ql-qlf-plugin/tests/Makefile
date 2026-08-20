@@ -35,6 +35,9 @@ TESTS = \
 	qlf_k6n10f/dsp_macc \
 	qlf_k6n10f/dspv4_mult \
 	qlf_k6n10f/dspv4_mult_add \
+	qlf_k6n10f/dspv4_mult_add_chain \
+	qlf_k6n10f/dspv4_mult_regout \
+	qlf_k6n10f/dspv4_mult_regin \
 	qlf_k6n10f/dspv4_mult_sub \
 	qlf_k6n10f/dspv4_macc \
 	qlf_k6n10f/dsp_madd
@@ -80,6 +83,9 @@ include $(shell pwd)/../../Makefile_test.common
 consts_verify = true
 dspv4_mult_verify = true
 dspv4_mult_add_verify = true
+dspv4_mult_add_chain_verify = true
+dspv4_mult_regout_verify = true
+dspv4_mult_regin_verify = true
 dspv4_mult_sub_verify = true
 dspv4_macc_verify = true
 dffs_verify = true
