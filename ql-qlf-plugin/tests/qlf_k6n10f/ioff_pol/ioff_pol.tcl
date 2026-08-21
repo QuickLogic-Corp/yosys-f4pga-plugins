@@ -1,15 +1,13 @@
-# Refusal cases and reset-polarity gating -- test-plan sections 5 and 5A
-# (REQ-B2, REQ-B6, REQ-B7, REQ-B9, REQ-B10, REQ-B11).
+# Refusal cases and reset polarity -- test-plan sections 5 and 5A
+# (REQ-B2, REQ-B6, REQ-B7, REQ-B10, REQ-B11).
 #
-# 5A.7 and 5A.8 are the load-bearing cases: they are where rule R1 disagrees
-# with the alternatives that were rejected, so they are what stops a future
-# refactor from silently drifting to a different rule.
-#
-# NOTE ON K. Rule R1 only declines when the shared-inverter override is off, and
-# the shipped default is now K=1, which disables the rule entirely. Every case
-# below that expects a *decline* therefore pins `-ioff_min_shared_reset 0`
-# explicitly rather than relying on the default -- otherwise the test silently
-# stops exercising R1 the next time the default moves.
+# Reset polarity is NOT a refusal reason. Anything that can go on an IO tile
+# goes: an active-high reset needs inverting wherever the register lands, since
+# both sdffre and io_sdffr reset on !R, so promoting costs only the route from
+# the fabric inverter out to that site's lreset -- and reset is not a critical
+# path. Section 5A pins that, and 5A.2/5A.3/5A.5 are its load-bearing cases:
+# they promote *with* the inverter present, so a refactor that reintroduced a
+# polarity guard would fail them rather than silently shrink the feature.
 
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
@@ -84,7 +82,7 @@ stat
 select -assert-count 1 t:io_sdffr
 select -assert-count 0 t:io_sdffr a:keep %i
 
-# 5.8  The four refusal reasons are separately greppable (REQ-B6, defect D4:
+# 5.8  The three refusal reasons are separately greppable (REQ-B6, defect D4:
 #      they used to be one "E or R is used" message).
 design -load read
 set log_async [debug_log async_rst synth_quicklogic -family qlf_k6n10f -top async_rst -ioff]
@@ -100,7 +98,7 @@ set log_fan [debug_log fanout_d synth_quicklogic -family qlf_k6n10f -top fanout_
 assert_log_has fanout_d $log_fan "D has other consumers"
 
 # =============================================================================
-# Section 5A -- reset polarity (rule R1)
+# Section 5A -- reset polarity
 # =============================================================================
 
 # 5A.1  Active-low port reset: promoted, R wired straight to the port.
@@ -112,26 +110,27 @@ select -assert-count 1 t:io_sdffr
 assert_port_connected rst_lo io_sdffr R {\rst_n}
 assert_no_inverter_on_reset rst_lo
 
-# 5A.2  Active-high port reset: declined, register stays in the CLB.
-# 5A.10 The refusal is user-visible on the *normal* log, not only under -d, and
-#       is polarity-specific rather than the old generic message.
+# 5A.2  Active-high port reset: promoted anyway, with a dedicated inverter LUT
+#       on the reset path. Nothing in the log may present the polarity as a
+#       reason not to promote.
 design -load read
-set log_hi [capture_log rst_hi synth_quicklogic -family qlf_k6n10f -top rst_hi -ioff -ioff_min_shared_reset 0]
+set log_hi [capture_log rst_hi synth_quicklogic -family qlf_k6n10f -top rst_hi -ioff]
 yosys cd rst_hi
 stat
-select -assert-count 0 t:io_sdffr
-select -assert-count 1 t:sdffre
-assert_log_has rst_hi $log_hi "the reset is active-high"
-assert_log_has rst_hi $log_hi "Use an active-low reset"
+select -assert-count 1 t:io_sdffr
+select -assert-count 0 t:sdffre
+assert_inverter_on_reset rst_hi
+assert_log_lacks rst_hi $log_hi "the reset is active-high"
 assert_log_lacks rst_hi $log_hi "E or R is used"
 
 # 5A.3  Negedge variant of 5A.2.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top rst_hi_n -ioff -ioff_min_shared_reset 0
+synth_quicklogic -family qlf_k6n10f -top rst_hi_n -ioff
 yosys cd rst_hi_n
 stat
-select -assert-count 0 t:io_sdffnr
-select -assert-count 1 t:sdffnre
+select -assert-count 1 t:io_sdffnr
+select -assert-count 0 t:sdffnre
+assert_inverter_on_reset rst_hi_n
 
 # 5A.4  Active-low reset on an output-side register: promoted.
 design -load read
@@ -143,22 +142,23 @@ select -assert-count 1 t:io_sdffr a:keep %i
 assert_port_connected rst_lo_out io_sdffr R {\rst_n}
 assert_no_inverter_on_reset rst_lo_out
 
-# 5A.5  Active-high reset on an output-side register: declined. Nothing is built
-#       and the output port is not swapped -- so no cell carries `keep`.
+# 5A.5  Active-high reset on an output-side register: promoted too. The output
+#       path builds a fresh cell and swaps the port, so `keep` is what shows the
+#       promotion actually went down that path.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top rst_hi_out -ioff -ioff_min_shared_reset 0
+synth_quicklogic -family qlf_k6n10f -top rst_hi_out -ioff
 yosys cd rst_hi_out
 stat
-select -assert-count 0 t:io_sdffr
-select -assert-count 1 t:sdffre
-select -assert-count 0 a:keep
-select -assert-count 1 o:q_o
+select -assert-count 1 t:io_sdffr
+select -assert-count 1 t:io_sdffr a:keep %i
+select -assert-count 0 t:sdffre
+assert_inverter_on_reset rst_hi_out
 
-# 5A.6  Resetless: the polarity rule must not touch this path (REQ-B11). The
-#       target is io_sdffr because this library defines it -- see ioff.tcl -- and
-#       its R is tied inactive, which is precisely why R1 has nothing to weigh.
+# 5A.6  Resetless (REQ-B11). The target is io_sdffr because this library defines
+#       it -- see ioff.tcl -- and its R is tied inactive, so no reset net and no
+#       inverter exist on this path at all.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top resetless -ioff -ioff_min_shared_reset 0
+synth_quicklogic -family qlf_k6n10f -top resetless -ioff
 yosys cd resetless
 stat
 select -assert-count 1 t:io_sdffr
@@ -166,8 +166,8 @@ select -assert-count 0 t:dff
 assert_all_ports_connected resetless io_sdffr R {1'1}
 
 # 5A.7  Active-high reset from fabric logic: the inversion is absorbed into the
-#       reset-expression LUT mask, so it is free and the register promotes.
-#       This is the R1-vs-R2 discriminator.
+#       reset-expression LUT mask, so no separate inverter is built -- unlike
+#       5A.2, where the reset comes straight from a port.
 design -load read
 synth_quicklogic -family qlf_k6n10f -top rst_hi_expr -ioff
 yosys cd rst_hi_expr
@@ -176,8 +176,7 @@ select -assert-count 1 t:io_sdffr
 assert_no_inverter_on_reset rst_hi_expr
 
 # 5A.8  Active-low reset from fabric logic: structurally identical to 5A.7 apart
-#       from the LUT mask, and must also promote. Confirms the predicate is not
-#       keying on "driver is a LUT".
+#       from the LUT mask, and must also promote with no separate inverter.
 design -load read
 synth_quicklogic -family qlf_k6n10f -top rst_lo_expr -ioff
 yosys cd rst_lo_expr

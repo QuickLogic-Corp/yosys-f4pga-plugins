@@ -1,8 +1,8 @@
 # Negative test -- test-plan 5B.3f.
 #
-# `-min_shared_rest` (one missing `e`) must be an error rather than silently
-# ignored. This is what extra_args() buys: without it the pass would run at K=0
-# and produce a sweep row that looks like data but is not.
+# An unrecognised option must be an error rather than silently ignored, so that
+# a stale flag in a device .ys template or a settings JSON fails loudly instead
+# of being dropped. This is what extra_args() buys.
 #
 # Registered with ioff_badopt_negative = 1, so yosys exiting non-zero is a pass.
 
@@ -12,4 +12,4 @@ yosys -import  ;# ingest plugin commands
 
 read_verilog $::env(DESIGN_TOP).v
 hierarchy -top ioff_badopt
-ql_ioff -min_shared_rest 2
+ql_ioff -no_such_option

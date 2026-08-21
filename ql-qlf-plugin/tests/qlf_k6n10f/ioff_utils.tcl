@@ -122,14 +122,9 @@ proc assert_log_lacks {tag txt needle} {
     }
 }
 
-# Assert that no promoted IO FF has its R pin driven by a dedicated 1-input
-# inverting $lut. This is the property REQ-B9 exists to buy, and the assertion
-# that would catch a regression re-admitting the inverter.
-proc assert_no_inverter_on_reset {tag} {
-    set txt [rtlil_dump $tag]
-
-    # Collect the output nets of dedicated polarity inverters: $lut cells with
-    # WIDTH 1 and the mask 2'01 (lut[0]=1, lut[1]=0).
+# Output nets of dedicated polarity inverters: $lut cells with WIDTH 1 and the
+# mask 2'01 (lut[0]=1, lut[1]=0).
+proc reset_inverter_nets {txt} {
     set inverter_nets {}
     set ctype ""
     set width ""
@@ -151,6 +146,17 @@ proc assert_no_inverter_on_reset {tag} {
         }
     }
 
+    return $inverter_nets
+}
+
+# Assert that no promoted IO FF has its R pin driven by a dedicated inverter.
+# Holds where the inversion is absorbed into a reset-expression LUT mask, and is
+# the assertion that would catch a regression re-admitting a separate inverter
+# there.
+proc assert_no_inverter_on_reset {tag} {
+    set txt [rtlil_dump $tag]
+    set inverter_nets [reset_inverter_nets $txt]
+
     foreach celltype {io_sdffr io_sdffnr} {
         foreach conns [cell_connections $txt $celltype] {
             if {![dict exists $conns R]} { continue }
@@ -161,6 +167,28 @@ proc assert_no_inverter_on_reset {tag} {
             }
         }
     }
+}
+
+# The converse: assert some promoted IO FF has its R pin driven by a dedicated
+# inverter. An active-high reset needs one wherever the register lands, since
+# both sdffre and io_sdffr reset on !R, so promoting anyway costs only the route
+# from the fabric inverter out to that site's lreset -- and reset is not a
+# critical path. This assertion pins that the inverter is not treated as a
+# reason to decline.
+proc assert_inverter_on_reset {tag} {
+    set txt [rtlil_dump $tag]
+    set inverter_nets [reset_inverter_nets $txt]
+
+    foreach celltype {io_sdffr io_sdffnr} {
+        foreach conns [cell_connections $txt $celltype] {
+            if {![dict exists $conns R]} { continue }
+            if {[lsearch -exact $inverter_nets [dict get $conns R]] >= 0} {
+                return
+            }
+        }
+    }
+    error "assert_inverter_on_reset ($tag): no promoted IO FF has R driven by a\
+           dedicated inverter"
 }
 
 # Assert that no fabric fallback FF cell survives in the current module.

@@ -162,14 +162,6 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        Requires a GPIO v3.0 architecture when the promoted registers carry a\n");
         log("        reset, since those become io_sdffr/io_sdffnr cells.\n");
         log("\n");
-        log("    -ioff_min_shared_reset <number>\n");
-        log("        Forwarded to ql_ioff as -min_shared_reset. A boundary register whose\n");
-        log("        active-low reset pin would need a dedicated inverter LUT is normally\n");
-        log("        left in the CLB; this promotes it anyway once <number> or more such\n");
-        log("        registers share the same inverter. 0 disables the override so the\n");
-        log("        polarity rule always applies; 1 (the default) disables the polarity\n");
-        log("        rule entirely. Inert without -ioff.\n");
-        log("\n");
         log("    -bramecc\n");
         log("        By default use BRAM without ECC support for designs \n");
         log("        Specifying this will use BRAM with ECC support.\n");
@@ -205,7 +197,6 @@ struct SynthQuickLogicPass : public ScriptPass {
     }
 
     string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script, de;
-    int ioff_min_shared_reset;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -243,7 +234,6 @@ struct SynthQuickLogicPass : public ScriptPass {
         nosdff = false;
         noffenable = false;
         ioff = false;
-        ioff_min_shared_reset = 1;
 		bramecc = false;
 		dspv2 = false;
 		dspv4 = false;
@@ -390,10 +380,6 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (args[argidx] == "-ioff") {
                 ioff = true;
-                continue;
-            }
-            if (args[argidx] == "-ioff_min_shared_reset" && argidx + 1 < args.size()) {
-                ioff_min_shared_reset = std::stoi(args[++argidx]);
                 continue;
             }
             if (args[argidx] == "-bramecc") {
@@ -998,17 +984,12 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 		
 		if (check_label("iomap", "(for qlf_k6n10f)") && (family == "qlf_k6n10f" || help_mode)) {
-			// Not on the Synplify path. Deciding which boundary registers become
-			// IO flip-flops belongs to whichever tool synthesised the design, and
-			// on a Synplify netlist that is Synplify: where it has made the call we
-			// translate its output and nothing more. Note this is a statement of
-			// intent rather than a behavioural change -- ql_ioff already promoted
-			// nothing there, because Synplify ties unused E and R to a VCC cell
-			// output rather than to a literal 1, so every candidate was declined.
-			// The gate is what stops that becoming promotion by accident if the
-			// constant handling is ever made Synplify-aware.
+			// Runs on both front ends. ql_ioff needs the Synplify path's VCC-cell
+			// constants resolved to see an unused E or R at all, which
+			// build_const_drivers does, so the same promotion decisions are
+			// available whichever tool synthesised the design.
 			if (ioff) {
-				run(stringf("ql_ioff -min_shared_reset %d", ioff_min_shared_reset));
+				run("ql_ioff");
 				run("opt_clean");
 			}
 		}

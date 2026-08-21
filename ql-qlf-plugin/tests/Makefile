@@ -38,8 +38,6 @@ TESTS = \
 	qlf_k6n10f/sdffr_inst \
 	qlf_k6n10f/ioff_rst \
 	qlf_k6n10f/ioff_pol \
-	qlf_k6n10f/ioff_share \
-	qlf_k6n10f/ioff_badval \
 	qlf_k6n10f/ioff_badopt \
 	qlf_k6n10f/ioff_flags \
 	qlf_k6n10f/ioff_blif \
@@ -104,9 +102,6 @@ qlf_k6n10f-ioff_verify = true
 qlf_k6n10f-sdffr_inst_verify = true
 qlf_k6n10f-ioff_rst_verify = true
 qlf_k6n10f-ioff_pol_verify = true
-qlf_k6n10f-ioff_share_verify = true
-qlf_k6n10f-ioff_badval_verify = true
-qlf_k6n10f/ioff_badval_negative = 1
 qlf_k6n10f-ioff_badopt_verify = true
 qlf_k6n10f-ioff_flags_verify = true
 qlf_k6n10f-ioff_blif_verify = true

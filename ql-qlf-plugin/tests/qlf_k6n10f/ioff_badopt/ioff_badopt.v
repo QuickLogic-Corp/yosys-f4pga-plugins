@@ -1,4 +1,4 @@
-// Negative test: a misspelled option must be rejected, not ignored.
+// Negative test: an unrecognised option must be rejected, not ignored.
 // See ioff_badopt.tcl.
 module ioff_badopt (
     input  wire clk,

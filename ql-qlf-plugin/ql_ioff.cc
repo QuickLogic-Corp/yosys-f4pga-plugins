@@ -13,9 +13,7 @@ struct Candidate {
 	RTLIL::Cell *cell = nullptr;
 	bool is_input = false;                      // input IOFF vs output IOFF
 	bool resetless = false;                     // R was constant 1
-	RTLIL::SigBit r_bit;                        // valid only when !resetless
 	std::vector<std::pair<RTLIL::Wire *, int>> slots; // output-IOFF bit positions
-	bool accepted = true;
 };
 
 // The cell type a candidate is promoted to. This four-way mapping used to be
@@ -82,65 +80,6 @@ static bool port_is_const_ones(RTLIL::Cell *cell, RTLIL::IdString port, SigMap &
 	return sig.is_fully_ones();
 }
 
-// Returns the dedicated polarity inverter driving `bit`, or nullptr when `bit`
-// needs no *added* inversion to reach an active-low reset pin.
-//
-// dfflegalize normalizes every reset to active-low before ql_ioff runs, so by
-// the time this pass sees the netlist an active-high reset taken straight from a
-// port appears as a dedicated 1-input inverting $lut, while an active-high reset
-// computed in the fabric has had its inversion absorbed into the user's own
-// reset-expression LUT -- where it costs nothing. Declining only the former is
-// therefore cost-exact, not an approximation.
-//
-// Keying on WIDTH == 1 rather than "driver is a LUT" or "driver is not a port"
-// matters: an active-low and an active-high fabric-derived reset are
-// structurally identical apart from the LUT mask, and both must promote.
-static RTLIL::Cell *dedicated_inverter_driving(ModWalker &modwalker, RTLIL::SigBit bit)
-{
-	pool<ModWalker::PortBit> drivers;
-	modwalker.get_drivers(drivers, modwalker.sigmap(bit));
-	if (GetSize(drivers) != 1)
-		return nullptr; // top-level port, constant, or multiply driven -- fail open
-
-	RTLIL::Cell *driver = drivers.begin()->cell;
-
-	if (driver->type == ID($lut)) {
-		if (driver->getParam(ID::WIDTH).as_int() != 1)
-			return nullptr; // wider LUT -- the inversion is absorbed, so free
-		RTLIL::Const lut = driver->getParam(ID::LUT);
-		if (GetSize(lut) < 2)
-			return nullptr; // malformed -- fail open
-		// 1-input truth table: lut[0] = f(0), lut[1] = f(1). An inverter is
-		// (1, 0). A buffer is (0, 1) and must not match.
-		if (lut[0] == RTLIL::State::S1 && lut[1] == RTLIL::State::S0)
-			return driver;
-		return nullptr;
-	}
-
-	// The same inverter before synplify_map.v has been techmapped: Synplify emits a
-	// LUT1 blackbox carrying the truth table in INIT rather than a $lut. map_luts
-	// techmaps synplify_map.v ahead of iomap only when -de is set, so without this
-	// case the rule would silently fail open on a Synplify design built without it.
-	// synplify_map.v maps LUT1 onto $lut #(.WIDTH(1), .LUT(INIT)), so INIT carries
-	// the identical encoding and the truth-table test above applies unchanged.
-	if (driver->type == ID(LUT1)) {
-		if (!driver->hasParam(ID(INIT)))
-			return nullptr; // no truth table to read -- fail open
-		RTLIL::Const init = driver->getParam(ID(INIT));
-		if (GetSize(init) < 2)
-			return nullptr; // malformed -- fail open
-		if (init[0] == RTLIL::State::S1 && init[1] == RTLIL::State::S0)
-			return driver;
-		return nullptr;
-	}
-
-	// Defensive: abc9 skipped, or -no_abc_opt.
-	if (driver->type.in(ID($_NOT_), ID($not)))
-		return driver;
-
-	return nullptr;
-}
-
 struct QlIoffPass : public Pass {
 	QlIoffPass() : Pass("ql_ioff", "Infer I/O FFs for qlf_k6n10f architecture") {}
 
@@ -157,29 +96,16 @@ struct QlIoffPass : public Pass {
 		log("the GPIO architecture v3.0 IO subtile flip-flops. Registers with an enable, or\n");
 		log("with an asynchronous reset, are never promoted: the IO subtile FF has neither.\n");
 		log("\n");
+		log("Reset polarity does not matter. The IO FF reset is active low, so an active-high\n");
+		log("reset is inverted -- but a fabric sdffre resets on !R too, so that inverter exists\n");
+		log("whether or not the register is promoted. Promoting costs only the route from it to\n");
+		log("the IO site's local reset.\n");
+		log("\n");
 		log("A register with no reset goes to io_sdffr/io_sdffnr as well, with its active-low\n");
 		log("reset tied to constant 1, whenever the cell library defines those primitives --\n");
 		log("v3.0 has a single IO flip-flop whose reset is hard-wired, so it declares no\n");
 		log("dff/dffn model and a plain dff cannot be packed. On a v2.x library, where the\n");
 		log("primitives are absent, a reset-less register is promoted to dff/dffn as before.\n");
-		log("\n");
-		log("The IO FF reset pin is active-low. A register whose reset would need a\n");
-		log("dedicated inverter LUT to satisfy that -- an active-high reset taken straight\n");
-		log("from a port -- is left in the CLB rather than putting a LUT and a routing hop\n");
-		log("on the IO reset path. An inversion absorbed into a wider reset-expression LUT\n");
-		log("is free and promotes normally.\n");
-		log("\n");
-		log("    -min_shared_reset <K>\n");
-		log("        Override the polarity rule above when the inverter is shared. If K or\n");
-		log("        more promotable candidates hang off the same inverter, its cost is\n");
-		log("        amortized and the whole group is promoted. The decision is per reset\n");
-		log("        group and all-or-nothing, and counts promotable candidates rather than\n");
-		log("        raw net fan-out.\n");
-		log("\n");
-		log("        K=0 disables the override, so the polarity rule always applies. K=1\n");
-		log("        (the default) promotes every group, making the polarity rule a no-op.\n");
-		log("        K=n>=2 promotes only groups of n or more. A negative or non-numeric\n");
-		log("        value is an error.\n");
 		log("\n");
 		log("Note io_sdffr/io_sdffnr require a GPIO v3.0 architecture. Emitting them into a\n");
 		log("BLIF consumed by a v2.x architecture fails in packing with an unknown model.\n");
@@ -195,30 +121,7 @@ struct QlIoffPass : public Pass {
 	{
 		log_header(design, "Executing QL_IOFF pass.\n");
 
-		// Threshold for the shared-inverter override. 0 disables it; 1 (the
-		// default) promotes every group, making the polarity rule a no-op.
-		int min_shared_reset = 1;
-
-		size_t argidx;
-		for (argidx = 1; argidx < args.size(); argidx++) {
-			if (args[argidx] == "-min_shared_reset" && argidx + 1 < args.size()) {
-				std::string value = args[++argidx];
-				// Digit-scan rather than atoi, which silently yields 0 for
-				// garbage. Clamping would be worse still: this knob exists to
-				// be swept from scripts, so a bad value has to be loud.
-				if (value.find_first_not_of("0123456789") != std::string::npos)
-					log_error("ql_ioff: -min_shared_reset expects a non-negative integer, "
-						  "got '%s'.\n",
-						  value.c_str());
-				min_shared_reset = std::stoi(value);
-				continue;
-			}
-			break;
-		}
-		// Mandatory, and the reason is typo detection rather than [selection]
-		// support: extra_args is what rejects an unrecognized option. Without
-		// it, `ql_ioff -min_shared_rest 2` runs silently at K=0 and yields a
-		// sweep row that looks like data but is not.
+		size_t argidx = 1;
 		extra_args(args, argidx, design);
 
 		ModWalker modwalker(design);
@@ -282,11 +185,6 @@ struct QlIoffPass : public Pass {
 			Candidate cand;
 			cand.cell = cell;
 			cand.resetless = r_const;
-			if (!r_const) {
-				SigSpec r = cell->getPort(ID::R);
-				log_assert(GetSize(r) == 1);
-				cand.r_bit = modwalker.sigmap(r[0]);
-			}
 
 			SigSpec d = cell->getPort(ID::D);
 			log_assert(GetSize(d) == 1);
@@ -319,55 +217,7 @@ struct QlIoffPass : public Pass {
 			}
 		}
 
-		// --- Phase 2: group by reset net, then decide -------------------------
-		//
-		// "How many other promotable candidates share this register's polarity
-		// inverter?" is not answerable per cell, which is why the decision needs
-		// its own phase between classification and mutation.
-		dict<SigBit, std::vector<Candidate *>> groups;
-		std::vector<std::pair<SigBit, int>> declined_groups;
-
-		for (auto &cand : candidates) {
-			if (cand.resetless)
-				continue; // no reset polarity to satisfy
-			if (!dedicated_inverter_driving(modwalker, cand.r_bit))
-				continue; // no inverter, or the inversion is free
-			groups[cand.r_bit].push_back(&cand);
-		}
-
-		for (auto &group_it : groups) {
-			std::vector<Candidate *> &group = group_it.second;
-			// The count is of promotable candidates, not raw net fan-out: only
-			// candidates benefit from promotion, so only they can justify
-			// amortizing the inverter. All-or-nothing, because the cost being
-			// weighed is shared and a per-register decision cannot see it.
-			bool override_ok = min_shared_reset >= 1 && GetSize(group) >= min_shared_reset;
-
-			for (auto *cand : group) {
-				cand->accepted = override_ok;
-				if (!override_ok)
-					log_debug("not promoting %s: reset polarity requires inversion\n", log_id(cand->cell));
-			}
-
-			if (override_ok) {
-				log("Promoting %d register(s) sharing reset %s despite the polarity inverter "
-				    "(%d >= K=%d).\n",
-				    GetSize(group), log_signal(group_it.first), GetSize(group), min_shared_reset);
-			} else {
-				declined_groups.emplace_back(group_it.first, GetSize(group));
-				// One warning per group, not per register: the actionable unit
-				// is the reset net, since the fix is a single RTL edit at its
-				// declaration. The group size doubles as the exact threshold
-				// that would flip this decision.
-				log_warning("Not promoting %d register(s) with reset %s to IO FFs: the reset is "
-					    "active-high, so an inverter LUT would sit on the IO reset path. Use an "
-					    "active-low reset, or pass -min_shared_reset %d (or lower) to accept the "
-					    "inverter.\n",
-					    GetSize(group), log_signal(group_it.first), GetSize(group));
-			}
-		}
-
-		// --- Phase 3: apply --------------------------------------------------
+		// --- Phase 2: apply --------------------------------------------------
 		dict<IdString, int> promoted;
 		promoted[ID(dff)] = 0;
 		promoted[ID(dffn)] = 0;
@@ -375,7 +225,7 @@ struct QlIoffPass : public Pass {
 		promoted[ID(io_sdffnr)] = 0;
 
 		for (auto &cand : candidates) {
-			if (!cand.accepted || !cand.is_input)
+			if (!cand.is_input)
 				continue;
 
 			Cell *cell = cand.cell;
@@ -396,12 +246,12 @@ struct QlIoffPass : public Pass {
 			// Otherwise R and its connection are preserved as they are.
 		}
 
-		dict<Wire *, dict<int, Candidate *>> accepted_slots;
+		dict<Wire *, dict<int, Candidate *>> output_slots;
 		for (auto &cand : candidates) {
-			if (!cand.accepted || cand.is_input)
+			if (cand.is_input)
 				continue;
 			for (auto &slot : cand.slots)
-				accepted_slots[slot.first][slot.second] = &cand;
+				output_slots[slot.first][slot.second] = &cand;
 		}
 
 		// Walk the port outputs in module order rather than in candidate
@@ -411,10 +261,10 @@ struct QlIoffPass : public Pass {
 		// a different order -- a gratuitous netlist diff.
 		dict<Wire *, std::vector<Candidate *>> output_ffs;
 		for (Wire *wire : module->wires()) {
-			if (!wire->port_output || !accepted_slots.count(wire))
+			if (!wire->port_output || !output_slots.count(wire))
 				continue;
 			std::vector<Candidate *> slots(wire->width, nullptr);
-			for (auto &it : accepted_slots.at(wire))
+			for (auto &it : output_slots.at(wire))
 				slots[it.first] = it.second;
 			output_ffs[wire] = slots;
 		}
@@ -459,26 +309,18 @@ struct QlIoffPass : public Pass {
 			}
 		}
 
-		// --- Phase 4: summary -------------------------------------------------
+		// --- Phase 3: summary -------------------------------------------------
 		//
-		// On the normal log, so that a K sweep produces diffable output. The
-		// per-group candidate counts are the load-bearing part: totals alone say
-		// which K won, the group sizes say which K would have changed anything.
+		// On the normal log rather than log_debug, so a run is diffable and a zero
+		// promotion count is visible rather than silent.
 		int total_promoted = 0;
 		for (auto &it : promoted)
 			total_promoted += it.second;
 
-		int declined_polarity = 0;
-		for (auto &it : declined_groups)
-			declined_polarity += it.second;
-
-		log("ql_ioff summary: K=%d\n", min_shared_reset);
+		log("ql_ioff summary:\n");
 		log("  promoted: dff=%d dffn=%d io_sdffr=%d io_sdffnr=%d   (total %d)\n", promoted[ID(dff)],
 		    promoted[ID(dffn)], promoted[ID(io_sdffr)], promoted[ID(io_sdffnr)], total_promoted);
-		log("  declined by reset polarity: %d in %d group(s)\n", declined_polarity, GetSize(declined_groups));
-		for (auto &it : declined_groups)
-			log("    reset %s : %d candidate(s)\n", log_signal(it.first), it.second);
-		log("  declined other: E used=%d, async reset=%d, D has other consumers=%d\n", declined_enable,
+		log("  declined: E used=%d, async reset=%d, D has other consumers=%d\n", declined_enable,
 		    declined_async, declined_dfanout);
 	}
 } QlIoffPass;
