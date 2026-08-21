@@ -28,10 +28,38 @@
 // left *unconnected* (there is no constant-zero mux input in the mode; an open
 // primitive input packs as 0).
 //
-// Scope = Phase-1 configurations only (Appendix A of the Phase-1 requirements):
-// MULT, MULTACC(+-), MULTADD(+-), PREADDER_MULT(+-), PREADDER_MULTADD, and the
-// fused CONCAT+MULTADD / CONCAT+PREADDER_MULTADD (addend on C). For all of these
-// X<-U, Y<-V, W open, CIN open, and Z is one of {open, ACC.Q, PCIN, C}.
+// Scope: the full W/X/Y/Z operand-mux decode of OPMODE, so every mode whose
+// operands come from {0, U, V, P, C, A:B, PCIN} is lowered correctly. Still
+// unimplemented (and REJECTED via _TECHMAP_FAIL_ rather than silently mapped
+// wrong): USE_SIMD segmentation, CARRYINSEL/CIN, the Z >>17 and MACC_EXT
+// sources, ACIN/BCIN inputs, and the AMULTSEL/BMULTSEL/PREADDINSEL multiplier
+// routing beyond the pre-adder-on-B shape. See DSPV4_SYNTHESIS_REQUIREMENTS_AND_PLAN.md
+// (TM-1..TM-9) in aurora2.
+//
+// A rejected cell stays un-lowered and fails later with "no such model", which
+// is noisy but safe. It must never map silently: an open ALU operand packs as
+// 0, so a dropped operand yields a working-but-wrong netlist that no stage of
+// the flow flags.
+//
+// INMODE[0] / INMODE[4] -- why they are rejected even though they are NOT mode
+// bits.  They are register-path selects (reg_path.v REG_PATH_SEL: [0] on the A
+// path, [4] on the B path).  They do not change which operation the DSP
+// performs -- no entry in the mode table sets either -- but cascade-path
+// operations do set them, and they DO change operand pipeline depth:
+//
+//   PATH_OUT = a_r2_sel                            -> the A:B concat (X mux)
+//   GATE_OUT = REG_PATH_SEL ? a_r1 : a_r2_sel      -> multiplier / pre-adder
+//
+// This map builds ONE tap per operand (a_path / b_path) and uses it for both,
+// which is correct only while these bits are 0.  Supporting them means building
+// the second tap: route a_r1 to the multiplier while a_path keeps feeding A:B.
+// Note a_r1 is the FIRST flop bank's output, which exists in hardware
+// regardless of REG0 (the RTL bypasses it with a mux), so INMODE[0]=1 requires
+// instantiating QL_DSP4_A1_DFFRE even when AREG0=0.  Same for B / INMODE[4].
+//
+// Until that lands, rejecting is mandatory: silently ignoring these bits would
+// give the wrong operand pipeline depth with nothing to catch it.  See CR-6 and
+// TM-5a in aurora2 DSPV4_SYNTHESIS_REQUIREMENTS_AND_PLAN.md.
 //
 // Sources of truth: function = behavioral_model/dspv4_sim.v; exact leaf
 // interface + wiring = FPGA0806 vpr-rendered.xml `<mode name="dsp4_logical">`.
@@ -39,7 +67,9 @@
 module QL_DSP4 #(
     parameter [8:0] OPMODE      = 9'b000000101,  // W[8:7] Z[6:4] Y[3:2] X[1:0]
     parameter [1:0] ALUMODE     = 2'b00,         // 00 add, 11 sub, 01 rsub, 10 not
-    parameter [4:0] INMODE      = 5'b00000,      // [2]=pre-adder active, [3]=pre-adder sub
+    parameter [4:0] INMODE      = 5'b00000,      // [0]=A reg-path sel, [1]=A/B
+                                                 // zero-gate, [2]=D-active gate,
+                                                 // [3]=pre-adder sub, [4]=B reg-path sel
     parameter [2:0] CARRYINSEL  = 3'b000,
     parameter [1:0] USE_SIMD    = 2'b00,
     parameter       AREG0       = 1'b0,          // A reg stage 0 (first)
@@ -98,13 +128,72 @@ module QL_DSP4 #(
 );
 
     // -- mode decode (constants) --
-    localparam USE_PREADD = INMODE[2];             // pre-adder active
+    localparam USE_PREADD = INMODE[2];             // pre-adder active (D-active gate)
     localparam PREADD_SUB = INMODE[3];             // pre-adder subtract
-    // Z operand select (OPMODE[6:4]): 001=PCIN, 010=P(acc feedback), 011=C.
-    localparam Z_PCIN = (OPMODE[6:4] == 3'b001);
-    localparam Z_ACC  = (OPMODE[6:4] == 3'b010);
-    localparam Z_C    = (OPMODE[6:4] == 3'b011);
-    localparam Z_CONN = (Z_PCIN || Z_ACC || Z_C);  // else Z is 0 (leave open)
+
+    // OPMODE operand-mux fields (dsp4_top.v :242-315 is authoritative).
+    //   W = OPMODE[8:7] : 00 = 0, 01 = P, 10 = UNUSED, 11 = C
+    //   Z = OPMODE[6:4] : 000 = 0, 001 = PCIN, 010 = P, 011 = C,
+    //                     100 = MACC_EXT, 101 = PCIN>>17, 110 = P>>17
+    //   Y = OPMODE[3:2] : 00 = 0, 01 = V, 10 = UNUSED (zero, NOT all-ones --
+    //                     the requirements doc IR-6 is wrong here), 11 = C
+    //   X = OPMODE[1:0] : 00 = 0, 01 = U, 10 = P, 11 = A:B
+    localparam [1:0] W_SEL = OPMODE[8:7];
+    localparam [2:0] Z_SEL = OPMODE[6:4];
+    localparam [1:0] Y_SEL = OPMODE[3:2];
+    localparam [1:0] X_SEL = OPMODE[1:0];
+
+    // "Connected" = this operand drives a leaf input. Everything else is left
+    // open, which packs as 0.
+    localparam W_CONN = (W_SEL == 2'b01) || (W_SEL == 2'b11);
+    localparam X_CONN = (X_SEL != 2'b00);
+    localparam Y_CONN = (Y_SEL == 2'b01) || (Y_SEL == 2'b11);
+    localparam Z_CONN = (Z_SEL == 3'b001) || (Z_SEL == 3'b010) || (Z_SEL == 3'b011);
+    localparam Z_ACC  = (Z_SEL == 3'b010);         // kept: used by the ACC block
+
+    // Any operand taking the P feedback node. dsp4_top.v:390 has
+    // `p_acc = PREG ? p_reg : alu_result`, so selecting P without a P register
+    // closes a combinational loop through the ALU -- reject it.
+    localparam USES_P = (W_SEL == 2'b01) || (X_SEL == 2'b10) || Z_ACC;
+
+    // -- register-stage folding (M stage -> P stage) --
+    // MREG (multiplier-output flops) and PREG (accumulator / output flops) each
+    // add one cycle between the multiplier and P. When only ONE of the two is
+    // requested, realize that single stage on the ACC/P register and leave the
+    // M/MV flops out entirely: same latency, one physical stage, and the ALU
+    // sits inside the registered path instead of behind it. The dedicated M
+    // stage is instantiated only when BOTH are requested (e.g. V2 m_reg plus an
+    // accumulate mode), where two distinct cycles are actually needed.
+    localparam USE_MREG = (MREG && PREG);
+    localparam USE_PREG = (MREG || PREG);
+
+    // -- configurations this techmap does not implement --------------------
+    // Reject rather than mis-map (see the header). Each term is a capability
+    // tracked by scripts/dspv4/techmap_coverage.py in aurora2.
+    localparam UNSUPPORTED =
+           (USE_SIMD    != 2'b00)                       // SIMD segmentation
+        || (CARRYINSEL  != 3'b000)                      // carry cascade / CIN
+        || (W_SEL == 2'b10)                             // reserved W encoding
+        || (Y_SEL == 2'b10)                             // reserved Y encoding
+        || (Z_SEL[2] == 1'b1)                           // MACC_EXT, >>17 sources
+        || (A_IN_SEL || B_IN_SEL)                       // ACIN / BCIN inputs
+        || (INMODE[1])                                  // operand zero-gate
+        || (INMODE[0] || INMODE[4])                     // reg-path select, see below
+        || (PREADD_SUB && !USE_PREADD)                  // pre-adder w/ D gated off
+        || (AMULTSEL)                                   // pre-adder into 32b port
+        || (BMULTSEL != PREADDINSEL)                    // unsupported mult routing
+        || (BMULTSEL != USE_PREADD)                     // pre-adder select mismatch
+        // Combinational P feedback. This tests PREG, *not* USE_PREG: the
+        // folding below sets USE_PREG whenever MREG is set, so testing USE_PREG
+        // let MREG=1/PREG=0 through the guard. dsp4_top.v then has
+        // `p_acc = alu_result` -- a real combinational loop, an illegal cell --
+        // while the folded netlist quietly inserted an accumulator register and
+        // broke the loop, producing a working-but-different circuit. That
+        // silently mis-mapped 11 P-feedback modes (MULT_ACC, ACC_AB, PASS_P,
+        // ...) instead of rejecting them.
+        || (USES_P && !PREG);                           // combinational P feedback
+
+    wire _TECHMAP_FAIL_ = UNSUPPORTED;
 
     genvar i;
 
@@ -216,37 +305,65 @@ module QL_DSP4 #(
         end
     endgenerate
 
+    // The multiplier emits its result in carry-save form as two 50-bit vectors
+    // plus a dropped-carry flag: U + V == I1*I0 + KN*2^50, with U and V read as
+    // UNSIGNED. U is NOT the product, so it must not be sign-extended; the ALU
+    // resolves the pair as {14{KN}, U} + {14'b0, V} (dsp4_top.v x_mux / y_mux).
     wire [49:0] mult_u, mult_v;
-    QL_DSP4_MULT u_mult (.I0(mult_i0), .I1(mult_i1), .U(mult_u), .V(mult_v));
+    wire        mult_kn;
+    QL_DSP4_MULT u_mult (.I0(mult_i0), .I1(mult_i1), .U(mult_u), .V(mult_v),
+                         .KN(mult_kn));
 
     // =======================================================================
-    // Multiplier-output registers (MREG registers both partial products).
+    // Multiplier-output registers (registers both partial products). Only used
+    // when MREG and PREG are both set -- a lone MREG folds onto the P register
+    // below (see USE_MREG / USE_PREG).
     // =======================================================================
     wire [49:0] msel, vsel;
+    wire        knsel;
     generate
-        if (MREG) begin : g_m
+        if (USE_MREG) begin : g_m
             for (i = 0; i < 50; i = i + 1) begin : bu
                 QL_DSP4_M_DFFR  ff (.D(mult_u[i]), .R(ARSTN), .clk(CLK), .Q(msel[i]));
             end
-            for (i = 0; i < 50; i = i + 1) begin : bv
+            // Only V[49:7] is registered -- 43 flops, not 50. V[6:0] are
+            // structurally zero for the 19-row 32x18 reduction tree, so the
+            // hardware does not spend flops on them (dsp4_top.v:
+            // MULT_V_LSB_ZEROS = 7) and the tile has QL_DSP4_MV_DFFR num_pb=43.
+            // Emitting 50 makes the pp_mreg_u molecule demand more MV flops
+            // than the tile owns, and packing fails with "Can not find any
+            // logic block that can implement molecule".
+            for (i = 7; i < 50; i = i + 1) begin : bv
                 QL_DSP4_MV_DFFR ff (.D(mult_v[i]), .R(ARSTN), .clk(CLK), .Q(vsel[i]));
             end
+            // V[6:0] bypass the register, matching the arch's mv_c0_d_0..6
+            // directs (mult_V[6:0] -> vsel_node[6:0]). Passed through rather
+            // than tied to 0 so vsel[0] stays a real net: the ALU Y upper-bit
+            // pad below is {14{vsel[0]}}, and a literal 0 there has to be
+            // routed in as a constant, which is what made dsp_preadder_multadd
+            // unroutable.
+            assign vsel[6:0] = mult_v[6:0];
+            // KN pipelines in lockstep with U/V (dsp4_top.v:255) so the X-mux
+            // pad stays aligned with the partial products it extends.
+            QL_DSP4_MK_DFFR ffk (.D(mult_kn), .R(ARSTN), .clk(CLK), .Q(knsel));
         end else begin : g_m_byp
-            assign msel = mult_u;
-            assign vsel = mult_v;
+            assign msel  = mult_u;
+            assign vsel  = mult_v;
+            assign knsel = mult_kn;
         end
     endgenerate
 
     // =======================================================================
-    // Accumulator register (PREG). Feeds the P output and, for MULTACC, the ALU
-    // Z operand (P feedback). ALU_OUT / acc feedback are declared first.
+    // Accumulator register (PREG, or a folded-in lone MREG). Feeds the P output
+    // and, for MULTACC, the ALU Z operand (P feedback). ALU_OUT / acc feedback
+    // are declared first.
     // =======================================================================
     wire [63:0] alu_out;
     wire [3:0]  alu_co;
     wire [63:0] acc_q;
     wire [63:0] p_node;
     generate
-        if (PREG) begin : g_acc
+        if (USE_PREG) begin : g_acc
             for (i = 0; i < 64; i = i + 1) begin : b
                 QL_DSP4_ACC_DFFRE ff (.D(alu_out[i]), .E(CEP), .R(ARSTN), .clk(CLK), .Q(acc_q[i]));
             end
@@ -258,46 +375,256 @@ module QL_DSP4 #(
     endgenerate
 
     // =======================================================================
-    // ALU. X <- sext(U), Y <- sext(V) (always). W, CIN left open (= 0). Z is
-    // one leaf-selected source or left open (= 0) per OPMODE[6:4]. The ALU
-    // variant is fixed by ALUMODE via the cell type.
+    // ALU operands. Each is presented as the single fanin of its mode mux, or
+    // left open. All sources sign-extend to the 64-bit accumulator width,
+    // matching dsp4_top.v :242-315.
+    //
+    // A:B is the *registered* A and B path outputs (dsp4_top.v uses
+    // preadd_xmux / b_xmux, which are the reg_path PATH_OUT taps) -- i.e. the
+    // same a_path / b_path this map already built, not the raw A / B ports.
     // =======================================================================
-    wire [63:0] alu_x = {{14{msel[49]}}, msel};
-    wire [63:0] alu_y = {{14{vsel[49]}}, vsel};
+    // U is padded with KN and V is ZERO-extended -- neither is sign-extended.
+    // U and V are the multiplier's carry-save pair, not signed values, and
+    // U + V == product + KN*2^50; padding U with KN is what cancels that 2^50
+    // excess, and V is an unsigned carry vector. Sign-extending both happens to
+    // give the right low 50 bits (carries only propagate upward, so P cannot
+    // see the difference), which is why this was invisible until the RSS shift
+    // brought the upper accumulator bits back down -- see
+    // verify_techmap.py --rss.
+    wire [63:0] u_ext    = {{14{knsel}}, msel};
+    // V's upper bits are padded with vsel[0], NOT with a literal 0 and NOT with
+    // vsel[49]. This mirrors the architecture exactly: vpr.xml builds
+    // vselsext_node[63:50] from vsel_node_OUT[0], and mselsext_node[63:50] from
+    // mksel_node_OUT[0] (the KN/MK node) -- so the tile has no independent pins
+    // for the upper operand bits, and anything other than the arch's own source
+    // has to be routed in, overusing 14 DSP input pins and failing to route.
+    //
+    // It is still a true zero-extension: V[6:0] are structurally zero for the
+    // 19-row 32x18 reduction tree (see QL_DSP4_MULT), so vsel[0] is constant 0 --
+    // it is the tile's zero source, delivered as a real net rather than a
+    // routed constant.
+    wire [63:0] v_ext    = {{14{vsel[0]}}, vsel};
+    wire [63:0] c_ext    = {{14{c_path[49]}}, c_path};
+    wire [63:0] pcin_ext = {{14{PCIN[49]}}, PCIN};
+    wire [63:0] ab_ext   = {{14{a_path[31]}}, a_path, b_path};
 
-    // Z source (valid only when Z_CONN).
-    wire [63:0] alu_z;
-    generate
-        if (Z_ACC) begin : g_z_acc
-            assign alu_z = acc_q;
-        end else if (Z_PCIN) begin : g_z_pcin
-            assign alu_z = {{14{PCIN[49]}}, PCIN};
-        end else if (Z_C) begin : g_z_c
-            assign alu_z = {{14{c_path[49]}}, c_path};
-        end else begin : g_z_zero
-            assign alu_z = 64'b0;    // unused (ALU instantiated with Z open)
-        end
-    endgenerate
+    wire [63:0] alu_w = (W_SEL == 2'b01) ? acc_q : c_ext;
+    wire [63:0] alu_y = (Y_SEL == 2'b01) ? v_ext : c_ext;
+    wire [63:0] alu_x = (X_SEL == 2'b01) ? u_ext :
+                        (X_SEL == 2'b10) ? acc_q : ab_ext;
+    wire [63:0] alu_z = (Z_SEL == 3'b001) ? pcin_ext :
+                        (Z_SEL == 3'b010) ? acc_q : c_ext;
 
+    // 4 ALU cell types x 16 operand-presence combinations. An operand that
+    // selects 0 is left OPEN: the dsp4_logical mode has no constant-zero mux
+    // input, so a tied 64'b0 would have nothing to route from. Generated --
+    // see scripts/dspv4/ in aurora2.
     generate
-        if (ALUMODE == 2'b00) begin : g_alu_add
-            if (Z_CONN) begin : zc
-                QL_DSP4_ALU_ADD u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z), .CIN(),
-                                       .ALU_OUT(alu_out), .CARRYOUT(alu_co));
-            end else begin : zo
-                QL_DSP4_ALU_ADD u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(), .CIN(),
-                                       .ALU_OUT(alu_out), .CARRYOUT(alu_co));
-            end
-        end else if (ALUMODE == 2'b11) begin : g_alu_sub
-            QL_DSP4_ALU_SUB u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z), .CIN(),
-                                   .ALU_OUT(alu_out), .CARRYOUT(alu_co));
-        end else if (ALUMODE == 2'b01) begin : g_alu_rsub
-            QL_DSP4_ALU_REV_SUB u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z), .CIN(),
-                                       .ALU_OUT(alu_out), .CARRYOUT(alu_co));
-        end else begin : g_alu_not
-            QL_DSP4_ALU_NOT_SUM u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z), .CIN(),
-                                       .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+    if (ALUMODE == 2'b00) begin : g_add
+        if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0000) begin : c0000
+            QL_DSP4_ALU_ADD u_alu (.W(), .X(), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0001) begin : c0001
+            QL_DSP4_ALU_ADD u_alu (.W(), .X(), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0010) begin : c0010
+            QL_DSP4_ALU_ADD u_alu (.W(), .X(), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0011) begin : c0011
+            QL_DSP4_ALU_ADD u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0100) begin : c0100
+            QL_DSP4_ALU_ADD u_alu (.W(), .X(alu_x), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0101) begin : c0101
+            QL_DSP4_ALU_ADD u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0110) begin : c0110
+            QL_DSP4_ALU_ADD u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0111) begin : c0111
+            QL_DSP4_ALU_ADD u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1000) begin : c1000
+            QL_DSP4_ALU_ADD u_alu (.W(alu_w), .X(), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1001) begin : c1001
+            QL_DSP4_ALU_ADD u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1010) begin : c1010
+            QL_DSP4_ALU_ADD u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1011) begin : c1011
+            QL_DSP4_ALU_ADD u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1100) begin : c1100
+            QL_DSP4_ALU_ADD u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1101) begin : c1101
+            QL_DSP4_ALU_ADD u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1110) begin : c1110
+            QL_DSP4_ALU_ADD u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1111) begin : c1111
+            QL_DSP4_ALU_ADD u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
         end
+
+    end else if (ALUMODE == 2'b11) begin : g_sub
+        if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0000) begin : c0000
+            QL_DSP4_ALU_SUB u_alu (.W(), .X(), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0001) begin : c0001
+            QL_DSP4_ALU_SUB u_alu (.W(), .X(), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0010) begin : c0010
+            QL_DSP4_ALU_SUB u_alu (.W(), .X(), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0011) begin : c0011
+            QL_DSP4_ALU_SUB u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0100) begin : c0100
+            QL_DSP4_ALU_SUB u_alu (.W(), .X(alu_x), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0101) begin : c0101
+            QL_DSP4_ALU_SUB u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0110) begin : c0110
+            QL_DSP4_ALU_SUB u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0111) begin : c0111
+            QL_DSP4_ALU_SUB u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1000) begin : c1000
+            QL_DSP4_ALU_SUB u_alu (.W(alu_w), .X(), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1001) begin : c1001
+            QL_DSP4_ALU_SUB u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1010) begin : c1010
+            QL_DSP4_ALU_SUB u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1011) begin : c1011
+            QL_DSP4_ALU_SUB u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1100) begin : c1100
+            QL_DSP4_ALU_SUB u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1101) begin : c1101
+            QL_DSP4_ALU_SUB u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1110) begin : c1110
+            QL_DSP4_ALU_SUB u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1111) begin : c1111
+            QL_DSP4_ALU_SUB u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end
+
+    end else if (ALUMODE == 2'b01) begin : g_rsub
+        if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0000) begin : c0000
+            QL_DSP4_ALU_REV_SUB u_alu (.W(), .X(), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0001) begin : c0001
+            QL_DSP4_ALU_REV_SUB u_alu (.W(), .X(), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0010) begin : c0010
+            QL_DSP4_ALU_REV_SUB u_alu (.W(), .X(), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0011) begin : c0011
+            QL_DSP4_ALU_REV_SUB u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0100) begin : c0100
+            QL_DSP4_ALU_REV_SUB u_alu (.W(), .X(alu_x), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0101) begin : c0101
+            QL_DSP4_ALU_REV_SUB u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0110) begin : c0110
+            QL_DSP4_ALU_REV_SUB u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0111) begin : c0111
+            QL_DSP4_ALU_REV_SUB u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1000) begin : c1000
+            QL_DSP4_ALU_REV_SUB u_alu (.W(alu_w), .X(), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1001) begin : c1001
+            QL_DSP4_ALU_REV_SUB u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1010) begin : c1010
+            QL_DSP4_ALU_REV_SUB u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1011) begin : c1011
+            QL_DSP4_ALU_REV_SUB u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1100) begin : c1100
+            QL_DSP4_ALU_REV_SUB u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1101) begin : c1101
+            QL_DSP4_ALU_REV_SUB u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1110) begin : c1110
+            QL_DSP4_ALU_REV_SUB u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1111) begin : c1111
+            QL_DSP4_ALU_REV_SUB u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end
+
+    end else if (ALUMODE == 2'b10) begin : g_nsum
+        if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0000) begin : c0000
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(), .X(), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0001) begin : c0001
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(), .X(), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0010) begin : c0010
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(), .X(), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0011) begin : c0011
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0100) begin : c0100
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(), .X(alu_x), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0101) begin : c0101
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0110) begin : c0110
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0111) begin : c0111
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1000) begin : c1000
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(alu_w), .X(), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1001) begin : c1001
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1010) begin : c1010
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1011) begin : c1011
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1100) begin : c1100
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1101) begin : c1101
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1110) begin : c1110
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1111) begin : c1111
+            QL_DSP4_ALU_NOT_SUM u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+        end
+
+    end
     endgenerate
 
     // =======================================================================
@@ -306,7 +633,19 @@ module QL_DSP4 #(
     wire [49:0] p_out;
     generate
         if (USE_RSS) begin : g_rss
-            QL_DSP4_RSS u_rss (.ACC_IN(p_node), .ACC_OUT(p_out));
+            // ROUND / SHIFT / SATURATE ride to the leaf as parameters, the way
+            // configuration reaches a leaf on this path (precedent:
+            // QL_DSPV2_MULT's MODE_BITS). Ports would need routing from a
+            // constant source the operating mode has no provision for -- the
+            // same reason unused ALU operands are left open rather than tied.
+            // They were previously dropped here, which silently turned every
+            // rounding/shifting/saturating configuration into a plain
+            // truncation.
+            QL_DSP4_RSS #(
+                .ROUND   (ROUND),
+                .SHIFT   (SHIFT),
+                .SATURATE(SATURATE)
+            ) u_rss (.ACC_IN(p_node), .ACC_OUT(p_out));
         end else begin : g_rss_byp
             assign p_out = p_node[49:0];
         end
@@ -326,8 +665,16 @@ module QL_DSP4 #(
         end
     endgenerate
     assign COUT  = cout_w;
-    assign CCOUT = cout_w[3];             // cascade carry = top carry-out
-    assign SIGNCOUT = msel[49];           // product sign
+    // Cascade carry is a TAP of COUT[3], not a separate register: dsp4_top.v
+    // has one carry-out bank (COUTREG) serving both COUT and CCOUT.
+    assign CCOUT = cout_w[3];
+    // Sign cascade is the ACCUMULATOR sign, not the product sign
+    // (dsp4_top.v: assign SIGNCOUT = p_acc[MULT_P_WIDTH-1]). This read msel[49]
+    // -- the multiplier's partial-product sum -- which is a different signal
+    // entirely and wrong in every mode, including the ones with no multiplier.
+    // It went unnoticed because the mode testbench compares only P; see
+    // verify_techmap.py --check-cascade.
+    assign SIGNCOUT = p_node[49];
 
     // A/B cascade outputs (registered path taps). Unused in Phase-1 designs
     // (dropped by `clean`), driven here to match the operating-mode taps.
