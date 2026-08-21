@@ -319,21 +319,25 @@ struct QlDspV4Pass : public Pass {
         {
             bool seeded = ff_cell != nullptr;
             SigSpec seed_clk, seed_arst(State::S1);
+            bool seed_arst_inv = false;
             if (seeded) {
                 seed_clk = ff_cell->getPort(ID(CLK));
                 if (ff_cell->hasPort(ID(ARST))) {
                     seed_arst = ff_cell->getPort(ID(ARST));
-                    if (ff_cell->getParam(ID(ARST_POLARITY)).as_bool())
-                        seed_arst = module->Not(NEW_ID, seed_arst);
+                    seed_arst_inv =
+                        ff_cell->getParam(ID(ARST_POLARITY)).as_bool();
                 }
             }
             ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed_clk,
-                               seed_arst, seeded);
+                               seed_arst, seed_arst_inv, seeded);
             cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed_clk,
-                               seed_arst, seeded);
+                               seed_arst, seed_arst_inv, seeded);
             int common = std::min(GetSize(ca.flops), GetSize(cb.flops));
-            // Both ports must end up on the same CLK and ARSTN.
-            if (common > 0 && !(same(ca.clk, cb.clk) && same(ca.arst, cb.arst)))
+            // Both ports land on the shared CLK and ARSTN, so the two chains
+            // have to agree on both -- compared as raw signal plus polarity.
+            if (common > 0 &&
+                !(same(ca.clk, cb.clk) && same(ca.arst, cb.arst) &&
+                  ca.arst_inv == cb.arst_inv))
                 common = 0;
             na = nb = common;
         }
@@ -414,10 +418,11 @@ struct QlDspV4Pass : public Pass {
         // moved in.
         if (na > 0) {
             cell->setPort(ID(CLK), ca.clk);
-            cell->setPort(ID(CEA), ca.en);
-            cell->setPort(ID(CEB), cb.en);
+            cell->setPort(ID(CEA), resolve(module, ca.en, ca.en_inv));
+            cell->setPort(ID(CEB), resolve(module, cb.en, cb.en_inv));
             if (ca.arst != SigSpec(State::S1))
-                cell->setPort(ID(ARSTN), ca.arst);
+                cell->setPort(ID(ARSTN),
+                              resolve(module, ca.arst, ca.arst_inv));
             absorbed_regs += na + nb;
         }
 
@@ -492,9 +497,23 @@ struct QlDspV4Pass : public Pass {
     struct FlopChain {
         std::vector<RTLIL::Cell *> flops;   // nearest the operand first
         SigSpec source;                     // D of the last flop -- the port value
-        SigSpec clk, en, arst;              // en/arst are S1 when absent
+        SigSpec clk;
+        // Enable and async reset are kept as the RAW signal plus its polarity,
+        // and only inverted when the cell is wired. Inverting inside the walk
+        // created one $not per chain and then compared the two inverters'
+        // OUTPUT nets, which are never equal -- so an active-high reset silently
+        // absorbed nothing while an active-low one absorbed fine.
+        SigSpec en = SigSpec(State::S1), arst = SigSpec(State::S1);
+        bool en_inv = false, arst_inv = false;
         bool have_clk = false;
     };
+
+    // Resolve a chain's control to a wire, inverting once if the source was the
+    // opposite polarity from what the leaf wants.
+    static SigSpec resolve(RTLIL::Module *module, const SigSpec &sig, bool invert)
+    {
+        return invert ? module->Not(NEW_ID, sig) : sig;
+    }
 
     // Two SigSpecs describe the same value.
     static bool same(const SigSpec &a, const SigSpec &b) { return a == b; }
@@ -504,11 +523,13 @@ struct QlDspV4Pass : public Pass {
     // shared CLK, and one enable per port (CEA feeds both A stages), so a chain
     // is only absorbable if its members already agree.
     static bool controls_agree(FlopChain &c, const SigSpec &clk,
-                               const SigSpec &en, const SigSpec &arst)
+                               const SigSpec &en, bool en_inv,
+                               const SigSpec &arst, bool arst_inv)
     {
         if (!c.have_clk)
             return true;
-        return same(c.clk, clk) && same(c.en, en) && same(c.arst, arst);
+        return same(c.clk, clk) && same(c.en, en) && c.en_inv == en_inv &&
+               same(c.arst, arst) && c.arst_inv == arst_inv;
     }
 
     // T3.1 -- collect absorbable flops behind `sig`, nearest first.
@@ -519,14 +540,14 @@ struct QlDspV4Pass : public Pass {
     // zero and cannot express anything else.
     FlopChain collect_flops(RTLIL::Module *module, SigSpec sig, int max_depth,
                             const SigSpec &clk_seed, const SigSpec &arst_seed,
-                            bool seeded)
+                            bool arst_seed_inv, bool seeded)
     {
         FlopChain chain;
         chain.source = sig;
         if (seeded) {
             chain.clk = clk_seed;
             chain.arst = arst_seed;
-            chain.en = SigSpec(State::S1);
+            chain.arst_inv = arst_seed_inv;
             chain.have_clk = true;
         }
         while (GetSize(chain.flops) < max_depth) {
@@ -543,24 +564,28 @@ struct QlDspV4Pass : public Pass {
             if (!ff->getParam(ID(CLK_POLARITY)).as_bool())
                 break;
             SigSpec en(State::S1), arst(State::S1);
+            bool en_inv = false, arst_inv = false;
             if (ff->hasPort(ID(EN))) {
                 en = ff->getPort(ID(EN));
-                if (!ff->getParam(ID(EN_POLARITY)).as_bool())
-                    en = module->Not(NEW_ID, en);
+                // CEA/CEB are active-high, so an active-low $dffe enable is the
+                // one that needs inverting.
+                en_inv = !ff->getParam(ID(EN_POLARITY)).as_bool();
             }
             if (ff->hasPort(ID(ARST))) {
                 if (!ff->getParam(ID(ARST_VALUE)).is_fully_zero())
                     break;
                 arst = ff->getPort(ID(ARST));
-                if (ff->getParam(ID(ARST_POLARITY)).as_bool())
-                    arst = module->Not(NEW_ID, arst);
+                // ARSTN is active-low; an active-high $adff reset inverts.
+                arst_inv = ff->getParam(ID(ARST_POLARITY)).as_bool();
             }
             SigSpec clk = ff->getPort(ID(CLK));
-            if (!controls_agree(chain, clk, en, arst))
+            if (!controls_agree(chain, clk, en, en_inv, arst, arst_inv))
                 break;
             chain.clk = clk;
             chain.en = en;
+            chain.en_inv = en_inv;
             chain.arst = arst;
+            chain.arst_inv = arst_inv;
             chain.have_clk = true;
             chain.flops.push_back(ff);
             chain.source = ff->getPort(ID::D);
