@@ -22,17 +22,14 @@
 // Check for staleness (CI, VR-9):
 //     aurora2/scripts/dspv4/gen_dspv4_leaves_sim.py --check
 //
-// Behavioral simulation models for the QL_DSP4_* leaf cells emitted by the
-// DSP-V4 Phase-2 techmap (dsp4_logical_map.v). The Phase-2 post-synthesis
-// netlist (<design>_post_synth.v) instantiates ONLY these leaves; this file
-// gives each of them a simulatable body so the netlist can be run in a
-// functional (post-synthesis) simulation and checked against the golden RTL.
+// Simulatable bodies for the QL_DSP4_* leaves the Phase-2 techmap emits, so a
+// post-synthesis netlist can be run against the golden RTL.
 //
-// These are simulation-only models: NOT synthesizable, and NOT the
-// packer-visible black boxes (those live in QL_DSP4_leaves.v).
+// Simulation only: NOT synthesizable, and NOT the packer-visible black boxes
+// (those are in QL_DSP4_leaves.v).
 //
-// Derived from the DSP-V4 RTL in the ffb hardware repo. If a digest below no
-// longer matches ffb, --check fails: re-run the generator and review the diff.
+// Derived from ffb RTL. If a digest below no longer matches ffb, --check fails:
+// re-run the generator and review the diff.
 //
 //   QL_DSP4_MULT                       rtl/pmult.v              sha256:be8eb316cd852abb
 //   QL_DSP4_MULT                       rtl/multiplier.v         sha256:0c0fac870051fd5d
@@ -66,22 +63,13 @@ module qldsp4_csa (a, b, c, sum_o, carry_o, k_o);
   assign k_o     = cbit[49];
 endmodule
 
-// ---------------------------------------------------------------------
-// 32x18 signed multiply in carry-save form, transcribed from
-// ffb/rtl/pmult.v (Baugh-Wooley partial products -> Wallace 3:2 tree).
+// 32x18 signed multiply in carry-save form, from ffb/rtl/pmult.v
+// (Baugh-Wooley partial products -> Wallace 3:2 tree).
 //
-//   U + V == I1 * I0 + KN * 2^50      (U, V read as UNSIGNED 50-bit)
+//   U + V == I1 * I0 + KN * 2^50    (U, V are UNSIGNED 50-bit)
 //
-// U is NOT the product and must not be sign-extended. The ALU resolves
-// the pair as {14{KN}, U} + {14'b0, V} -- see dsp4_top.v's x_mux/y_mux.
-// A model that returned the plain signed product with V = 0 would make
-// the correct and the incorrect extension indistinguishable, which is
-// exactly the bug this file used to hide.
-//
-// V[6:0] is structurally 0 for this 19-row tree (the low columns are too
-// sparse for a compressor to produce a carry), which is what lets the
-// MREG bank register only V[49:7].
-// ---------------------------------------------------------------------
+// U is not the product: do not sign-extend it. V[6:0] is structurally 0
+// for this 19-row tree, which is why MREG registers only V[49:7].
 module QL_DSP4_MULT (I0, I1, U, V, KN);
   input  wire [17:0] I0;   // 18-bit multiplier   (pmult 'b')
   input  wire [31:0] I1;   // 32-bit multiplicand (pmult 'a')
@@ -458,15 +446,11 @@ module QL_DSP4_RSS (ACC_IN, ACC_OUT);
   assign ACC_OUT = acc_saturate[49:0];
 endmodule
 
-// =========================================================================
-// Pipeline registers (bit-sliced: one 1-bit instance per data bit), from
-// ffb/rtl/DFFE_SNR_ANR.v reduced to the ports the operating mode exposes.
+// Pipeline registers, bit-sliced, from ffb/rtl/DFFE_SNR_ANR.v.
 //   *_DFFRE : async reset R (active-low), clock-enable E
 //   *_DFFR  : async reset R (active-low), no enable
-// Q powers up to 0 so the netlist stays cycle-aligned with the reset-to-0
-// golden RTL: the netlist ties each flop's R to 1'b1 (local sync reset and
-// scan are physical-mode-only), so power-up is what a functional run sees.
-// =========================================================================
+// Q powers up to 0, keeping the netlist cycle-aligned with reset-to-0
+// golden RTL -- the netlist ties R to 1'b1 in a functional run.
 
 `define QL_DSP4_DFFRE(NAME) \
 module NAME (D, E, R, clk, Q);      \

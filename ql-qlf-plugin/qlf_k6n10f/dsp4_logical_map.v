@@ -14,55 +14,24 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 //
-// DSP-V4 synthesis Phase 2 - techmap that decomposes the monolithic `QL_DSP4`
-// base cell (Phase-1 output) into the `dsp4_logical` operating-mode leaf cells
-// (QL_DSP4_MULT / QL_DSP4_ALU_* / QL_DSP4_PREADD|PRESUB / QL_DSP4_RSS and the
-// bit-sliced pipeline registers). Run as `techmap -map dsp4_logical_map.v`
-// after `ql_dspv2_to_dspv4`. The leaf black boxes are provided by
-// `QL_DSP4_leaves.v` (read `-lib` in `begin`).
+// Techmap: decomposes the monolithic QL_DSP4 cell into the `dsp4_logical`
+// operating-mode leaf cells. Run as `techmap -map dsp4_logical_map.v`; the leaf
+// blackboxes come from QL_DSP4_leaves.v, read with -lib.
 //
-// The `dsp4_logical` mode's internal muxes / sign-extend fanouts / node wires
-// are *fabric routing*, not cells: this map only instantiates the leaves and
-// connects them leaf-to-leaf + to the QL_DSP4 data ports. VPR pack+route then
-// realizes each mux as the single fanin we present. Unused ALU operands are
-// left *unconnected* (there is no constant-zero mux input in the mode; an open
-// primitive input packs as 0).
+// The mode's internal muxes and sign-extend fanouts are fabric routing, not
+// cells. This map instantiates only the leaves and presents each mux with its
+// single fanin; unused ALU operands are left OPEN, because an open primitive
+// input packs as 0 and the mode has no constant-zero mux input.
 //
-// Scope: the full W/X/Y/Z operand-mux decode of OPMODE, so every mode whose
-// operands come from {0, U, V, P, C, A:B, PCIN} is lowered correctly. Still
-// unimplemented (and REJECTED via _TECHMAP_FAIL_ rather than silently mapped
-// wrong): USE_SIMD segmentation, CARRYINSEL/CIN, the Z >>17 and MACC_EXT
-// sources, ACIN/BCIN inputs, and the AMULTSEL/BMULTSEL/PREADDINSEL multiplier
-// routing beyond the pre-adder-on-B shape. See DSPV4_SYNTHESIS_REQUIREMENTS_AND_PLAN.md
-// (TM-1..TM-9) in aurora2.
+// Unsupported configurations are rejected via _TECHMAP_FAIL_, never mapped
+// approximately -- an open operand packs as 0, so a dropped operand yields a
+// working-but-wrong netlist that no stage of the flow flags.
 //
-// A rejected cell stays un-lowered and fails later with "no such model", which
-// is noisy but safe. It must never map silently: an open ALU operand packs as
-// 0, so a dropped operand yields a working-but-wrong netlist that no stage of
-// the flow flags.
+// Function is defined by behavioral_model/dspv4_sim.v; the leaf interface and
+// wiring by the vpr-rendered <mode name="dsp4_logical">.
 //
-// INMODE[0] / INMODE[4] -- why they are rejected even though they are NOT mode
-// bits.  They are register-path selects (reg_path.v REG_PATH_SEL: [0] on the A
-// path, [4] on the B path).  They do not change which operation the DSP
-// performs -- no entry in the mode table sets either -- but cascade-path
-// operations do set them, and they DO change operand pipeline depth:
-//
-//   PATH_OUT = a_r2_sel                            -> the A:B concat (X mux)
-//   GATE_OUT = REG_PATH_SEL ? a_r1 : a_r2_sel      -> multiplier / pre-adder
-//
-// This map builds ONE tap per operand (a_path / b_path) and uses it for both,
-// which is correct only while these bits are 0.  Supporting them means building
-// the second tap: route a_r1 to the multiplier while a_path keeps feeding A:B.
-// Note a_r1 is the FIRST flop bank's output, which exists in hardware
-// regardless of REG0 (the RTL bypasses it with a mux), so INMODE[0]=1 requires
-// instantiating QL_DSP4_A1_DFFRE even when AREG0=0.  Same for B / INMODE[4].
-//
-// Until that lands, rejecting is mandatory: silently ignoring these bits would
-// give the wrong operand pipeline depth with nothing to catch it.  See CR-6 and
-// TM-5a in aurora2 DSPV4_SYNTHESIS_REQUIREMENTS_AND_PLAN.md.
-//
-// Sources of truth: function = behavioral_model/dspv4_sim.v; exact leaf
-// interface + wiring = FPGA0806 vpr-rendered.xml `<mode name="dsp4_logical">`.
+// Rationale, defect history and the INMODE[0]/[4] rejection are in aurora2
+// docs/development/DSPV2-to-DSPV4-Synthesis/DSPV4_CODE_CHANGES_PHASE1_3.md.
 
 module QL_DSP4 #(
     parameter [8:0] OPMODE      = 9'b000000101,  // W[8:7] Z[6:4] Y[3:2] X[1:0]
@@ -172,14 +141,10 @@ module QL_DSP4 #(
     localparam Z_READS_P = Z_ACC || (Z_SEL == 3'b100) || (Z_SEL == 3'b110);
     localparam USES_P = (W_SEL == 2'b01) || (X_SEL == 2'b10) || Z_READS_P;
 
-    // -- register-stage folding (M stage -> P stage) --
-    // MREG (multiplier-output flops) and PREG (accumulator / output flops) each
-    // add one cycle between the multiplier and P. When only ONE of the two is
-    // requested, realize that single stage on the ACC/P register and leave the
-    // M/MV flops out entirely: same latency, one physical stage, and the ALU
-    // sits inside the registered path instead of behind it. The dedicated M
-    // stage is instantiated only when BOTH are requested (e.g. V2 m_reg plus an
-    // accumulate mode), where two distinct cycles are actually needed.
+    // MREG and PREG each add one cycle between multiplier and P. With only one
+    // requested, realise that stage on the ACC/P register and omit the M/MV
+    // flops: same latency, one physical stage, ALU inside the registered path.
+    // The dedicated M stage appears only when both are requested.
     localparam USE_MREG = (MREG && PREG);
     localparam USE_PREG = (MREG || PREG);
 
@@ -192,14 +157,9 @@ module QL_DSP4 #(
         || (Y_SEL == 2'b10)                             // reserved Y encoding
         || (A_IN_SEL || B_IN_SEL)                       // ACIN / BCIN inputs
         || (INMODE[0] || INMODE[4])                     // reg-path select, see below
-        // Combinational P feedback. This tests PREG, *not* USE_PREG: the
-        // folding below sets USE_PREG whenever MREG is set, so testing USE_PREG
-        // let MREG=1/PREG=0 through the guard. dsp4_top.v then has
-        // `p_acc = alu_result` -- a real combinational loop, an illegal cell --
-        // while the folded netlist quietly inserted an accumulator register and
-        // broke the loop, producing a working-but-different circuit. That
-        // silently mis-mapped 11 P-feedback modes (MULT_ACC, ACC_AB, PASS_P,
-        // ...) instead of rejecting them.
+        // Combinational P feedback. Tests PREG, *not* USE_PREG: the folding below
+        // sets USE_PREG whenever MREG is set, so USE_PREG here would let
+        // MREG=1/PREG=0 through and dsp4_top.v would have p_acc = alu_result.
         || (USES_P && !PREG);                           // combinational P feedback
 
     wire _TECHMAP_FAIL_ = UNSUPPORTED;
@@ -398,35 +358,14 @@ module QL_DSP4 #(
         end
     endgenerate
 
-    // =======================================================================
-    // ALU operands. Each is presented as the single fanin of its mode mux, or
-    // left open. All sources sign-extend to the 64-bit accumulator width,
-    // matching dsp4_top.v :242-315.
+    // ALU operands. Each is the single fanin of its mode mux, or left open. All
+    // sources sign-extend to the 64-bit accumulator width.
     //
-    // A:B is the *registered* A and B path outputs (dsp4_top.v uses
-    // preadd_xmux / b_xmux, which are the reg_path PATH_OUT taps) -- i.e. the
-    // same a_path / b_path this map already built, not the raw A / B ports.
-    // =======================================================================
-    // U is padded with KN and V is ZERO-extended -- neither is sign-extended.
-    // U and V are the multiplier's carry-save pair, not signed values, and
-    // U + V == product + KN*2^50; padding U with KN is what cancels that 2^50
-    // excess, and V is an unsigned carry vector. Sign-extending both happens to
-    // give the right low 50 bits (carries only propagate upward, so P cannot
-    // see the difference), which is why this was invisible until the RSS shift
-    // brought the upper accumulator bits back down -- see
-    // verify_techmap.py --rss.
+    // A:B is the *registered* a_path / b_path, not the raw A / B ports.
     wire [63:0] u_ext    = {{14{knsel}}, msel};
-    // V's upper bits are padded with vsel[0], NOT with a literal 0 and NOT with
-    // vsel[49]. This mirrors the architecture exactly: vpr.xml builds
-    // vselsext_node[63:50] from vsel_node_OUT[0], and mselsext_node[63:50] from
-    // mksel_node_OUT[0] (the KN/MK node) -- so the tile has no independent pins
-    // for the upper operand bits, and anything other than the arch's own source
-    // has to be routed in, overusing 14 DSP input pins and failing to route.
-    //
-    // It is still a true zero-extension: V[6:0] are structurally zero for the
-    // 19-row 32x18 reduction tree (see QL_DSP4_MULT), so vsel[0] is constant 0 --
-    // it is the tile's zero source, delivered as a real net rather than a
-    // routed constant.
+    // Padded with vsel[0], not a literal 0: the tile has no independent pins
+    // for the upper bits, so the arch's own source must be used or routing
+    // fails. Still a true zero-extension -- V[6:0] are structurally zero.
     wire [63:0] v_ext    = {{14{vsel[0]}}, vsel};
     wire [63:0] c_ext    = {{14{c_path[49]}}, c_path};
     wire [63:0] pcin_ext = {{14{PCIN[49]}}, PCIN};
@@ -440,14 +379,10 @@ module QL_DSP4 #(
     wire [63:0] macc_ext = {{14{SIGNCIN}},   {17{SIGNCIN}},   acc_q[49:17]};
     wire [63:0] ab_ext   = {{14{a_path[31]}}, a_path, b_path};
 
-    // ALU carry-in (CARRYINSEL). 000 takes the fabric CIN port, 010 the
-    // cascaded carry from the adjacent lower slice. Both are real nets, so
-    // neither introduces a routed constant.
-    //
-    // 100 -- this slice's own registered carry-out fed back -- is still
-    // rejected: dsp4_top.v takes it from carryout_reg, so without COUTREG it
-    // closes a combinational loop ALU.CARRYOUT -> ALU.CIN. Supporting it needs
-    // the same interlock USES_P/PREG has, plus a COUT register bank.
+    // ALU carry-in. CARRYINSEL 000 takes the fabric CIN port, 010 the cascaded
+    // carry from the lower slice; both are real nets. 100 -- this slice's own
+    // registered carry-out -- is rejected: without COUTREG it closes a
+    // combinational loop ALU.CARRYOUT -> ALU.CIN.
     wire alu_cin = (CARRYINSEL == 3'b010) ? CCIN : CIN;
 
     wire [63:0] alu_w = (W_SEL == 2'b01) ? acc_q : c_ext;
@@ -678,18 +613,9 @@ module QL_DSP4 #(
     wire [49:0] p_out;
     generate
         if (USE_RSS) begin : g_rss
-            // ROUND / SHIFT / SATURATE ride to the leaf as parameters, the way
-            // configuration reaches a leaf on this path (precedent:
-            // QL_DSPV2_MULT's MODE_BITS). Ports would need routing from a
-            // constant source the operating mode has no provision for -- the
-            // same reason unused ALU operands are left open rather than tied.
-            // They were previously dropped here, which silently turned every
-            // rounding/shifting/saturating configuration into a plain
-            // truncation.
-            // {SATURATE, SHIFT[5:0], ROUND[2:0]} -- the packing the physical
-            // macro QL_DSPPHY_RSS defines, and the ten bits openfpga.xml
-            // already reserves for this cell. One param, so the bitstream
-            // annotation needs a single `.param MODE_BITS` entry.
+            // Configuration rides as a parameter; the mode has no constant source to
+            // route ports from. {SATURATE, SHIFT[5:0], ROUND[2:0]} is the packing
+            // QL_DSPPHY_RSS defines.
             QL_DSP4_RSS #(
                 .MODE_BITS({SATURATE, SHIFT, ROUND})
             ) u_rss (.ACC_IN(p_node), .ACC_OUT(p_out));
@@ -716,11 +642,7 @@ module QL_DSP4 #(
     // has one carry-out bank (COUTREG) serving both COUT and CCOUT.
     assign CCOUT = cout_w[3];
     // Sign cascade is the ACCUMULATOR sign, not the product sign
-    // (dsp4_top.v: assign SIGNCOUT = p_acc[MULT_P_WIDTH-1]). This read msel[49]
-    // -- the multiplier's partial-product sum -- which is a different signal
-    // entirely and wrong in every mode, including the ones with no multiplier.
-    // It went unnoticed because the mode testbench compares only P; see
-    // verify_techmap.py --check-cascade.
+    // (dsp4_top.v: SIGNCOUT = p_acc[MULT_P_WIDTH-1]).
     assign SIGNCOUT = p_node[49];
 
     // A/B cascade outputs (registered path taps). Unused in Phase-1 designs
