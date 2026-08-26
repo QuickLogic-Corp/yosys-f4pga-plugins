@@ -636,4 +636,147 @@ struct QlDspV4Pass : public Pass {
 
 } QlDspV4Pass;
 
+// ============================================================================
+// QL_DSP4 configuration checks.
+//
+// The pre-adder result AD is the two's-complement low 32 bits of D +/- (A|B).
+// It wraps on overflow and produces no flag: ffb 4.2.5 removed the saturation
+// that used to clamp same-sign additions. On the BMULTSEL path AD is truncated
+// again, to 18 bits, feeding the multiplier's I0 port.
+//
+// Neither shows up as an error. The netlist is structurally valid and the
+// arithmetic is right for part of the input range, so a value-comparing
+// testbench only catches it if the stimulus happens to reach the corner --
+// verify_techmap.py's random vectors do not. Warn at synthesis time rather
+// than leaving it to silicon.
+//
+// Runs immediately before dsp4_logical_map.v, where all four producers
+// converge (inference, the Synplify bridge, the macro library, direct
+// instantiation), so one check covers every route to the cell.
+// ============================================================================
+
+// Bits needed to hold the signed value: the width left after stripping a
+// redundant sign-extension run off the top. An 18-bit value sign-extended to 32
+// returns 18, so extension does not read as risk.
+static int signed_width(const SigSpec &sig)
+{
+    int n = GetSize(sig);
+    if (n <= 1)
+        return n;
+    int i = n - 2;
+    while (i >= 0 && sig[i] == sig[n - 1])
+        i--;
+    return i + 2;
+}
+
+struct QlDsp4CheckPass : public Pass {
+    QlDsp4CheckPass()
+        : Pass("ql_dsp4_check", "warn about QL_DSP4 arithmetic that can silently overflow")
+    {
+    }
+
+    void help() override
+    {
+        log("\n");
+        log("    ql_dsp4_check [selection]\n");
+        log("\n");
+        log("Warn about QL_DSP4 pre-adder configurations whose result can overflow\n");
+        log("silently. The DSP-V4 pre-adder wraps in two's complement and emits no\n");
+        log("overflow flag, so whether a design is correct depends on its data range.\n");
+        log("\n");
+        log("    -max-report N\n");
+        log("        detail at most N cells, then summarise (default 10).\n");
+        log("\n");
+    }
+
+    void execute(std::vector<std::string> args, RTLIL::Design *design) override
+    {
+        log_header(design, "Executing QL_DSP4_CHECK pass.\n");
+
+        int max_report = 10;
+        size_t argidx;
+        for (argidx = 1; argidx < args.size(); argidx++) {
+            if (args[argidx] == "-max-report" && argidx + 1 < args.size()) {
+                max_report = atoi(args[++argidx].c_str());
+                continue;
+            }
+            break;
+        }
+        extra_args(args, argidx, design);
+
+        int at_risk = 0, reported = 0, preadd_cells = 0;
+
+        for (auto module : design->selected_modules()) {
+            SigMap sigmap(module);
+            for (auto cell : module->selected_cells()) {
+                if (cell->type != ID(QL_DSP4))
+                    continue;
+                bool amultsel = cell->getParam(ID(AMULTSEL)).as_bool();
+                bool bmultsel = cell->getParam(ID(BMULTSEL)).as_bool();
+                if (!amultsel && !bmultsel)
+                    continue;
+                preadd_cells++;
+
+                RTLIL::Const inmode = cell->getParam(ID(INMODE));
+                bool preaddinsel = cell->getParam(ID(PREADDINSEL)).as_bool();
+                bool d_active = inmode.extract(2, 1).as_bool();
+                bool gated = inmode.extract(1, 1).as_bool();
+
+                // Mirror dsp4_logical_map.v: I1 is the sign-extended B path
+                // under PREADDINSEL, else the A path; INMODE[1] zero-gates
+                // whichever one PREADDINSEL selected; I0 is D unless INMODE[2]
+                // gates it off. A gated operand is a constant zero and cannot
+                // push the sum over.
+                int w_i0 = d_active ? signed_width(sigmap(cell->getPort(ID(D)))) : 1;
+                int w_i1 = 1;
+                if (!gated)
+                    w_i1 = signed_width(
+                        sigmap(cell->getPort(preaddinsel ? ID(B) : ID(A))));
+
+                // D +/- I1 needs one bit more than the wider operand.
+                int w_sum = std::max(w_i0, w_i1) + 1;
+                const char *op = inmode.extract(3, 1).as_bool() ? "D - " : "D + ";
+                const char *rhs = preaddinsel ? "B" : "A";
+
+                // AMULTSEL keeps all 32 bits of AD; BMULTSEL truncates to
+                // AD[17:0] for the 18-bit multiplier port, a much lower ceiling.
+                int keep = bmultsel ? 18 : 32;
+                if (w_sum <= keep)
+                    continue;
+
+                at_risk++;
+                if (reported >= max_report)
+                    continue;
+                reported++;
+                if (bmultsel)
+                    log_warning(
+                        "%s.%s: DSP-V4 pre-adder %s%s needs %d bits, but BMULTSEL "
+                        "feeds the result to the 18-bit multiplier port as AD[17:0]. "
+                        "The high bits are discarded silently -- results are correct "
+                        "only while |%s%s| < 2^17. Narrow an operand, or pre-add in "
+                        "fabric.\n",
+                        log_id(module), log_id(cell), op, rhs, w_sum, op, rhs);
+                else
+                    log_warning(
+                        "%s.%s: DSP-V4 pre-adder %s%s needs %d bits and AD holds 32. "
+                        "The pre-adder wraps in two's complement and raises no overflow "
+                        "flag, so results are correct only while the sum stays in the "
+                        "32-bit signed range. Narrow an operand to 31 bits, or pre-add "
+                        "in fabric.\n",
+                        log_id(module), log_id(cell), op, rhs, w_sum);
+            }
+        }
+
+        if (at_risk > reported)
+            log_warning("%d further QL_DSP4 pre-adder cell(s) carry the same overflow "
+                        "risk; re-run with -max-report to list them.\n",
+                        at_risk - reported);
+        if (preadd_cells)
+            log("ql_dsp4_check: %d QL_DSP4 pre-adder cell(s), %d at risk of silent "
+                "overflow.\n",
+                preadd_cells, at_risk);
+    }
+
+} QlDsp4CheckPass;
+
 PRIVATE_NAMESPACE_END

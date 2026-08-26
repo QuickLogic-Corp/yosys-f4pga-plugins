@@ -135,10 +135,11 @@ module QL_DSP4 #(
     // Any operand taking the P feedback node. dsp4_top.v:390 has
     // `p_acc = PREG ? p_reg : alu_result`, so selecting P without a P register
     // closes a combinational loop through the ALU -- reject it.
-    // Z = 100 (MACC_EXT) and 110 (P>>17) read p_reg just as 010 does, so they
-    // are P-feedback modes too and need PREG -- without this the combinational
-    // -loop guard below would let them through.
-    localparam Z_READS_P = Z_ACC || (Z_SEL == 3'b100) || (Z_SEL == 3'b110);
+    // Z = 110 (P>>17) reads p_reg just as 010 does, so it is a P-feedback mode
+    // too and needs PREG -- without this the combinational-loop guard below
+    // would let it through. Z = 100 (MACC_EXT) does NOT read P: it is the pure
+    // sign word {64{SIGNCIN}} (ffb 4.2.6 correctness fix).
+    localparam Z_READS_P = Z_ACC || (Z_SEL == 3'b110);
     localparam USES_P = (W_SEL == 2'b01) || (X_SEL == 2'b10) || Z_READS_P;
 
     // MREG and PREG each add one cycle between multiplier and P. With only one
@@ -369,14 +370,16 @@ module QL_DSP4 #(
     wire [63:0] v_ext    = {{14{vsel[0]}}, vsel};
     wire [63:0] c_ext    = {{14{c_path[49]}}, c_path};
     wire [63:0] pcin_ext = {{14{PCIN[49]}}, PCIN};
-    // The >>17 and MACC_EXT Z paths take the low-50 window, shift it right by
-    // 17 arithmetically, and sign-extend to 64 -- that is what keeps the 50-bit
-    // multi-slice MACC100 math bit-exact (dsp4_top.v: pcin_shift17 / p_shift17
-    // / macc_ext). MACC_EXT differs only in taking its sign from SIGNCIN
-    // instead of the shifted operand's own MSB.
+    // The >>17 Z paths take the low-50 window, shift it right by 17
+    // arithmetically, and sign-extend to 64 (dsp4_top.v: pcin_shift17 /
+    // p_shift17).
     wire [63:0] pcin_s17 = {{14{PCIN[49]}}, {17{PCIN[49]}}, PCIN[49:17]};
     wire [63:0] p_s17    = {{14{acc_q[49]}}, {17{acc_q[49]}}, acc_q[49:17]};
-    wire [63:0] macc_ext = {{14{SIGNCIN}},   {17{SIGNCIN}},   acc_q[49:17]};
+    // MACC_EXT is the sign word for the upper limb of a one-shot signed
+    // multi-slice MACC -- SIGNCIN only, no P term. It used to add this slice's
+    // own acc_q[49:17], which made the signed 100-bit compose wrong whenever
+    // the low limb was negative (ffb 4.2.6).
+    wire [63:0] macc_ext = {64{SIGNCIN}};
     wire [63:0] ab_ext   = {{14{a_path[31]}}, a_path, b_path};
 
     // ALU carry-in. CARRYINSEL 000 takes the fabric CIN port, 010 the cascaded

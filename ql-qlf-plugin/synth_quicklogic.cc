@@ -682,6 +682,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // monolithic QL_DSP4 base cells (per-cell + cascade-pair
                             // fusion) in place of the V2 mode-subtype specialization.
                             run("ql_dspv2_to_dspv4");
+                            // Last point where the control word is still readable as
+                            // parameters, and where every producer's cells are
+                            // present: inference, the bridge above, the macro library
+                            // and direct instantiation. Warn here about configurations
+                            // whose arithmetic wraps silently.
+                            run("ql_dsp4_check");
                             // Phase 2: decompose each monolithic QL_DSP4 into the
                             // dsp4_logical operating-mode leaf cells (mult / alu /
                             // pre-adder / rss / bit-sliced registers) so the netlist

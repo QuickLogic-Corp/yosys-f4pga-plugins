@@ -217,7 +217,7 @@ module alu #(
   // Assign carryout depending on mode of operation
   // ONE50:  only CARRYOUT[3] is meaningful (carry out of bit 49).
   // TWO24:  CARRYOUT[1] and [3] are the valid segment carries;
-  //         [0] and [2] are the intermediate intra-half carries.
+  //         [0] and [2] are driven 0.
   // FOUR12: all four CARRYOUT bits are valid segment carries.
   always @* begin
     if (!USE_SIMD) begin
@@ -232,7 +232,7 @@ module alu #(
       arith_carryout[2] = 1'b0;
       arith_carryout[3] = simd_c3;
     end else begin
-      // TWO24 and FOUR12: all four segment carries are output
+      // FOUR12: all four segment carries are output
       arith_carryout[0] = simd_c0;
       arith_carryout[1] = simd_c1;
       arith_carryout[2] = simd_c2;
@@ -327,18 +327,18 @@ endmodule
 // BEGIN ../rtl/multiplier.v
 // --- BEGIN AUTO-GENERATED PORT DEFINITION (do not edit) ---
 module multiplier #(
-  parameter I0_WIDTH = 18,
-  parameter I1_WIDTH = 32,
-  parameter U_WIDTH = 50,
-  parameter V_WIDTH = 50
+    parameter I0_WIDTH = 18,
+    parameter I1_WIDTH = 32,
+    parameter U_WIDTH  = 50,
+    parameter V_WIDTH  = 50
 ) (
-  input [I0_WIDTH-1:0] I0,
-  input [I1_WIDTH-1:0] I1,
-  output [U_WIDTH-1:0] U,
-  output [V_WIDTH-1:0] V,
-  output KN
+    input [I0_WIDTH-1:0] I0,
+    input [I1_WIDTH-1:0] I1,
+    output [U_WIDTH-1:0] U,
+    output [V_WIDTH-1:0] V,
+    output KN
 );
-// --- END AUTO-GENERATED PORT DEFINITION ---
+  // --- END AUTO-GENERATED PORT DEFINITION ---
 
   // The internal partial-product multiplier (pmult) uses the OPPOSITE order
   // (its I0 is the 32-bit multiplicand 'a', its I1 the 18-bit multiplier 'b'),
@@ -560,9 +560,8 @@ module preadd_path #(
   // gate d input (can be zeroed based on INMODE[2])
   assign preadd_d = INMODE[2] ? d_r1_sel : {D_WIDTH{1'b0}};
 
-  // Pre-adder core (blue-box macro): AD = saturate( D +/- (A|B) ).  INMODE[3]
-  // selects add/sub.  Operand gating/selection (above) and the AD register
-  // (below) stay in this path; only the add/sub + saturation are the macro.
+  // Pre-adder core: AD = ( D +/- (A|B) )[AD_WIDTH-1:0],
+  // wrapping (two's complement) on overflow.  INMODE[3] selects add/sub.
   preadder #(
       .I0_WIDTH(D_WIDTH),
       .I1_WIDTH(A_WIDTH),
@@ -605,7 +604,7 @@ module preadder #(
     input [I0_WIDTH-1:0] I0,
     input [I1_WIDTH-1:0] I1,
     input INMODE3,
-    output reg [AD_WIDTH-1:0] AD
+    output [AD_WIDTH-1:0] AD
 );
   // --- END AUTO-GENERATED PORT DEFINITION ---
 
@@ -617,18 +616,7 @@ module preadder #(
   assign I1_s = I1;
 
   assign raw  = INMODE3 ? (I0_s - I1_s) : (I0_s + I1_s);
-
-  always @* begin
-    if (!I1[I1_WIDTH-1] && !INMODE3 && !I0[I0_WIDTH-1]) begin  // pos + pos
-      AD = raw[I1_WIDTH-1] ? {1'b0, {(AD_WIDTH - 1) {1'b1}}}  // clamp max +
-      : raw[AD_WIDTH-1:0];
-    end else if (I1[I1_WIDTH-1] && !INMODE3 && I0[I0_WIDTH-1]) begin  // neg + neg
-      AD = !raw[I1_WIDTH-1] ? {1'b1, {(AD_WIDTH - 1) {1'b0}}}  // clamp min -
-      : raw[AD_WIDTH-1:0];
-    end else begin  // mixed sign / subtract
-      AD = raw[AD_WIDTH-1:0];
-    end
-  end
+  assign AD   = raw[AD_WIDTH-1:0];
 
 endmodule
 // END ../rtl/preadder.v
@@ -1197,13 +1185,13 @@ module dsp4_top #(
   end
 
   // -- Z mux: OPMODE[6:4] --
-  // The >>17 / MACC_EXT paths operate on the low-50 window of the
-  // accumulator (P_WIDTH bits) and are sign-extended to ACC_WIDTH, so the
-  // 50-bit multi-slice MACC100 math is preserved bit-for-bit.
+  // The >>17 paths operate on the low-50 window of the accumulator
+  // (P_WIDTH bits) and are sign-extended to ACC_WIDTH.
 
-  // MACC_EXT (100): SIGNCIN sign-extension, P (low-50) shifted right by 17
+  // MACC_EXT (100): sign-extension word for the upper limb of a one-shot
+  // signed multi-slice multiply accumulate.
   wire [ACC_WIDTH-1:0] macc_ext;
-  assign macc_ext = {{(ACC_WIDTH - P_WIDTH) {SIGNCIN}}, {17{SIGNCIN}}, p_reg[P_WIDTH-1:17]};
+  assign macc_ext = {ACC_WIDTH{SIGNCIN}};
 
   // 17-bit right shift of PCIN (sign-extended)
   wire [ACC_WIDTH-1:0] pcin_shift17;

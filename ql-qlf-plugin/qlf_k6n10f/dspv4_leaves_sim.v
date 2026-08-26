@@ -31,10 +31,10 @@
 // Derived from ffb RTL. If a digest below no longer matches ffb, --check fails:
 // re-run the generator and review the diff.
 //
-//   QL_DSP4_MULT                       rtl/pmult.v              sha256:be8eb316cd852abb
-//   QL_DSP4_MULT                       rtl/multiplier.v         sha256:0c0fac870051fd5d
-//   QL_DSP4_ALU_*                      rtl/alu.v                sha256:437a990786b73d26
-//   QL_DSP4_PREADD / QL_DSP4_PRESUB    rtl/preadder.v           sha256:1814498800e884a9
+//   QL_DSP4_MULT                       rtl/pmult.v              sha256:5cf5e388a54660bd
+//   QL_DSP4_MULT                       rtl/multiplier.v         sha256:2774a077899700ff
+//   QL_DSP4_ALU_*                      rtl/alu.v                sha256:900d02ed05cdaa86
+//   QL_DSP4_PREADD / QL_DSP4_PRESUB    rtl/preadder.v           sha256:3269b4f9ed290fc6
 //   QL_DSP4_RSS                        rtl/rss_block.v          sha256:4934a3f41b91d330
 //   QL_DSP4_RSS                        rtl/round.v              sha256:e5ce9f93518b88d0
 //   QL_DSP4_*_DFFR / _DFFRE            rtl/DFFE_SNR_ANR.v       sha256:c7baf42afdd97f58
@@ -301,28 +301,26 @@ module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
       .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
 endmodule
 
-// Pre-adder, from ffb/rtl/preadder.v: AD = saturate(I0 +/- I1), with I0 the
-// 27-bit D operand and I1 the 32-bit operand. INMODE3 = 0 -> add, 1 -> subtract.
-// Only same-sign addition can overflow, so only those two cases clamp.
+// Pre-adder, from ffb/rtl/preadder.v: AD is the two's-complement low 32 bits
+// of I0 +/- I1, with I0 the 27-bit D operand and I1 the 32-bit operand.
+// INMODE3 = 0 -> add, 1 -> subtract.
+//
+// It WRAPS on overflow and produces no overflow flag. Saturation was removed
+// in ffb 4.2.5; before that, same-sign additions clamped to the 32-bit signed
+// range while subtract and mixed-sign operands wrapped. Do not reintroduce the
+// clamp -- ql_dspv4 warns the user about the overflow risk instead.
 module qldsp4_preadder #(
     parameter INMODE3 = 1'b0
 ) (
     input  wire [26:0] I0,
     input  wire [31:0] I1,
-    output reg  [31:0] AD
+    output wire [31:0] AD
 );
   wire signed [26:0] I0_s = I0;
   wire signed [31:0] I1_s = I1;
   wire signed [32:0] raw  = INMODE3 ? (I0_s - I1_s) : (I0_s + I1_s);
 
-  always @* begin
-    if (!I1[31] && !INMODE3 && !I0[26])       // pos + pos -> clamp max +
-      AD = raw[31] ? {1'b0, {31{1'b1}}} : raw[31:0];
-    else if (I1[31] && !INMODE3 && I0[26])    // neg + neg -> clamp min -
-      AD = !raw[31] ? {1'b1, {31{1'b0}}} : raw[31:0];
-    else
-      AD = raw[31:0];
-  end
+  assign AD = raw[31:0];
 endmodule
 
 module QL_DSP4_PREADD (I0, I1, AD);
