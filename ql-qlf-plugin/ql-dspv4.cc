@@ -313,27 +313,27 @@ struct QlDspV4Pass : public Pass {
         // cycle the RTL said it would; adding CREG would shift it.
         //
         // Any absorbed flop must already agree with the flop absorbed on the
-        // output, if there was one, because the leaves share CLK and ARSTN.
+        // output, if there was one, on the CLOCK -- that pin is shared.
         int na = 0, nb = 0;
         FlopChain ca, cb;
         {
             bool seeded = ff_cell != nullptr;
-            SigSpec seed_clk, seed_arst(State::S1);
-            bool seed_arst_inv = false;
+            SigSpec seed_clk, seed_rst(State::S1);
+            bool seed_rst_inv = false;
             if (seeded) {
                 seed_clk = ff_cell->getPort(ID(CLK));
-                if (ff_cell->hasPort(ID(ARST))) {
-                    seed_arst = ff_cell->getPort(ID(ARST));
-                    seed_arst_inv =
-                        ff_cell->getParam(ID(ARST_POLARITY)).as_bool();
+                if (ff_cell->hasPort(ID(SRST))) {
+                    seed_rst = ff_cell->getPort(ID(SRST));
+                    seed_rst_inv =
+                        ff_cell->getParam(ID(SRST_POLARITY)).as_bool();
                 }
             }
             ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed_clk,
-                               seed_arst, seed_arst_inv, seeded);
+                               seed_rst, seed_rst_inv, seeded);
             cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed_clk,
-                               seed_arst, seed_arst_inv, seeded);
+                               seed_rst, seed_rst_inv, seeded);
             int common = std::min(GetSize(ca.flops), GetSize(cb.flops));
-            // Both ports land on the shared CLK and ARSTN, so the two chains
+            // Both operand ports land on the shared CLK and RSTN, so the chains
             // have to agree on both -- compared as raw signal plus polarity.
             if (common > 0 &&
                 !(same(ca.clk, cb.clk) && same(ca.arst, cb.arst) &&
@@ -421,7 +421,7 @@ struct QlDspV4Pass : public Pass {
             cell->setPort(ID(CEA), resolve(module, ca.en, ca.en_inv));
             cell->setPort(ID(CEB), resolve(module, cb.en, cb.en_inv));
             if (ca.arst != SigSpec(State::S1))
-                cell->setPort(ID(ARSTN),
+                cell->setPort(ID(RSTN),
                               resolve(module, ca.arst, ca.arst_inv));
             absorbed_regs += na + nb;
         }
@@ -439,13 +439,16 @@ struct QlDspV4Pass : public Pass {
                 cell->setPort(ID(CEP), en);
             }
 
-            // Asynchronous reset. The accumulator flops take .R(ARSTN), and the
-            // leaf is `always @(posedge clk or negedge R) if (!R) Q <= 0` --
-            // asynchronous, active-low, resetting to zero. An $adff whose reset
-            // value is not zero cannot be expressed, so it stays soft rather
-            // than silently resetting to the wrong value.
-            if (ff_cell->hasPort(ID(ARST))) {
-                if (!ff_cell->getParam(ID(ARST_VALUE)).is_fully_zero()) {
+            // Synchronous reset. The accumulator bank takes .R(ACCRSTN) -- its
+            // own pin, separate from the RSTN the operand banks use -- and the
+            // leaf is `always @(posedge clk) if (!R) Q <= 0`: synchronous,
+            // active-low, resetting to zero. Because ACCRSTN is separate, the
+            // output register's reset does not have to match the operand
+            // chains'. An $sdff whose reset value is not zero cannot be
+            // expressed, so it stays soft rather than resetting to the wrong
+            // value.
+            if (ff_cell->hasPort(ID(SRST))) {
+                if (!ff_cell->getParam(ID(SRST_VALUE)).is_fully_zero()) {
                     left_soft++;
                     log_debug("  %s: left soft -- absorbed flop resets to a "
                               "non-zero value, which the DSP cannot express\n",
@@ -453,11 +456,11 @@ struct QlDspV4Pass : public Pass {
                     module->remove(cell);
                     return false;
                 }
-                SigSpec arst = ff_cell->getPort(ID(ARST));
-                // ARSTN is active-low; $adff's polarity says how ARST reads.
-                if (ff_cell->getParam(ID(ARST_POLARITY)).as_bool())
-                    arst = module->Not(NEW_ID, arst);
-                cell->setPort(ID(ARSTN), arst);
+                SigSpec srst = ff_cell->getPort(ID(SRST));
+                // ACCRSTN is active-low; $sdff's polarity says how SRST reads.
+                if (ff_cell->getParam(ID(SRST_POLARITY)).as_bool())
+                    srst = module->Not(NEW_ID, srst);
+                cell->setPort(ID(ACCRSTN), srst);
             }
         }
 
@@ -505,7 +508,27 @@ struct QlDspV4Pass : public Pass {
         // absorbed nothing while an active-low one absorbed fine.
         SigSpec en = SigSpec(State::S1), arst = SigSpec(State::S1);
         bool en_inv = false, arst_inv = false;
+        // CLK is shared by every leaf, so it is pinned as soon as anything is
+        // absorbed -- including by the output flop, which seeds it.
+        //
+        // The RESET is treated as shared, even though the accumulator has its
+        // own ACCRSTN pin and the techmap drives it from there. Underneath,
+        // dsp4_top.v clears the P register on `RSTN & ACCRSTN` -- an AND the
+        // hardware team places inside the physical mode, below the interface,
+        // so a consumer only ever drives ACCRSTN.
+        //
+        // That is fine as long as one net reaches both pins. It stops being
+        // fine if a design gives the accumulator a different reset from the
+        // operand registers: the netlist would then say the P register clears
+        // on ACCRSTN while the silicon clears it on either. Seeding the reset
+        // from the output flop keeps the two nets identical and makes the
+        // distinction unobservable.
+        //
+        // The ENABLE is genuinely per-port: CEA, CEB and CEP are separate and
+        // nothing ANDs them, so it is pinned only once a flop joins this chain.
         bool have_clk = false;
+        bool have_rst = false;
+        bool have_en = false;
     };
 
     // Resolve a chain's control to a wire, inverting once if the source was the
@@ -519,17 +542,22 @@ struct QlDspV4Pass : public Pass {
     static bool same(const SigSpec &a, const SigSpec &b) { return a == b; }
 
     // Can this flop's controls join a chain that already has these controls?
-    // dsp4_logical_map.v gives every internal register ONE shared ARSTN and ONE
-    // shared CLK, and one enable per port (CEA feeds both A stages), so a chain
-    // is only absorbable if its members already agree.
+    // dsp4_logical_map.v gives every internal register one shared CLK, one
+    // enable per port (CEA feeds both A stages), and RSTN for the operand banks
+    // with ACCRSTN for the accumulator. So the clock must agree with everything
+    // absorbed into the cell, while the enable and reset only have to agree
+    // with the rest of THIS chain.
     static bool controls_agree(FlopChain &c, const SigSpec &clk,
                                const SigSpec &en, bool en_inv,
                                const SigSpec &arst, bool arst_inv)
     {
-        if (!c.have_clk)
-            return true;
-        return same(c.clk, clk) && same(c.en, en) && c.en_inv == en_inv &&
-               same(c.arst, arst) && c.arst_inv == arst_inv;
+        if (c.have_clk && !same(c.clk, clk))
+            return false;
+        if (c.have_rst && !(same(c.arst, arst) && c.arst_inv == arst_inv))
+            return false;
+        if (c.have_en && !(same(c.en, en) && c.en_inv == en_inv))
+            return false;
+        return true;
     }
 
     // T3.1 -- collect absorbable flops behind `sig`, nearest first.
@@ -539,16 +567,20 @@ struct QlDspV4Pass : public Pass {
     // rising-edge flop, and any async reset is to zero -- the leaf resets to
     // zero and cannot express anything else.
     FlopChain collect_flops(RTLIL::Module *module, SigSpec sig, int max_depth,
-                            const SigSpec &clk_seed, const SigSpec &arst_seed,
-                            bool arst_seed_inv, bool seeded)
+                            const SigSpec &clk_seed, const SigSpec &rst_seed,
+                            bool rst_seed_inv, bool seeded)
     {
         FlopChain chain;
         chain.source = sig;
+        // Seeding pins the clock and the reset from the absorbed output flop --
+        // see FlopChain on why the accumulator's reset is not independent. The
+        // enable is left free: CEP does not constrain CEA/CEB.
         if (seeded) {
             chain.clk = clk_seed;
-            chain.arst = arst_seed;
-            chain.arst_inv = arst_seed_inv;
+            chain.arst = rst_seed;
+            chain.arst_inv = rst_seed_inv;
             chain.have_clk = true;
+            chain.have_rst = true;
         }
         while (GetSize(chain.flops) < max_depth) {
             auto it = flop_by_q.find(chain.source);
@@ -571,12 +603,12 @@ struct QlDspV4Pass : public Pass {
                 // one that needs inverting.
                 en_inv = !ff->getParam(ID(EN_POLARITY)).as_bool();
             }
-            if (ff->hasPort(ID(ARST))) {
-                if (!ff->getParam(ID(ARST_VALUE)).is_fully_zero())
+            if (ff->hasPort(ID(SRST))) {
+                if (!ff->getParam(ID(SRST_VALUE)).is_fully_zero())
                     break;
-                arst = ff->getPort(ID(ARST));
-                // ARSTN is active-low; an active-high $adff reset inverts.
-                arst_inv = ff->getParam(ID(ARST_POLARITY)).as_bool();
+                arst = ff->getPort(ID(SRST));
+                // RSTN is active-low; an active-high $sdff reset inverts.
+                arst_inv = ff->getParam(ID(SRST_POLARITY)).as_bool();
             }
             SigSpec clk = ff->getPort(ID(CLK));
             if (!controls_agree(chain, clk, en, en_inv, arst, arst_inv))
@@ -587,6 +619,8 @@ struct QlDspV4Pass : public Pass {
             chain.arst = arst;
             chain.arst_inv = arst_inv;
             chain.have_clk = true;
+            chain.have_rst = true;
+            chain.have_en = true;
             chain.flops.push_back(ff);
             chain.source = ff->getPort(ID::D);
         }
@@ -619,7 +653,16 @@ struct QlDspV4Pass : public Pass {
             for (auto &conn : cell->connections())
                 for (auto bit : sigmapper(conn.second))
                     bit_users[bit]++;
-            if (cell->type.in(ID($dff), ID($adff), ID($dffe), ID($adffe)))
+            // Absorbable flop shapes. The DSP's only fabric-reachable reset is
+            // SYNCHRONOUS -- the operating mode drives each leaf R from rstn_i
+            // (ACC from accrstn_i) off the routable IC0 bus, and the async pin
+            // is chip-global with Fc = 0 and not exposed at all. So an $adff
+            // cannot be expressed and stays in fabric.
+            //
+            // $sdffce is excluded on purpose: there the enable gates the reset,
+            // while the DSP flop (and $sdffe) resets regardless of the enable.
+            // Absorbing one would hold a register that should have cleared.
+            if (cell->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe)))
                 flop_by_q[cell->getPort(ID::Q)] = cell;
         }
     }

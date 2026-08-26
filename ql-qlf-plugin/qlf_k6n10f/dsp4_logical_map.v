@@ -91,9 +91,16 @@ module QL_DSP4 #(
     input  wire        CEC,
     input  wire        CED,
     input  wire        CEP,
-    input  wire        ARSTN,   // async, active-low  -> leaf R
-    input  wire        RSTN,    // sync  (not modeled in the operating mode)
-    input  wire        ACCRSTN  // sync  (not modeled in the operating mode)
+    // The leaf R pin is the SYNCHRONOUS reset. In the operating mode the arch
+    // feeds it from rstn_i (tile IC0[3]) for every bank except the accumulator,
+    // which is on accrstn_i (IC0[4]) -- both reachable from general routing.
+    // ARSTN is the chip-wide async reset: is_non_clock_global with Fc = 0, so no
+    // fabric net can drive it and the operating mode does not expose it at all.
+    // Wiring a leaf R to ARSTN here would silently put an async reset onto a
+    // synchronous pin.
+    input  wire        ARSTN,   // async, active-low  -- global only, unused here
+    input  wire        RSTN,    // sync, active-low   -> leaf R (all but ACC)
+    input  wire        ACCRSTN  // sync, active-low   -> ACC leaf R
 );
 
     // -- mode decode (constants) --
@@ -176,14 +183,14 @@ module QL_DSP4 #(
     generate
         if (AREG0) begin : g_a1
             for (i = 0; i < 32; i = i + 1) begin : b
-                QL_DSP4_A1_DFFRE ff (.D(A[i]), .E(CEA), .R(ARSTN), .clk(CLK), .Q(a_s0[i]));
+                QL_DSP4_A1_DFFRE ff (.D(A[i]), .E(CEA), .R(RSTN), .clk(CLK), .Q(a_s0[i]));
             end
         end else begin : g_a1_byp
             assign a_s0 = A;
         end
         if (AREG1) begin : g_a2
             for (i = 0; i < 32; i = i + 1) begin : b
-                QL_DSP4_A2_DFFRE ff (.D(a_s0[i]), .E(CEA), .R(ARSTN), .clk(CLK), .Q(a_path[i]));
+                QL_DSP4_A2_DFFRE ff (.D(a_s0[i]), .E(CEA), .R(RSTN), .clk(CLK), .Q(a_path[i]));
             end
         end else begin : g_a2_byp
             assign a_path = a_s0;
@@ -197,14 +204,14 @@ module QL_DSP4 #(
     generate
         if (BREG0) begin : g_b1
             for (i = 0; i < 18; i = i + 1) begin : b
-                QL_DSP4_B1_DFFRE ff (.D(B[i]), .E(CEB), .R(ARSTN), .clk(CLK), .Q(b_s0[i]));
+                QL_DSP4_B1_DFFRE ff (.D(B[i]), .E(CEB), .R(RSTN), .clk(CLK), .Q(b_s0[i]));
             end
         end else begin : g_b1_byp
             assign b_s0 = B;
         end
         if (BREG1) begin : g_b2
             for (i = 0; i < 18; i = i + 1) begin : b
-                QL_DSP4_B2_DFFRE ff (.D(b_s0[i]), .E(CEB), .R(ARSTN), .clk(CLK), .Q(b_path[i]));
+                QL_DSP4_B2_DFFRE ff (.D(b_s0[i]), .E(CEB), .R(RSTN), .clk(CLK), .Q(b_path[i]));
             end
         end else begin : g_b2_byp
             assign b_path = b_s0;
@@ -219,14 +226,14 @@ module QL_DSP4 #(
     generate
         if (DREG) begin : g_d
             for (i = 0; i < 27; i = i + 1) begin : b
-                QL_DSP4_D_DFFRE ff (.D(D[i]), .E(CED), .R(ARSTN), .clk(CLK), .Q(d_path[i]));
+                QL_DSP4_D_DFFRE ff (.D(D[i]), .E(CED), .R(RSTN), .clk(CLK), .Q(d_path[i]));
             end
         end else begin : g_d_byp
             assign d_path = D;
         end
         if (CREG) begin : g_c
             for (i = 0; i < 50; i = i + 1) begin : b
-                QL_DSP4_C_DFFRE ff (.D(C[i]), .E(CEC), .R(ARSTN), .clk(CLK), .Q(c_path[i]));
+                QL_DSP4_C_DFFRE ff (.D(C[i]), .E(CEC), .R(RSTN), .clk(CLK), .Q(c_path[i]));
             end
         end else begin : g_c_byp
             assign c_path = C;
@@ -258,7 +265,7 @@ module QL_DSP4 #(
             end
             if (ADREG) begin : g_ad
                 for (i = 0; i < 32; i = i + 1) begin : b
-                    QL_DSP4_AD_DFFR ff (.D(ad_raw[i]), .R(ARSTN), .clk(CLK), .Q(ad_path[i]));
+                    QL_DSP4_AD_DFFR ff (.D(ad_raw[i]), .R(RSTN), .clk(CLK), .Q(ad_path[i]));
                 end
             end else begin : g_ad_byp
                 assign ad_path = ad_raw;
@@ -309,7 +316,7 @@ module QL_DSP4 #(
     generate
         if (USE_MREG) begin : g_m
             for (i = 0; i < 50; i = i + 1) begin : bu
-                QL_DSP4_M_DFFR  ff (.D(mult_u[i]), .R(ARSTN), .clk(CLK), .Q(msel[i]));
+                QL_DSP4_M_DFFR  ff (.D(mult_u[i]), .R(RSTN), .clk(CLK), .Q(msel[i]));
             end
             // Only V[49:7] is registered -- 43 flops, not 50. V[6:0] are
             // structurally zero for the 19-row 32x18 reduction tree, so the
@@ -319,7 +326,7 @@ module QL_DSP4 #(
             // than the tile owns, and packing fails with "Can not find any
             // logic block that can implement molecule".
             for (i = 7; i < 50; i = i + 1) begin : bv
-                QL_DSP4_MV_DFFR ff (.D(mult_v[i]), .R(ARSTN), .clk(CLK), .Q(vsel[i]));
+                QL_DSP4_MV_DFFR ff (.D(mult_v[i]), .R(RSTN), .clk(CLK), .Q(vsel[i]));
             end
             // V[6:0] bypass the register, matching the arch's mv_c0_d_0..6
             // directs (mult_V[6:0] -> vsel_node[6:0]). Passed through rather
@@ -330,7 +337,7 @@ module QL_DSP4 #(
             assign vsel[6:0] = mult_v[6:0];
             // KN pipelines in lockstep with U/V (dsp4_top.v:255) so the X-mux
             // pad stays aligned with the partial products it extends.
-            QL_DSP4_MK_DFFR ffk (.D(mult_kn), .R(ARSTN), .clk(CLK), .Q(knsel));
+            QL_DSP4_MK_DFFR ffk (.D(mult_kn), .R(RSTN), .clk(CLK), .Q(knsel));
         end else begin : g_m_byp
             assign msel  = mult_u;
             assign vsel  = mult_v;
@@ -342,6 +349,12 @@ module QL_DSP4 #(
     // Accumulator register (PREG, or a folded-in lone MREG). Feeds the P output
     // and, for MULTACC, the ALU Z operand (P feedback). ALU_OUT / acc feedback
     // are declared first.
+    //
+    // This bank takes .R(ACCRSTN), not RSTN like the others. dsp4_top.v shows
+    // the P register clearing on `RSTN & ACCRSTN`, but per the hardware team
+    // that AND sits inside the physical mode and is not part of the interface
+    // the operating mode presents: ACCRSTN alone is what a consumer drives, and
+    // it is what the arch wires to this leaf. Do not add RSTN here.
     // =======================================================================
     wire [63:0] alu_out;
     wire [3:0]  alu_co;
@@ -350,7 +363,7 @@ module QL_DSP4 #(
     generate
         if (USE_PREG) begin : g_acc
             for (i = 0; i < 64; i = i + 1) begin : b
-                QL_DSP4_ACC_DFFRE ff (.D(alu_out[i]), .E(CEP), .R(ARSTN), .clk(CLK), .Q(acc_q[i]));
+                QL_DSP4_ACC_DFFRE ff (.D(alu_out[i]), .E(CEP), .R(ACCRSTN), .clk(CLK), .Q(acc_q[i]));
             end
             assign p_node = acc_q;
         end else begin : g_acc_byp
@@ -634,7 +647,7 @@ module QL_DSP4 #(
     generate
         if (COUTREG) begin : g_co
             for (i = 0; i < 4; i = i + 1) begin : b
-                QL_DSP4_CO_DFFR ff (.D(alu_co[i]), .R(ARSTN), .clk(CLK), .Q(cout_w[i]));
+                QL_DSP4_CO_DFFR ff (.D(alu_co[i]), .R(RSTN), .clk(CLK), .Q(cout_w[i]));
             end
         end else begin : g_co_byp
             assign cout_w = alu_co;

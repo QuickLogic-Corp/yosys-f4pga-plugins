@@ -25,7 +25,7 @@ module ql_dsp4_rss #(
     parameter SATURATE = 1'b0
 ) (
     input  wire        CLK,
-    input  wire        ARSTN,
+    input  wire        RSTN,
     input  wire        CEP,
     input  wire [49:0] C,
     output wire [49:0] P
@@ -39,7 +39,8 @@ module ql_dsp4_rss #(
       .P(P), .ACOUT(), .BCOUT(), .PCOUT(),
       .CCOUT(), .SIGNCOUT(), .COUT(),
       .CLK(CLK), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1),
-      .CEP(CEP), .ARSTN(ARSTN), .RSTN(1'b1), .ACCRSTN(1'b1)
+      .CEP(CEP), .ARSTN(1'b1),
+      .RSTN(RSTN), .ACCRSTN(RSTN)
   );
 endmodule
 
@@ -55,7 +56,7 @@ module ql_dsp4_alu #(
     parameter PREG = 1'b0
 ) (
     input  wire        CLK,
-    input  wire        ARSTN,
+    input  wire        RSTN,
     input  wire        CEP,
     input  wire [31:0] A,
     input  wire [17:0] B,
@@ -71,7 +72,8 @@ module ql_dsp4_alu #(
       .P(P), .ACOUT(), .BCOUT(), .PCOUT(),
       .CCOUT(), .SIGNCOUT(), .COUT(),
       .CLK(CLK), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1),
-      .CEP(CEP), .ARSTN(ARSTN), .RSTN(1'b1), .ACCRSTN(1'b1)
+      .CEP(CEP), .ARSTN(1'b1),
+      .RSTN(RSTN), .ACCRSTN(RSTN)
   );
 endmodule
 
@@ -84,7 +86,7 @@ endmodule
 // ---------------------------------------------------------------------------
 module ql_dsp4_mult_pipelined (
     input  wire        CLK,
-    input  wire        ARSTN,
+    input  wire        RSTN,
     input  wire        CEP,
     input  wire [31:0] A,
     input  wire [17:0] B,
@@ -99,6 +101,7 @@ module ql_dsp4_mult_pipelined (
       .P(P), .ACOUT(), .BCOUT(), .PCOUT(),
       .CCOUT(), .SIGNCOUT(), .COUT(),
       .CLK(CLK), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1),
-      .CEP(CEP), .ARSTN(ARSTN), .RSTN(1'b1), .ACCRSTN(1'b1)
+      .CEP(CEP), .ARSTN(1'b1),
+      .RSTN(RSTN), .ACCRSTN(RSTN)
   );
 endmodule

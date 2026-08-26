@@ -444,9 +444,17 @@ module QL_DSP4_RSS (ACC_IN, ACC_OUT);
   assign ACC_OUT = acc_saturate[49:0];
 endmodule
 
-// Pipeline registers, bit-sliced, from ffb/rtl/DFFE_SNR_ANR.v.
-//   *_DFFRE : async reset R (active-low), clock-enable E
-//   *_DFFR  : async reset R (active-low), no enable
+// Pipeline registers, bit-sliced, from ffb/rtl/DFFE_SNR_ANR.v -- its LR
+// path, not its R path.
+//   *_DFFRE : sync reset R (active-low), clock-enable E
+//   *_DFFR  : sync reset R (active-low), no enable
+//
+// R is SYNCHRONOUS. The operating mode feeds each leaf R from rstn_i
+// (ACC from accrstn_i), both of which land on the flop's LR pin; the
+// async R is chip-global with Fc = 0 and the mode does not expose it.
+// This is the same body as the fabric's `sdffre` in cells_sim.v, and
+// reset beats the clock enable exactly as it does there.
+//
 // Q powers up to 0, keeping the netlist cycle-aligned with reset-to-0
 // golden RTL -- the netlist ties R to 1'b1 in a functional run.
 
@@ -455,7 +463,7 @@ module NAME (D, E, R, clk, Q);      \
   input  wire D, E, R, clk;         \
   output reg  Q;                    \
   initial Q = 1'b0;                 \
-  always @(posedge clk or negedge R)\
+  always @(posedge clk)             \
     if (!R)     Q <= 1'b0;          \
     else if (E) Q <= D;             \
 endmodule
@@ -465,7 +473,7 @@ module NAME (D, R, clk, Q);         \
   input  wire D, R, clk;            \
   output reg  Q;                    \
   initial Q = 1'b0;                 \
-  always @(posedge clk or negedge R)\
+  always @(posedge clk)             \
     if (!R) Q <= 1'b0;              \
     else    Q <= D;                 \
 endmodule

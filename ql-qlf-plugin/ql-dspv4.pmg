@@ -96,7 +96,7 @@ endmatch
 // This index line is long on purpose: pmgen parses one statement per line, so
 // wrapping it turns the continuation into an unrecognised statement.
 match ff
-    select ff->type.in($dff, $adff, $dffe, $adffe)
+    select ff->type.in($dff, $dffe, $sdff, $sdffe)
     index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
     optional
 endmatch

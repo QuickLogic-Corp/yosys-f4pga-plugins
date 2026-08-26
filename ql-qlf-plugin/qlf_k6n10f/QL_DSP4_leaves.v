@@ -149,9 +149,13 @@ endmodule
 // ===========================================================================
 // Pipeline registers (bit-sliced: one 1-bit instance per data bit)
 //
-//   *_DFFRE : D flip-flop, async reset R (active-low), clock-enable E.
-//   *_DFFR  : D flip-flop, async reset R (active-low), no enable.
-// (No SI/SO/LR - scan and local sync-reset are physical-mode-only.)
+//   *_DFFRE : D flip-flop, sync reset R (active-low), clock-enable E.
+//   *_DFFR  : D flip-flop, sync reset R (active-low), no enable.
+// R is the physical flop's LR pin: the operating mode drives it from rstn_i,
+// and the ACC bank from accrstn_i, both off the routable IC0 control bus. The
+// async reset is chip-global (Fc = 0) and is not exposed here. Same behaviour
+// as the fabric's `sdffre`, reset ahead of enable.
+// (No SI/SO - scan is physical-mode-only.)
 // ===========================================================================
 
 (* blackbox *)
