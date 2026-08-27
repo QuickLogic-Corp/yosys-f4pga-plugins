@@ -88,6 +88,48 @@ static SigSpec dspv4_fit(RTLIL::Module *module, SigSpec sig, int width,
     return sig;
 }
 
+// Strip an extension the RTL applied to an operand before the multiply.
+//
+// The register walk keys on a flop's exact Q, so an operand written as
+// {1'b0, x} or {{n{x[msb]}}, x} hides the register behind a concat and the
+// stage is never absorbed -- `a2 * $signed({1'b0, b2})` absorbs A's two stages
+// and none of B's. The DSP re-applies the extension itself at the port width in
+// dspv4_fit, so the design's copy is redundant.
+//
+// Signedness has to follow the strip. {1'b0, x} is precisely what makes an
+// UNSIGNED x signed; dropping the zero while still calling the operand signed
+// would turn a zero-extension into a sign-extension, and any value with its top
+// bit set would read as negative. That is a wrong answer that no structural
+// check would see, so the zero case forces is_signed false and lets dspv4_fit
+// zero-extend it back.
+static SigSpec dspv4_strip_extension(SigSpec sig, bool &is_signed)
+{
+    int n = GetSize(sig);
+    if (n < 2)
+        return sig;
+
+    // Zero-extension: any run of constant zeros at the top, however short.
+    if (sig[n - 1] == State::S0) {
+        int i = n - 1;
+        while (i > 0 && sig[i] == State::S0)
+            i--;
+        is_signed = false;
+        return sig.extract(0, i + 1);
+    }
+
+    // Sign-extension: the top bits are copies of the value's own MSB, so one
+    // copy is kept and the operand stays signed.
+    SigBit top = sig[n - 1];
+    if (top.wire == nullptr)
+        return sig;                 // constant one-fill: not an extension
+    int i = n - 2;
+    while (i >= 0 && sig[i] == top)
+        i--;
+    if (i + 2 < n)
+        return sig.extract(0, i + 2);
+    return sig;
+}
+
 // Drive a design signal from a DSP output port that is wider than it. The port
 // keeps its full width -- the techmap and the leaves expect 50 bits -- and only
 // the low bits reach the design.
@@ -345,6 +387,12 @@ struct QlDspV4Pass : public Pass {
                 return false;
             }
         }
+
+        // Peel any extension the RTL applied, so the walk below can see the
+        // flop behind it. Both the port value and its signedness are updated,
+        // and dspv4_fit re-extends to the port width when the ports are set.
+        ma = dspv4_strip_extension(ma, a_signed);
+        mb = dspv4_strip_extension(mb, b_signed);
 
         // T3.1 / T3.2 -- absorb the designer's registers.
         //

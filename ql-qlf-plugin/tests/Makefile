@@ -81,13 +81,13 @@ POST_SYNTH_SIM_TESTS = \
 include $(shell pwd)/../../Makefile_test.common
 
 consts_verify = true
-dspv4_mult_verify = true
-dspv4_mult_add_verify = true
-dspv4_mult_add_chain_verify = true
-dspv4_mult_regout_verify = true
-dspv4_mult_regin_verify = true
-dspv4_mult_sub_verify = true
-dspv4_macc_verify = true
+qlf_k6n10f-dspv4_mult_verify = true
+qlf_k6n10f-dspv4_mult_add_verify = true
+qlf_k6n10f-dspv4_mult_add_chain_verify = true
+qlf_k6n10f-dspv4_mult_regout_verify = true
+qlf_k6n10f-dspv4_mult_regin_verify = true
+qlf_k6n10f-dspv4_mult_sub_verify = true
+qlf_k6n10f-dspv4_macc_verify = true
 dffs_verify = true
 shreg_verify = true
 iob_no_flatten_verify = true

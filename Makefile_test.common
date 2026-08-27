@@ -35,7 +35,13 @@ TEST_UTILS ?= $(abspath ../../test-utils/test-utils.tcl)
 define test_tpl =
 $(1): $(1)/ok
 	@set +e; \
-	$$($$(subst /,-,$(1)_verify)); \
+	# A test with no <family>-<test>_verify variable has nothing extra to
+	# run. Without the `or ... true` the expansion is empty and the line
+	# becomes `set +e; ; if [ $$$$? ...]`, a shell syntax error reported as
+	# a test failure -- which is indistinguishable from the test itself
+	# failing. Note the variable name substitutes / for -, so a test at
+	# qlf_k6n10f/foo needs qlf_k6n10f-foo_verify, not foo_verify.
+	$$(or $$($$(subst /,-,$(1)_verify)),true); \
 	if [ $$$$? -eq 0 ]; then \
 		printf "Test %-20s \e[32mPASSED\e[0m @ %s\n" $(1) $(CURDIR); \
 		touch $$<; \
