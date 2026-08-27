@@ -65,6 +65,17 @@ static const int DSPV4_P_WIDTH = 50;
 // drives A2_DFFRE, and there is no third stage.
 static const int DSPV4_MAX_OPERAND_STAGES = 2;
 
+// Distinct clock-enable signals a cell may use. The tile feeds all five CE pins
+// from a 3-input crossbar (vpr.xml: `complete` on dsp.IC0[0..2] driving
+// cea/ceb/cec/ced/cep), so a fourth enable has nowhere to route. ffb 4.2.5
+// records this as a DRC because the mux sits outside the DSP RTL and is
+// invisible to the cell's own definition.
+static const int DSPV4_MAX_CE_SIGNALS = 3;
+
+// C has ONE register stage (a single QL_DSP4_C_DFFRE), where A and B have two.
+// A design that registers C more deeply keeps the surplus in fabric.
+static const int DSPV4_MAX_C_STAGES = 1;
+
 // Extend a signal to a port width, honouring the source cell's signedness.
 // IN-9: operands narrower than the port are extended, not silently truncated.
 static SigSpec dspv4_fit(RTLIL::Module *module, SigSpec sig, int width,
@@ -299,23 +310,58 @@ struct QlDspV4Pass : public Pass {
         RTLIL::Cell *cell = module->addCell(NEW_ID, ID(QL_DSP4));
         dspv4_apply_mode(cell, m);
 
-        // T3.1 / T3.2 -- absorb the designer's operand registers.
+        // C is the adder operand that is not the product. Present for
+        // MULT_ADD_C / MULT_SUB_C, and for MULT_ACC_C where the first adder
+        // takes C and the second takes the accumulator feedback. Plain MULT_ACC
+        // has one adder whose other operand IS the feedback, so no C.
+        // Where C comes from depends on the shape:
+        //   MULT_ADD_C / MULT_SUB_C : `add`'s non-product operand
+        //   MULT_ACC_C              : `acc`'s non-chain operand -- `add` holds
+        //                             the accumulator feedback, not C
+        //   MULT_ACC                : no C at all
         //
-        // Latency balancing is the whole difficulty. Absorbing n stages on A
-        // replaces n external flops with n internal ones, so a path's total
-        // delay is unchanged -- but only if the flops really are there. The plan
-        // therefore absorbs the largest COMMON depth and leaves the surplus
-        // external: with A two deep and B one deep, one stage moves in on each
-        // and A keeps one flop outside.
+        // Determined here rather than at the point of use because C's register
+        // chain takes part in the absorption decision below.
+        bool acc = feedback;
+        RTLIL::Cell *c_cell = acc_cell != nullptr ? acc_cell
+                            : (st.add != nullptr && !acc) ? st.add : nullptr;
+        IdString c_port = acc_cell != nullptr ? st.acc_ba : st.add_ba;
+        SigSpec mc;
+        bool c_signed = false;
+        if (c_cell != nullptr) {
+            mc = c_cell->getPort(c_port);
+            c_signed = c_cell->getParam(
+                c_port == ID::A ? ID::A_SIGNED : ID::B_SIGNED).as_bool();
+            // A C operand wider than the port would be truncated by dspv4_fit,
+            // which is a wrong answer rather than a missed optimisation. Refuse
+            // the shape instead; the matcher then offers the bare multiply, so
+            // the product still lands in a DSP and only the addition stays soft.
+            if (GetSize(mc) > DSPV4_C_WIDTH) {
+                left_soft++;
+                log_debug("  %s: left soft -- %d-bit C operand exceeds the "
+                          "%d-bit C port\n",
+                          log_id(st.mul), GetSize(mc), DSPV4_C_WIDTH);
+                module->remove(cell);
+                return false;
+            }
+        }
+
+        // T3.1 / T3.2 -- absorb the designer's registers.
         //
-        // C is deliberately left alone. Its path does not change when A and B
-        // move their own registers inward, so the product still meets C on the
-        // cycle the RTL said it would; adding CREG would shift it.
+        // Each operand port has its OWN register stages inside the DSP:
+        // AREG0/AREG1 for A, BREG0/BREG1 for B, a single CREG for C, and the
+        // accumulator bank for P. dsp4_logical_map.v gates them in independent
+        // generate blocks, so each port absorbs its own RTL depth and any
+        // surplus stays in fabric. The DSP is not equalising delays -- it is
+        // reproducing the relative delays the RTL asked for, so a design that
+        // registers A and B twice and C once maps exactly, skew included.
         //
-        // Any absorbed flop must already agree with the flop absorbed on the
-        // output, if there was one, on the CLOCK -- that pin is shared.
-        int na = 0, nb = 0;
-        FlopChain ca, cb;
+        // What the ports DO share is CLK and RSTN, so every absorbed chain has
+        // to agree on both. Enables are per-port (CEA / CEB / CEC / CEP) and
+        // need not agree -- but at most three distinct enable signals can reach
+        // the cell, see the eviction loop below.
+        int na = 0, nb = 0, nc = 0;
+        FlopChain ca, cb, cc;
         {
             bool seeded = ff_cell != nullptr;
             SigSpec seed_clk, seed_rst(State::S1);
@@ -332,59 +378,103 @@ struct QlDspV4Pass : public Pass {
                                seed_rst, seed_rst_inv, seeded);
             cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed_clk,
                                seed_rst, seed_rst_inv, seeded);
-            int common = std::min(GetSize(ca.flops), GetSize(cb.flops));
-            // Both operand ports land on the shared CLK and RSTN, so the chains
-            // have to agree on both -- compared as raw signal plus polarity.
-            if (common > 0 &&
-                !(same(ca.clk, cb.clk) && same(ca.arst, cb.arst) &&
-                  ca.arst_inv == cb.arst_inv))
-                common = 0;
-            na = nb = common;
+            if (c_cell != nullptr)
+                cc = collect_flops(module, mc, DSPV4_MAX_C_STAGES, seed_clk,
+                                   seed_rst, seed_rst_inv, seeded);
+            na = GetSize(ca.flops);
+            nb = GetSize(cb.flops);
+            nc = GetSize(cc.flops);
+
+            // Shared CLK and RSTN: a chain that disagrees with another absorbed
+            // chain on either cannot go in. Compared as raw signal plus
+            // polarity, never as resolved inverter outputs -- comparing those
+            // is what once made every active-high reset absorb nothing.
+            auto agrees = [&](const FlopChain &x, const FlopChain &y) {
+                return same(x.clk, y.clk) && same(x.arst, y.arst) &&
+                       x.arst_inv == y.arst_inv;
+            };
+            if (na > 0 && nb > 0 && !agrees(ca, cb))
+                nb = 0;
+            if (nc > 0 && na > 0 && !agrees(ca, cc))
+                nc = 0;
+            if (nc > 0 && nb > 0 && !agrees(cb, cc))
+                nc = 0;
         }
-        if (na > 0) {
+
+        // Clock-enable crossbar. The tile feeds all five CE pins from a 3-input
+        // mux (vpr.xml: `complete` on dsp.IC0[0..2] -> cea/ceb/cec/ced/cep), so
+        // a fourth distinct enable has nowhere to route. ffb 4.2.5 records it as
+        // a DRC because the mux sits outside the DSP RTL.
+        //
+        // Give up the narrowest port first: a wider port saves more fabric
+        // flops, so it is the one worth keeping. Eviction is per-port and
+        // all-or-nothing -- dropping one stage of a two-deep port still needs
+        // that port's enable, so it saves no slot.
+        //
+        // P is never evicted. In a feedback mode the techmap rejects the cell
+        // outright when USES_P && !PREG, so giving up the accumulator does not
+        // move a flop to fabric -- it makes the whole multiply soft. Its 50-bit
+        // width would put it last anyway; this makes that explicit.
+        {
+            auto distinct_enables = [&]() {
+                std::vector<SigSpec> seen;
+                auto note = [&](const SigSpec &sig) {
+                    if (sig.is_fully_const())
+                        return;             // a tied enable needs no signal
+                    for (auto &t : seen)
+                        if (t == sig)
+                            return;
+                    seen.push_back(sig);
+                };
+                if (na > 0)
+                    note(ca.en);
+                if (nb > 0)
+                    note(cb.en);
+                if (nc > 0)
+                    note(cc.en);
+                if (ff_cell != nullptr && ff_cell->hasPort(ID(EN)))
+                    note(ff_cell->getPort(ID(EN)));
+                return GetSize(seen);
+            };
+            // Narrowest first: B (18), A (32), C (50). P (50) is not a
+            // candidate.
+            struct Evictee { int *n; const char *name; int width; };
+            const Evictee order[] = {
+                {&nb, "B", DSPV4_B_WIDTH},
+                {&na, "A", DSPV4_A_WIDTH},
+                {&nc, "C", DSPV4_C_WIDTH},
+            };
+            for (auto &e : order) {
+                if (distinct_enables() <= DSPV4_MAX_CE_SIGNALS)
+                    break;
+                if (*e.n == 0)
+                    continue;
+                log_debug("  %s: %s registers left in fabric -- the cell would "
+                          "need more than %d distinct clock enables, and %s is "
+                          "the narrowest port at %d bits\n",
+                          log_id(st.mul), e.name, DSPV4_MAX_CE_SIGNALS, e.name,
+                          e.width);
+                *e.n = 0;
+            }
+        }
+
+        if (na > 0)
             ma = ca.flops[na - 1]->getPort(ID::D);
+        if (nb > 0)
             mb = cb.flops[nb - 1]->getPort(ID::D);
-        }
 
         cell->setPort(ID::A, dspv4_fit(module, ma, DSPV4_A_WIDTH, a_signed));
         cell->setPort(ID::B, dspv4_fit(module, mb, DSPV4_B_WIDTH, b_signed));
 
         // With a flop absorbed the DSP drives its Q directly; the
         // combinational result never appears in the netlist at all.
-        bool acc = feedback;
         SigSpec result = ff_cell != nullptr ? ff_cell->getPort(ID::Q)
                                             : dsp_result;
 
-        // C is the adder operand that is not the product. Present for
-        // MULT_ADD_C / MULT_SUB_C, and for MULT_ACC_C where the first adder
-        // takes C and the second takes the accumulator feedback. Plain MULT_ACC
-        // has one adder whose other operand IS the feedback, so no C.
-        // Where C comes from depends on the shape:
-        //   MULT_ADD_C / MULT_SUB_C : `add`'s non-product operand
-        //   MULT_ACC_C              : `acc`'s non-chain operand -- `add` holds
-        //                             the accumulator feedback, not C
-        //   MULT_ACC                : no C at all
-        RTLIL::Cell *c_cell = acc_cell != nullptr ? acc_cell
-                            : (st.add != nullptr && !acc) ? st.add : nullptr;
-        IdString c_port = acc_cell != nullptr ? st.acc_ba : st.add_ba;
         if (c_cell != nullptr) {
-            SigSpec c = c_cell->getPort(c_port);
-            bool c_signed = c_cell->getParam(
-                c_port == ID::A ? ID::A_SIGNED : ID::B_SIGNED).as_bool();
-            // A C operand wider than the port would be truncated by
-            // dspv4_fit, which is a wrong answer rather than a missed
-            // optimisation. Refuse the shape instead; the matcher then offers
-            // the bare multiply, so the product still lands in a DSP and only
-            // the addition stays soft.
-            if (GetSize(c) > DSPV4_C_WIDTH) {
-                left_soft++;
-                log_debug("  %s: left soft -- %d-bit C operand exceeds the "
-                          "%d-bit C port\n",
-                          log_id(st.mul), GetSize(c), DSPV4_C_WIDTH);
-                module->remove(cell);
-                return false;
-            }
-            cell->setPort(ID(C), dspv4_fit(module, c, DSPV4_C_WIDTH, c_signed));
+            if (nc > 0)
+                mc = cc.flops[nc - 1]->getPort(ID::D);
+            cell->setPort(ID(C), dspv4_fit(module, mc, DSPV4_C_WIDTH, c_signed));
         }
 
         cell->setPort(ID(P), dspv4_wide_out(module, result, DSPV4_P_WIDTH));
@@ -398,6 +488,9 @@ struct QlDspV4Pass : public Pass {
         cell->setParam(ID(AREG1), RTLIL::Const(na >= 1 ? 1 : 0, 1));
         cell->setParam(ID(BREG0), RTLIL::Const(nb >= 2 ? 1 : 0, 1));
         cell->setParam(ID(BREG1), RTLIL::Const(nb >= 1 ? 1 : 0, 1));
+        // C has a single stage, so it is a plain flag rather than the
+        // (n >= 2, n >= 1) pair the two-stage ports use.
+        cell->setParam(ID(CREG), RTLIL::Const(nc >= 1 ? 1 : 0, 1));
 
         // PREG covers both absorbed shapes: the accumulator needs it because
         // CR-5 says a mode feeding P back without it closes a combinational
@@ -416,14 +509,23 @@ struct QlDspV4Pass : public Pass {
         // A DSP with absorbed operand registers needs a clock even when no
         // output flop was absorbed, and per-port enables for the stages that
         // moved in.
-        if (na > 0) {
-            cell->setPort(ID(CLK), ca.clk);
-            cell->setPort(ID(CEA), resolve(module, ca.en, ca.en_inv));
-            cell->setPort(ID(CEB), resolve(module, cb.en, cb.en_inv));
-            if (ca.arst != SigSpec(State::S1))
+        // A DSP with absorbed operand registers needs a clock even when no
+        // output flop was absorbed, and a per-port enable for each stage that
+        // moved in. RSTN is shared, so it comes from whichever absorbed chain
+        // is present -- they were required to agree above.
+        if (na > 0 || nb > 0 || nc > 0) {
+            const FlopChain &any = na > 0 ? ca : (nb > 0 ? cb : cc);
+            cell->setPort(ID(CLK), any.clk);
+            if (na > 0)
+                cell->setPort(ID(CEA), resolve(module, ca.en, ca.en_inv));
+            if (nb > 0)
+                cell->setPort(ID(CEB), resolve(module, cb.en, cb.en_inv));
+            if (nc > 0)
+                cell->setPort(ID(CEC), resolve(module, cc.en, cc.en_inv));
+            if (any.arst != SigSpec(State::S1))
                 cell->setPort(ID(RSTN),
-                              resolve(module, ca.arst, ca.arst_inv));
-            absorbed_regs += na + nb;
+                              resolve(module, any.arst, any.arst_inv));
+            absorbed_regs += na + nb + nc;
         }
 
         if (ff_cell != nullptr) {
@@ -482,14 +584,22 @@ struct QlDspV4Pass : public Pass {
         // matcher that is still iterating, so they are queued and removed once
         // the run finishes. Recording them also stops a second DSP claiming the
         // same flop before the queue is drained.
-        for (int i = 0; i < na; i++) {
-            absorbed.insert(ca.flops[i]);
-            pending_removal.push_back(ca.flops[i]);
-        }
-        for (int i = 0; i < nb; i++) {
-            absorbed.insert(cb.flops[i]);
-            pending_removal.push_back(cb.flops[i]);
-        }
+        // Queue once per flop. Two chains claiming the same flop is already
+        // prevented by the sole-reader guard in collect_flops -- a register
+        // feeding both operands has three readers and stops the walk -- but a
+        // duplicate here would be a double module->remove(), so check anyway.
+        auto claim = [&](RTLIL::Cell *f) {
+            if (absorbed.count(f))
+                return;
+            absorbed.insert(f);
+            pending_removal.push_back(f);
+        };
+        for (int i = 0; i < na; i++)
+            claim(ca.flops[i]);
+        for (int i = 0; i < nb; i++)
+            claim(cb.flops[i]);
+        for (int i = 0; i < nc; i++)
+            claim(cc.flops[i]);
         return true;
     }
 
@@ -748,6 +858,27 @@ struct QlDsp4CheckPass : public Pass {
         extra_args(args, argidx, design);
 
         int at_risk = 0, reported = 0, preadd_cells = 0;
+        int ce_over = 0, ce_reported = 0;
+
+        // The tile feeds all five CE ports from a 3-input crossbar
+        // (vpr.xml: `complete` on dsp.IC0[0..2] -> cea/ceb/cec/ced/cep), so a
+        // cell may use at most THREE distinct clock-enable signals. ffb 4.2.5
+        // records this as a DRC because the mux sits outside the DSP RTL and so
+        // is invisible to the cell's own definition.
+        //
+        // Only a port whose register is actually enabled consumes a slot: with
+        // CREG = 0 the techmap never instantiates the C flops, so CEC drives
+        // nothing. Constants do not count either.
+        struct CeUse { RTLIL::IdString reg_a, reg_b, ce; int width; const char *name; };
+        static const CeUse CE_USES[] = {
+            // Widest first -- if the limit is exceeded, the widest ports are the
+            // ones worth keeping, so they are reported as the survivors.
+            {ID(CREG),  RTLIL::IdString(), ID(CEC), 50, "C"},
+            {ID(PREG),  ID(MREG),          ID(CEP), 50, "P"},
+            {ID(AREG0), ID(AREG1),         ID(CEA), 32, "A"},
+            {ID(DREG),  RTLIL::IdString(), ID(CED), 27, "D"},
+            {ID(BREG0), ID(BREG1),         ID(CEB), 18, "B"},
+        };
 
         for (auto module : design->selected_modules()) {
             SigMap sigmap(module);
@@ -808,16 +939,65 @@ struct QlDsp4CheckPass : public Pass {
                         "in fabric.\n",
                         log_id(module), log_id(cell), op, rhs, w_sum);
             }
+
+            // Clock-enable crossbar DRC.
+            for (auto cell : module->selected_cells()) {
+                if (cell->type != ID(QL_DSP4))
+                    continue;
+                std::vector<std::pair<SigSpec, const char *>> used;
+                std::string kept, dropped;
+                for (auto &u : CE_USES) {
+                    bool on = cell->hasParam(u.reg_a) &&
+                              cell->getParam(u.reg_a).as_bool();
+                    if (!on && u.reg_b != RTLIL::IdString())
+                        on = cell->hasParam(u.reg_b) &&
+                             cell->getParam(u.reg_b).as_bool();
+                    if (!on || !cell->hasPort(u.ce))
+                        continue;
+                    SigSpec ce = sigmap(cell->getPort(u.ce));
+                    if (ce.is_fully_const())
+                        continue;   // a tied enable needs no routed signal
+                    bool seen = false;
+                    for (auto &p : used)
+                        if (p.first == ce) { seen = true; break; }
+                    if (!seen)
+                        used.push_back({ce, u.name});
+                    std::string &tgt = (GetSize(used) <= 3) ? kept : dropped;
+                    if (!tgt.empty())
+                        tgt += " ";
+                    tgt += u.name;
+                }
+                if (GetSize(used) <= 3)
+                    continue;
+                ce_over++;
+                if (ce_reported >= max_report)
+                    continue;
+                ce_reported++;
+                log_warning(
+                    "%s.%s: %d distinct clock enables on the DSP's registered "
+                    "ports, but the tile crossbar feeds all five CE pins from "
+                    "only 3 signals. Keep the widest (%s) inside the DSP and "
+                    "move %s back to fabric, or drive the extra ports from an "
+                    "enable already in use.\n",
+                    log_id(module), log_id(cell), GetSize(used),
+                    kept.c_str(), dropped.c_str());
+            }
         }
 
         if (at_risk > reported)
             log_warning("%d further QL_DSP4 pre-adder cell(s) carry the same overflow "
                         "risk; re-run with -max-report to list them.\n",
                         at_risk - reported);
+        if (ce_over > ce_reported)
+            log_warning("%d further QL_DSP4 cell(s) exceed the 3-signal clock-enable "
+                        "limit.\n", ce_over - ce_reported);
         if (preadd_cells)
             log("ql_dsp4_check: %d QL_DSP4 pre-adder cell(s), %d at risk of silent "
                 "overflow.\n",
                 preadd_cells, at_risk);
+        if (ce_over)
+            log("ql_dsp4_check: %d QL_DSP4 cell(s) over the 3-signal clock-enable "
+                "limit.\n", ce_over);
     }
 
 } QlDsp4CheckPass;
