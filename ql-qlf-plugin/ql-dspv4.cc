@@ -378,9 +378,24 @@ struct QlDspV4Pass : public Pass {
                                seed_rst, seed_rst_inv, seeded);
             cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed_clk,
                                seed_rst, seed_rst_inv, seeded);
-            if (c_cell != nullptr)
+            if (c_cell != nullptr) {
                 cc = collect_flops(module, mc, DSPV4_MAX_C_STAGES, seed_clk,
                                    seed_rst, seed_rst_inv, seeded);
+                // A flop on the C path whose D is this shape's OWN result is
+                // the accumulator feedback, not an independent C operand.
+                // pmgen offers the match without the output flop too, and on
+                // that branch `feedback` is false, so an accumulator looks
+                // exactly like a plain add of a registered value. Absorbing it
+                // deletes the register the design accumulates into and leaves
+                // the output undriven -- the whole design then sweeps away as
+                // dead logic, which synthesis reports as success.
+                for (auto f : cc.flops) {
+                    if (sigmapper(f->getPort(ID::D)) == sigmapper(dsp_result)) {
+                        cc.flops.clear();
+                        break;
+                    }
+                }
+            }
             na = GetSize(ca.flops);
             nb = GetSize(cb.flops);
             nc = GetSize(cc.flops);
@@ -577,8 +592,17 @@ struct QlDspV4Pass : public Pass {
             pm.autoremove(st.add);
         if (acc_cell)
             pm.autoremove(acc_cell);
-        if (ff_cell)
+        if (ff_cell) {
             pm.autoremove(ff_cell);
+            // autoremove is DEFERRED to the matcher's destructor, so this flop
+            // is still in the module -- and still in flop_by_q -- while later
+            // matches are processed. Without recording it, a subsequent DSP's
+            // operand or C chain walks into it, queues it in pending_removal,
+            // and it gets removed twice: once by us and once by the destructor.
+            // That is a segfault, and C absorption is what made the chains
+            // reach far enough back to hit it.
+            absorbed.insert(ff_cell);
+        }
         // Operand flops are not part of the pmgen match, so autoremove does not
         // know about them. Deleting them here would pull cells out from under a
         // matcher that is still iterating, so they are queued and removed once

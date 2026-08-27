@@ -614,13 +614,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                         // neither, so running this on the V4 path hard-errors with
                         // "dsp_map.v not found".
                         //
-                        // V4 does not need them: the Synplify path arrives with
-                        // QL_DSPV2 cells already inferred, and all that is required
-                        // downstream is ql_dspv2_to_dspv4 + dsp4_logical_map.v.
-                        // Native V4 inference is tracked under aurora2#2045 and is
-                        // not implemented yet, so a non-Synplify -dspv4 run has
-                        // nothing to infer with and leaves multipliers soft --
-                        // warned about below rather than crashing on a missing file.
+                        // V4 does not need them. The Synplify path arrives with
+                        // QL_DSPV2 cells already inferred and only needs
+                        // ql_dspv2_to_dspv4 + dsp4_logical_map.v; the non-Synplify
+                        // path infers QL_DSP4 directly via ql_dspv4 below. Neither
+                        // reads dsp_map.v, so neither trips the missing-file error.
                         if (!synplify && dspv4) {
                             // Native V4 inference (Phase 2). Emits QL_DSP4 cells
                             // with their control word already set; the techmap
