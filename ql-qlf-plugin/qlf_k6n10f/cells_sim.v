@@ -326,6 +326,70 @@ module sdffnre(
 
 endmodule
 
+// GPIO architecture v3.0 IO subtile flip-flop.
+//
+// The IO subtile carries one FF with a local, active-low, *synchronous* reset
+// (io.lreset) and no enable. These are IO-only cells: ql_ioff promotes boundary
+// registers into them, and generic FF techmap (ffs_map.v) must never emit them.
+//
+// Names and port set are fixed by the architecture's <model> declarations --
+// exactly {C, D, R, Q}, no E -- because VPR resolves .subckt against <model> by
+// name. A mismatch synthesizes cleanly and fails deep in packing.
+// specify values are sdffre's minus the E arc; sign-off timing comes from the
+// arch's IO_FFD_T_SETUP / IO_FFRST_T_SETUP / IO_FF_T_CLK2Q_*, not from here.
+(* abc9_flop, lib_whitebox *)
+module io_sdffr(
+    output reg Q,
+    input wire D,
+    (* clkbuf_sink *)
+    input wire C,
+    input wire R
+);
+    initial Q <= 1'b0;
+
+    // Synchronous reset: sensitivity list is the clock edge only. An
+    // `or negedge R` here would silently make this an asynchronous-reset cell.
+    always @(posedge C)
+      if (!R)
+        Q <= 1'b0;
+      else
+        Q <= D;
+
+    specify
+        (posedge C => (Q +: D)) = 280;
+        $setuphold(posedge C, D, 56, 0);
+        $setuphold(posedge C, R, 32, 0);
+    endspecify
+
+endmodule
+
+// Negedge variant of io_sdffr. Posedge/negedge are alternate modes of the same
+// physical FF selected by a config bit, so synthesis expresses the edge choice
+// purely through the cell name.
+(* abc9_flop, lib_whitebox *)
+module io_sdffnr(
+    output reg Q,
+    input wire D,
+    (* clkbuf_sink *)
+    input wire C,
+    input wire R
+);
+    initial Q <= 1'b0;
+
+    always @(negedge C)
+      if (!R)
+        Q <= 1'b0;
+      else
+        Q <= D;
+
+    specify
+        (negedge C => (Q +: D)) = 280;
+        $setuphold(negedge C, D, 56, 0);
+        $setuphold(negedge C, R, 32, 0);
+    endspecify
+
+endmodule
+
 (* abc9_flop, lib_whitebox *)
 module sh_dffre(
     output reg Q,
