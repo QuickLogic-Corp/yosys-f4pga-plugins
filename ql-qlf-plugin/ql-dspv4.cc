@@ -61,8 +61,8 @@ static const int DSPV4_C_WIDTH = 50;
 static const int DSPV4_P_WIDTH = 50;
 
 // Operand register stages the DSP can hold (Phase 3, T3.2). This is the
-// hardware limit, not a policy choice: AREG0 drives QL_DSP4_A1_DFFRE and AREG1
-// drives A2_DFFRE, and there is no third stage.
+// hardware limit, not a policy choice: AREG0 drives QL_DSP4_A1_DFFRE_32 and
+// AREG1 drives A2_DFFRE_32, and there is no third stage.
 static const int DSPV4_MAX_OPERAND_STAGES = 2;
 
 // Distinct clock-enable signals a cell may use. The tile feeds all five CE pins
@@ -72,7 +72,7 @@ static const int DSPV4_MAX_OPERAND_STAGES = 2;
 // invisible to the cell's own definition.
 static const int DSPV4_MAX_CE_SIGNALS = 3;
 
-// C has ONE register stage (a single QL_DSP4_C_DFFRE), where A and B have two.
+// C has ONE register stage (a single QL_DSP4_C_DFFRE_50), where A and B have two.
 // A design that registers C more deeply keeps the surplus in fabric.
 static const int DSPV4_MAX_C_STAGES = 1;
 

@@ -172,7 +172,10 @@ module QL_DSP4 #(
 
     wire _TECHMAP_FAIL_ = UNSUPPORTED;
 
-    genvar i;
+    // Each register bank is ONE wide primitive (QL_DSP4_<bank>_DFFR[E]_<W>),
+    // not W bit-sliced 1-bit cells: the dsp4_logical pb_types are num_pb=1 with
+    // full-width D/Q and a single shared R/E/clk, so a bank maps to exactly one
+    // cell. R/E/clk are per-bank in hardware, which is why they stay 1 bit here.
 
     // =======================================================================
     // A input path : optional stage-0 (A1, AREG0) then optional stage-1 (A2,
@@ -182,16 +185,12 @@ module QL_DSP4 #(
     wire [31:0] a_s0, a_path;
     generate
         if (AREG0) begin : g_a1
-            for (i = 0; i < 32; i = i + 1) begin : b
-                QL_DSP4_A1_DFFRE ff (.D(A[i]), .E(CEA), .R(RSTN), .clk(CLK), .Q(a_s0[i]));
-            end
+            QL_DSP4_A1_DFFRE_32 ff (.D(A), .E(CEA), .R(RSTN), .clk(CLK), .Q(a_s0));
         end else begin : g_a1_byp
             assign a_s0 = A;
         end
         if (AREG1) begin : g_a2
-            for (i = 0; i < 32; i = i + 1) begin : b
-                QL_DSP4_A2_DFFRE ff (.D(a_s0[i]), .E(CEA), .R(RSTN), .clk(CLK), .Q(a_path[i]));
-            end
+            QL_DSP4_A2_DFFRE_32 ff (.D(a_s0), .E(CEA), .R(RSTN), .clk(CLK), .Q(a_path));
         end else begin : g_a2_byp
             assign a_path = a_s0;
         end
@@ -203,16 +202,12 @@ module QL_DSP4 #(
     wire [17:0] b_s0, b_path;
     generate
         if (BREG0) begin : g_b1
-            for (i = 0; i < 18; i = i + 1) begin : b
-                QL_DSP4_B1_DFFRE ff (.D(B[i]), .E(CEB), .R(RSTN), .clk(CLK), .Q(b_s0[i]));
-            end
+            QL_DSP4_B1_DFFRE_18 ff (.D(B), .E(CEB), .R(RSTN), .clk(CLK), .Q(b_s0));
         end else begin : g_b1_byp
             assign b_s0 = B;
         end
         if (BREG1) begin : g_b2
-            for (i = 0; i < 18; i = i + 1) begin : b
-                QL_DSP4_B2_DFFRE ff (.D(b_s0[i]), .E(CEB), .R(RSTN), .clk(CLK), .Q(b_path[i]));
-            end
+            QL_DSP4_B2_DFFRE_18 ff (.D(b_s0), .E(CEB), .R(RSTN), .clk(CLK), .Q(b_path));
         end else begin : g_b2_byp
             assign b_path = b_s0;
         end
@@ -225,16 +220,12 @@ module QL_DSP4 #(
     wire [49:0] c_path;
     generate
         if (DREG) begin : g_d
-            for (i = 0; i < 27; i = i + 1) begin : b
-                QL_DSP4_D_DFFRE ff (.D(D[i]), .E(CED), .R(RSTN), .clk(CLK), .Q(d_path[i]));
-            end
+            QL_DSP4_D_DFFRE_27 ff (.D(D), .E(CED), .R(RSTN), .clk(CLK), .Q(d_path));
         end else begin : g_d_byp
             assign d_path = D;
         end
         if (CREG) begin : g_c
-            for (i = 0; i < 50; i = i + 1) begin : b
-                QL_DSP4_C_DFFRE ff (.D(C[i]), .E(CEC), .R(RSTN), .clk(CLK), .Q(c_path[i]));
-            end
+            QL_DSP4_C_DFFRE_50 ff (.D(C), .E(CEC), .R(RSTN), .clk(CLK), .Q(c_path));
         end else begin : g_c_byp
             assign c_path = C;
         end
@@ -264,9 +255,7 @@ module QL_DSP4 #(
                 QL_DSP4_PREADD u_pa (.I0(preadd_i0), .I1(preadd_i1), .AD(ad_raw));
             end
             if (ADREG) begin : g_ad
-                for (i = 0; i < 32; i = i + 1) begin : b
-                    QL_DSP4_AD_DFFR ff (.D(ad_raw[i]), .R(RSTN), .clk(CLK), .Q(ad_path[i]));
-                end
+                QL_DSP4_AD_DFFR_32 ff (.D(ad_raw), .R(RSTN), .clk(CLK), .Q(ad_path));
             end else begin : g_ad_byp
                 assign ad_path = ad_raw;
             end
@@ -315,25 +304,19 @@ module QL_DSP4 #(
     wire        knsel;
     generate
         if (USE_MREG) begin : g_m
-            for (i = 0; i < 50; i = i + 1) begin : bu
-                QL_DSP4_M_DFFR  ff (.D(mult_u[i]), .R(RSTN), .clk(CLK), .Q(msel[i]));
-            end
-            // Only V[49:7] is registered -- 43 flops, not 50. V[6:0] are
-            // structurally zero for the 19-row 32x18 reduction tree, so the
-            // hardware does not spend flops on them (dsp4_top.v:
-            // MULT_V_LSB_ZEROS = 7) and the tile has QL_DSP4_MV_DFFR num_pb=43.
-            // Emitting 50 makes the pp_mreg_u molecule demand more MV flops
-            // than the tile owns, and packing fails with "Can not find any
-            // logic block that can implement molecule".
-            for (i = 7; i < 50; i = i + 1) begin : bv
-                QL_DSP4_MV_DFFR ff (.D(mult_v[i]), .R(RSTN), .clk(CLK), .Q(vsel[i]));
-            end
-            // V[6:0] bypass the register, matching the arch's mv_c0_d_0..6
-            // directs (mult_V[6:0] -> vsel_node[6:0]). Passed through rather
-            // than tied to 0 so vsel[0] stays a real net: the ALU Y upper-bit
-            // pad below is {14{vsel[0]}}, and a literal 0 there has to be
-            // routed in as a constant, which is what made dsp_preadder_multadd
-            // unroutable.
+            QL_DSP4_M_DFFR_50 ff (.D(mult_u), .R(RSTN), .clk(CLK), .Q(msel));
+            // Only V[49:7] is registered -- the MV bank is 43 bits wide, not 50.
+            // V[6:0] are structurally zero for the 19-row 32x18 reduction tree,
+            // so the hardware does not spend flops on them (dsp4_top.v:
+            // MULT_V_LSB_ZEROS = 7). The bank's D/Q[42:0] map onto V[49:7],
+            // exactly as the arch wires mv_d (mult.V[49:7] -> ff_mv.D[42:0])
+            // and the mv_reg_sel mux (ff_mv.Q[42:0] -> vsel_node[49:7]).
+            QL_DSP4_MV_DFFR_43 ffv (.D(mult_v[49:7]), .R(RSTN), .clk(CLK), .Q(vsel[49:7]));
+            // V[6:0] bypass the register, matching the arch's mv_c0_d direct
+            // (mult_V[6:0] -> vsel_node[6:0]). Passed through rather than tied
+            // to 0 so vsel[0] stays a real net: the ALU Y upper-bit pad below
+            // is {14{vsel[0]}}, and a literal 0 there has to be routed in as a
+            // constant, which is what made dsp_preadder_multadd unroutable.
             assign vsel[6:0] = mult_v[6:0];
             // KN pipelines in lockstep with U/V (dsp4_top.v:255) so the X-mux
             // pad stays aligned with the partial products it extends.
@@ -362,9 +345,7 @@ module QL_DSP4 #(
     wire [63:0] p_node;
     generate
         if (USE_PREG) begin : g_acc
-            for (i = 0; i < 64; i = i + 1) begin : b
-                QL_DSP4_ACC_DFFRE ff (.D(alu_out[i]), .E(CEP), .R(ACCRSTN), .clk(CLK), .Q(acc_q[i]));
-            end
+            QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(CEP), .R(ACCRSTN), .clk(CLK), .Q(acc_q));
             assign p_node = acc_q;
         end else begin : g_acc_byp
             assign acc_q  = 64'b0;   // unused (Z selects ACC.Q only when PREG=1)
@@ -646,9 +627,7 @@ module QL_DSP4 #(
     wire [3:0] cout_w;
     generate
         if (COUTREG) begin : g_co
-            for (i = 0; i < 4; i = i + 1) begin : b
-                QL_DSP4_CO_DFFR ff (.D(alu_co[i]), .R(RSTN), .clk(CLK), .Q(cout_w[i]));
-            end
+            QL_DSP4_CO_DFFR_4 ff (.D(alu_co), .R(RSTN), .clk(CLK), .Q(cout_w));
         end else begin : g_co_byp
             assign cout_w = alu_co;
         end

@@ -1083,7 +1083,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                         //
                         // PROBLEM: several DSP-V4 leaf outputs are wide hard-block buses
                         // whose low bits are driven straight to a top-level output port -
-                        // e.g. the accumulator register QL_DSP4_ACC_DFFRE.Q (which ALSO
+                        // e.g. the accumulator register QL_DSP4_ACC_DFFRE_64.Q (which ALSO
                         // feeds back into QL_DSP4_ALU_ADD.Z), or QL_DSP4_ALU_ADD.ALU_OUT.
                         // A module output can't be a bit-slice of a wider internal net, so
                         // write_blif materialises each such output bit as a 1-input

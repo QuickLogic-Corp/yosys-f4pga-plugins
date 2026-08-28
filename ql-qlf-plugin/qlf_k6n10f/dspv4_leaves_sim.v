@@ -444,7 +444,7 @@ module QL_DSP4_RSS (ACC_IN, ACC_OUT);
   assign ACC_OUT = acc_saturate[49:0];
 endmodule
 
-// Pipeline registers, bit-sliced, from ffb/rtl/DFFE_SNR_ANR.v -- its LR
+// Pipeline registers, ONE Wide cell per bank, from ffb/rtl/DFFE_SNR_ANR.v -- its LR
 // path, not its R path.
 //   *_DFFRE : sync reset R (active-low), clock-enable E
 //   *_DFFR  : sync reset R (active-low), no enable
@@ -458,14 +458,26 @@ endmodule
 // Q powers up to 0, keeping the netlist cycle-aligned with reset-to-0
 // golden RTL -- the netlist ties R to 1'b1 in a functional run.
 
-`define QL_DSP4_DFFRE(NAME) \
+`define QL_DSP4_DFFRE_W(NAME, W) \
 module NAME (D, E, R, clk, Q);      \
-  input  wire D, E, R, clk;         \
-  output reg  Q;                    \
-  initial Q = 1'b0;                 \
+  input  wire [W-1:0] D;            \
+  input  wire         E, R, clk;    \
+  output reg  [W-1:0] Q;            \
+  initial Q = {W{1'b0}};            \
   always @(posedge clk)             \
-    if (!R)     Q <= 1'b0;          \
+    if (!R)     Q <= {W{1'b0}};     \
     else if (E) Q <= D;             \
+endmodule
+
+`define QL_DSP4_DFFR_W(NAME, W) \
+module NAME (D, R, clk, Q);         \
+  input  wire [W-1:0] D;            \
+  input  wire         R, clk;       \
+  output reg  [W-1:0] Q;            \
+  initial Q = {W{1'b0}};            \
+  always @(posedge clk)\
+    if (!R) Q <= {W{1'b0}};         \
+    else    Q <= D;                 \
 endmodule
 
 `define QL_DSP4_DFFR(NAME) \
@@ -478,16 +490,18 @@ module NAME (D, R, clk, Q);         \
     else    Q <= D;                 \
 endmodule
 
-`QL_DSP4_DFFRE(QL_DSP4_A1_DFFRE)
-`QL_DSP4_DFFRE(QL_DSP4_A2_DFFRE)
-`QL_DSP4_DFFRE(QL_DSP4_B1_DFFRE)
-`QL_DSP4_DFFRE(QL_DSP4_B2_DFFRE)
-`QL_DSP4_DFFRE(QL_DSP4_D_DFFRE)
-`QL_DSP4_DFFRE(QL_DSP4_C_DFFRE)
-`QL_DSP4_DFFRE(QL_DSP4_ACC_DFFRE)
+`QL_DSP4_DFFRE_W(QL_DSP4_A1_DFFRE_32, 32)
+`QL_DSP4_DFFRE_W(QL_DSP4_A2_DFFRE_32, 32)
+`QL_DSP4_DFFRE_W(QL_DSP4_B1_DFFRE_18, 18)
+`QL_DSP4_DFFRE_W(QL_DSP4_B2_DFFRE_18, 18)
+`QL_DSP4_DFFRE_W(QL_DSP4_D_DFFRE_27, 27)
+`QL_DSP4_DFFRE_W(QL_DSP4_C_DFFRE_50, 50)
+`QL_DSP4_DFFRE_W(QL_DSP4_ACC_DFFRE_64, 64)
 
-`QL_DSP4_DFFR(QL_DSP4_AD_DFFR)
-`QL_DSP4_DFFR(QL_DSP4_M_DFFR)
-`QL_DSP4_DFFR(QL_DSP4_MV_DFFR)
+`QL_DSP4_DFFR_W(QL_DSP4_AD_DFFR_32, 32)
+`QL_DSP4_DFFR_W(QL_DSP4_M_DFFR_50, 50)
+// 43 bits: V[6:0] are structurally zero, so the bank covers V[49:7] only.
+`QL_DSP4_DFFR_W(QL_DSP4_MV_DFFR_43, 43)
+`QL_DSP4_DFFR_W(QL_DSP4_CO_DFFR_4, 4)
+
 `QL_DSP4_DFFR(QL_DSP4_MK_DFFR)
-`QL_DSP4_DFFR(QL_DSP4_CO_DFFR)

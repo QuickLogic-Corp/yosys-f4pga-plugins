@@ -28,14 +28,15 @@ select -assert-count 0 t:\$mul
 # Each port absorbs its OWN depth: A is one deep so it takes AREG1 only, B is
 # two deep so it takes BREG0 and BREG1. Nothing is left in fabric.
 #
-# A2 is 32 wide because the A port is -- the operand's sign extension is
+# Each bank is ONE wide cell, not one cell per bit: the width is carried in the
+# name. A2 is 32 wide because the A port is -- the operand's sign extension is
 # registered with it. B1/B2 are 18, the width of the B port.
-select -assert-count 32 t:QL_DSP4_A2_DFFRE
-select -assert-count 18 t:QL_DSP4_B2_DFFRE
-select -assert-count 18 t:QL_DSP4_B1_DFFRE
+select -assert-count 1 t:QL_DSP4_A2_DFFRE_32
+select -assert-count 1 t:QL_DSP4_B2_DFFRE_18
+select -assert-count 1 t:QL_DSP4_B1_DFFRE_18
 # A's stage-0 slot stays empty. Filling it for a one-deep chain would be the
 # (1,0) encoding, which reads as delay 0 rather than delay 1.
-select -assert-count 0 t:QL_DSP4_A1_DFFRE
+select -assert-count 0 t:QL_DSP4_A1_DFFRE_32
 # Nothing may remain outside -- absorbing is the whole point of the test.
 select -assert-count 0 t:dffre
 select -assert-count 0 t:sdffre
