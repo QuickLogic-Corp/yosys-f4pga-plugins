@@ -79,6 +79,19 @@ module OBUF (I, O);
   assign O = I;
 endmodule
 
+module IBUF_FF(O, I, C);
+ input I, C;
+ output O;
+	dff in_ff (.D(I), .C(C), .Q(O));
+endmodule
+
+module OBUF_FF(O, I, C);
+ input I, C;
+ output O;
+	dff out_ff (.D(I), .C(C), .Q(O));
+endmodule
+
+/*
 module CARRY8(
   output wire [7:0] CO,
   output [7:0] O,
@@ -180,13 +193,14 @@ module CARRY8(
   endgenerate
      
 endmodule
+*/
 
 module LUT6_2(output O6, O5, input I0, I1, I2, I3, I4, I5);
   parameter [63:0] INIT = 0;
   lut6_2 #(
-    .INIT(INIT)
+    .INIT({INIT[31:0],INIT[63:32]})
   ) inst (
-    .in({I5, I4, I3, I2, I1, I0}),
+    .in({I0, I1, I2, I3, I4, ~I5}),
 	.lut5out(O5),
     .lut6out(O6)
   );

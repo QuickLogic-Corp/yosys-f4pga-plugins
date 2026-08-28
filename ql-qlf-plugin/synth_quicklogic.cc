@@ -159,6 +159,8 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("    -ioff\n");
         log("        By default flip-flops in the IO is not used for the designs that\n");
         log("        are feasible. Specifying this will force synthesis to use IOFFs.\n");
+        log("        Requires a GPIO v3.0 architecture when the promoted registers carry a\n");
+        log("        reset, since those become io_sdffr/io_sdffnr cells.\n");
         log("\n");
         log("    -bramecc\n");
         log("        By default use BRAM without ECC support for designs \n");
@@ -523,6 +525,15 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("prepare")) {
             if (synplify) {
+				// As early as possible: synplify_map.v expands IBUF_FF/OBUF_FF into
+				// a plain dff, and it is techmapped in more than one place -- the
+				// map_luts label does so before ABC whenever -de is set, well ahead
+				// of map_synplify. Translating here, straight off the front end,
+				// means the cells are consumed while they still exist regardless of
+				// which of those paths the run takes. On a v3.0 architecture the dff
+				// they would otherwise become has no model and packing fails with
+				// "Subckt instantiates model 'dff'".
+				run("ql_io_translate");
 				run("proc");
 				run("flatten");
 				run("opt -nodffe -nosdff");
@@ -1007,7 +1018,11 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 		
 		if (check_label("iomap", "(for qlf_k6n10f)") && (family == "qlf_k6n10f" || help_mode)) {
-			if (ioff ) {
+			// Runs on both front ends. ql_ioff needs the Synplify path's VCC-cell
+			// constants resolved to see an unused E or R at all, which
+			// build_const_drivers does, so the same promotion decisions are
+			// available whichever tool synthesised the design.
+			if (ioff) {
 				run("ql_ioff");
 				run("opt_clean");
 			}
