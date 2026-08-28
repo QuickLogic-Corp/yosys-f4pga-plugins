@@ -424,25 +424,12 @@ struct SynthQuickLogicPass : public ScriptPass {
         if (family != "pp3" && family != "qlf_k4n8" && family != "qlf_k6n10" && family != "qlf_k6n10f")
             log_cmd_error("Invalid family specified: '%s'\n", family.c_str());
 
-        // DSP-V4 has no native Yosys inference yet (tracked as aurora2#2045).
-        // The only supported route to QL_DSP4 today is -synplify: Synplify emits
-        // QL_DSPV2 cells, ql_dspv2_to_dspv4 converts them, and dsp4_logical_map.v
-        // lowers the result to the dsp4_logical leaves.
-        //
-        // Without -synplify there is nothing to convert. Previously this fell
-        // through to the *V2* inference chain, which techmaps against dsp_map.v /
-        // dsp_final_map.v -- V1/V2 device collateral that a DSP-V4 device does not
-        // ship -- so the run died with a bare "dsp_map.v not found". Fail here
-        // instead, with a message that says what is actually unsupported.
-        if (dspv4 && !synplify)
-            log_cmd_error(
-                "DSP-V4 inference is not supported with Yosys.\n"
-                "  '-dspv4' currently requires '-synplify': the supported flow is\n"
-                "  Synplify (which infers QL_DSPV2) -> ql_dspv2_to_dspv4 -> the\n"
-                "  dsp4_logical techmap. Native Yosys DSP-V4 inference is tracked\n"
-                "  under aurora2#2045 and is not implemented yet.\n"
-                "  Workarounds: run with '-synplify', instantiate QL_DSP4 directly,\n"
-                "  or drop '-dspv4' to synthesise multipliers as soft logic.\n");
+        // DSP-V4 reaches hardware two ways, and both end at the same techmap:
+        //   -dspv4 -synplify : Synplify infers QL_DSPV2, ql_dspv2_to_dspv4
+        //                      converts, dsp4_logical_map.v lowers.
+        //   -dspv4           : ql_dspv4 infers QL_DSP4 from RTL directly,
+        //                      dsp4_logical_map.v lowers.
+        // Until Phase 2 the second had no implementation and was refused here.
 
         if (family == "qlf_k4n8") {
             nosdff = true;
@@ -638,13 +625,22 @@ struct SynthQuickLogicPass : public ScriptPass {
                         // neither, so running this on the V4 path hard-errors with
                         // "dsp_map.v not found".
                         //
-                        // V4 does not need them: the Synplify path arrives with
-                        // QL_DSPV2 cells already inferred, and all that is required
-                        // downstream is ql_dspv2_to_dspv4 + dsp4_logical_map.v.
-                        // Native V4 inference is tracked under aurora2#2045 and is
-                        // not implemented yet, so a non-Synplify -dspv4 run has
-                        // nothing to infer with and leaves multipliers soft --
-                        // warned about below rather than crashing on a missing file.
+                        // V4 does not need them. The Synplify path arrives with
+                        // QL_DSPV2 cells already inferred and only needs
+                        // ql_dspv2_to_dspv4 + dsp4_logical_map.v; the non-Synplify
+                        // path infers QL_DSP4 directly via ql_dspv4 below. Neither
+                        // reads dsp_map.v, so neither trips the missing-file error.
+                        if (!synplify && dspv4) {
+                            // Native V4 inference (Phase 2). Emits QL_DSP4 cells
+                            // with their control word already set; the techmap
+                            // below lowers them exactly as it does the cells the
+                            // Synplify bridge produces, so the two routes cannot
+                            // drift apart.
+                            //
+                            // Multiplies the DSP cannot hold stay as $mul for the
+                            // ordinary soft path, each named by a log_debug (IN-7).
+                            run("ql_dspv4");
+                        }
                         if (!synplify && !dspv4) {
                             // DSPv2 arm — ported from YosysHQ/yosys#4932
                             // (povik/ql-dspv2 @ c68fd85b9ccceb773a4aaac2a35f7d90fbb15fc8).
@@ -695,6 +691,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // monolithic QL_DSP4 base cells (per-cell + cascade-pair
                             // fusion) in place of the V2 mode-subtype specialization.
                             run("ql_dspv2_to_dspv4");
+                            // Last point where the control word is still readable as
+                            // parameters, and where every producer's cells are
+                            // present: inference, the bridge above, the macro library
+                            // and direct instantiation. Warn here about configurations
+                            // whose arithmetic wraps silently.
+                            run("ql_dsp4_check");
                             // Phase 2: decompose each monolithic QL_DSP4 into the
                             // dsp4_logical operating-mode leaf cells (mult / alu /
                             // pre-adder / rss / bit-sliced registers) so the netlist
@@ -1096,7 +1098,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                         //
                         // PROBLEM: several DSP-V4 leaf outputs are wide hard-block buses
                         // whose low bits are driven straight to a top-level output port -
-                        // e.g. the accumulator register QL_DSP4_ACC_DFFRE.Q (which ALSO
+                        // e.g. the accumulator register QL_DSP4_ACC_DFFRE_64.Q (which ALSO
                         // feeds back into QL_DSP4_ALU_ADD.Z), or QL_DSP4_ALU_ADD.ALU_OUT.
                         // A module output can't be a bit-slice of a wider internal net, so
                         // write_blif materialises each such output bit as a 1-input

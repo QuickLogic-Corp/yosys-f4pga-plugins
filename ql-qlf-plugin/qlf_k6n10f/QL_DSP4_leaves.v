@@ -17,8 +17,9 @@
 // QL_DSP4_* leaf cells - the packer-visible primitives of the VPR `dsp4_logical`
 // operating mode (DSP-V4, Phase 2). The Phase-2 techmap (`dsp4_logical_map.v`)
 // decomposes the monolithic `QL_DSP4` base cell into a netlist of these leaves,
-// bit-sliced and wired per the `dsp4_logical` interconnect so the design packs
-// onto the DSPV4 tile.
+// wired per the `dsp4_logical` interconnect so the design packs onto the DSPV4
+// tile. Each pipeline-register bank is ONE wide cell (see the *_DFFR[E]_<W>
+// section below), matching the num_pb=1 wide-port register pb_types in the arch.
 //
 // Interface contract (names + widths) MUST match the VPR leaves exactly
 // (openphy-turnkey-flow .../arch/mako/vpr_models.yaml DSPV4 section + the
@@ -72,6 +73,8 @@ endmodule
 // ALU: ALU_OUT = W + X + Y + Z + CIN, ALUMODE = 00 (add).
 (* blackbox *)
 module QL_DSP4_ALU_ADD (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+    // [1:0] ALUMODE, [3:2] USE_SIMD
+    parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
     input  wire [63:0] Y;
@@ -84,6 +87,8 @@ endmodule
 // ALU, ALUMODE = 11 (subtract):  ALU_OUT = Z - (W + X + Y + CIN).
 (* blackbox *)
 module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+    // [1:0] ALUMODE, [3:2] USE_SIMD
+    parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
     input  wire [63:0] Y;
@@ -96,6 +101,8 @@ endmodule
 // ALU, ALUMODE = 01 (reverse subtract):  ALU_OUT = -Z + (W + X + Y + CIN) - 1.
 (* blackbox *)
 module QL_DSP4_ALU_REV_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+    // [1:0] ALUMODE, [3:2] USE_SIMD
+    parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
     input  wire [63:0] Y;
@@ -108,6 +115,8 @@ endmodule
 // ALU, ALUMODE = 10 (not-sum):  ALU_OUT = -(Z + W + X + Y + CIN) - 1.
 (* blackbox *)
 module QL_DSP4_ALU_NOT_SUM (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
+    // [1:0] ALUMODE, [3:2] USE_SIMD
+    parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
     input  wire [63:0] Y;
@@ -131,107 +140,118 @@ endmodule
 // is then one documented rule for the FASM side.
 (* blackbox *)
 module QL_DSP4_RSS (ACC_IN, ACC_OUT);
-    parameter [2:0] ROUND    = 3'b000;
-    parameter [5:0] SHIFT    = 6'b000000;
-    parameter       SATURATE = 1'b0;
+    // [2:0] ROUND, [8:3] SHIFT, [9] SATURATE
+    parameter [9:0] MODE_BITS = 10'b0;
 
     input  wire [63:0] ACC_IN;
     output wire [49:0] ACC_OUT;
 endmodule
 
 // ===========================================================================
-// Pipeline registers (bit-sliced: one 1-bit instance per data bit)
+// Pipeline registers - ONE wide cell per bank
 //
-//   *_DFFRE : D flip-flop, async reset R (active-low), clock-enable E.
-//   *_DFFR  : D flip-flop, async reset R (active-low), no enable.
-// (No SI/SO/LR - scan and local sync-reset are physical-mode-only.)
+//   *_DFFRE_<W> : D flip-flop bank, sync reset R (active-low), clock-enable E.
+//   *_DFFR_<W>  : D flip-flop bank, sync reset R (active-low), no enable.
+// R is the physical flop's LR pin: the operating mode drives it from rstn_i,
+// and the ACC bank from accrstn_i, both off the routable IC0 control bus. The
+// async reset is chip-global (Fc = 0) and is not exposed here. Same behaviour
+// as the fabric's `sdffre`, reset ahead of enable.
+// (No SI/SO - scan is physical-mode-only.)
+//
+// The <W> suffix is the bank width and matches the pb_type / model name in the
+// arch (vpr_models.yaml DSPV4_FLOP + the rendered `dsp4_logical` pb_types),
+// where each bank is num_pb=1 with W-bit D/Q. D and Q are W bits; R, E and clk
+// are ONE bit, shared across the bank exactly as in hardware. QL_DSP4_MK_DFFR
+// is a genuine 1-bit flop and therefore carries no suffix.
 // ===========================================================================
 
 (* blackbox *)
-module QL_DSP4_A1_DFFRE (D, E, R, clk, Q);
-    input  wire D;
-    input  wire E;
-    input  wire R;
+module QL_DSP4_A1_DFFRE_32 (D, E, R, clk, Q);
+    input  wire [31:0] D;
+    input  wire        E;
+    input  wire        R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [31:0] Q;
 endmodule
 
 (* blackbox *)
-module QL_DSP4_A2_DFFRE (D, E, R, clk, Q);
-    input  wire D;
-    input  wire E;
-    input  wire R;
+module QL_DSP4_A2_DFFRE_32 (D, E, R, clk, Q);
+    input  wire [31:0] D;
+    input  wire        E;
+    input  wire        R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [31:0] Q;
 endmodule
 
 (* blackbox *)
-module QL_DSP4_B1_DFFRE (D, E, R, clk, Q);
-    input  wire D;
-    input  wire E;
-    input  wire R;
+module QL_DSP4_B1_DFFRE_18 (D, E, R, clk, Q);
+    input  wire [17:0] D;
+    input  wire        E;
+    input  wire        R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [17:0] Q;
 endmodule
 
 (* blackbox *)
-module QL_DSP4_B2_DFFRE (D, E, R, clk, Q);
-    input  wire D;
-    input  wire E;
-    input  wire R;
+module QL_DSP4_B2_DFFRE_18 (D, E, R, clk, Q);
+    input  wire [17:0] D;
+    input  wire        E;
+    input  wire        R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [17:0] Q;
 endmodule
 
 (* blackbox *)
-module QL_DSP4_D_DFFRE (D, E, R, clk, Q);
-    input  wire D;
-    input  wire E;
-    input  wire R;
+module QL_DSP4_D_DFFRE_27 (D, E, R, clk, Q);
+    input  wire [26:0] D;
+    input  wire        E;
+    input  wire        R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [26:0] Q;
 endmodule
 
 (* blackbox *)
-module QL_DSP4_C_DFFRE (D, E, R, clk, Q);
-    input  wire D;
-    input  wire E;
-    input  wire R;
+module QL_DSP4_C_DFFRE_50 (D, E, R, clk, Q);
+    input  wire [49:0] D;
+    input  wire        E;
+    input  wire        R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [49:0] Q;
 endmodule
 
 (* blackbox *)
-module QL_DSP4_ACC_DFFRE (D, E, R, clk, Q);
-    input  wire D;
-    input  wire E;
-    input  wire R;
+module QL_DSP4_ACC_DFFRE_64 (D, E, R, clk, Q);
+    input  wire [63:0] D;
+    input  wire        E;
+    input  wire        R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [63:0] Q;
 endmodule
 
 (* blackbox *)
-module QL_DSP4_AD_DFFR (D, R, clk, Q);
-    input  wire D;
-    input  wire R;
+module QL_DSP4_AD_DFFR_32 (D, R, clk, Q);
+    input  wire [31:0] D;
+    input  wire        R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [31:0] Q;
 endmodule
 
 (* blackbox *)
-module QL_DSP4_M_DFFR (D, R, clk, Q);
-    input  wire D;
-    input  wire R;
+module QL_DSP4_M_DFFR_50 (D, R, clk, Q);
+    input  wire [49:0] D;
+    input  wire        R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [49:0] Q;
 endmodule
 
+// 43 bits, not 50: V[6:0] are structurally zero out of the multiplier, so the
+// bank covers V[49:7] only. D/Q[42:0] map onto V[49:7].
 (* blackbox *)
-module QL_DSP4_MV_DFFR (D, R, clk, Q);
-    input  wire D;
-    input  wire R;
+module QL_DSP4_MV_DFFR_43 (D, R, clk, Q);
+    input  wire [42:0] D;
+    input  wire        R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [42:0] Q;
 endmodule
 
 // KN pipeline register: carries the multiplier's dropped-carry flag alongside
@@ -256,9 +276,9 @@ endmodule
 // model behind them, and the techmap never instantiated them. Confirmed with
 // the arch owner before deletion.
 (* blackbox *)
-module QL_DSP4_CO_DFFR (D, R, clk, Q);
-    input  wire D;
-    input  wire R;
+module QL_DSP4_CO_DFFR_4 (D, R, clk, Q);
+    input  wire [3:0] D;
+    input  wire       R;
     (* clkbuf_sink *) input wire clk;
-    output wire Q;
+    output wire [3:0] Q;
 endmodule

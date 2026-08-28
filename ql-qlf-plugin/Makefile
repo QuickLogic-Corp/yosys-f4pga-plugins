@@ -21,6 +21,7 @@ SOURCES = synth_quicklogic.cc \
           ql-dspv1.cc \
           ql-dspv2.cc \
           ql-dspv2-to-dspv4.cc \
+          ql-dspv4.cc \
           pp3_braminit.cc \
           quicklogic_eqn.cc \
           ql-edif.cc \
@@ -128,7 +129,8 @@ DEPS := $(PMGEN_OUT_DIR)/ql-dspv1-pm.h \
         $(PMGEN_OUT_DIR)/ql-dspv2-pm.h \
         $(PMGEN_OUT_DIR)/ql-dsp-macc.h \
         $(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-write.h \
-        $(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-read.h
+        $(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-read.h \
+        $(PMGEN_OUT_DIR)/ql-dspv4-pm.h
 
 $(DEPS): $(PMGEN_PY) | $(PMGEN_OUT_DIR)
 
@@ -142,6 +144,9 @@ $(PMGEN_OUT_DIR)/ql-dspv2-pm.h: ql-dspv2.pmg
 
 $(PMGEN_OUT_DIR)/ql-dsp-macc.h: ql-dsp-macc.pmg
 	python3 $(PMGEN_PY) -o $@ -p ql_dsp_macc ql-dsp-macc.pmg
+
+$(PMGEN_OUT_DIR)/ql-dspv4-pm.h: ql-dspv4.pmg
+	python3 $(PMGEN_PY) -o $@ -p ql_dspv4 ql-dspv4.pmg
 
 $(PMGEN_OUT_DIR)/ql-bram-asymmetric-wider-write.h: ql-bram-asymmetric-wider-write.pmg
 	python3 $(PMGEN_PY) -o $@ -p ql_bram_asymmetric_wider_write ql-bram-asymmetric-wider-write.pmg
