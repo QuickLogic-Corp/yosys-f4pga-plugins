@@ -41,8 +41,8 @@ void test_ql_bram_asymmetric_wider_read(ql_bram_asymmetric_wider_read_pm &pm)
     RTLIL::Wire *wr_addr_cw = nullptr;
     if (mem_wr_addr.is_wire())
         wr_addr_cw = mem_wr_addr.as_wire();
-    else if (!mem_wr_addr.chunks().empty()) {
-        auto chunk = mem_wr_addr.chunks()[0];
+    else if (!mem_wr_addr.chunks().size()!=0) {
+        auto chunk = mem_wr_addr.chunks().at(0);
         if (chunk.is_wire())
             wr_addr_cw = chunk.wire;
     }
@@ -247,8 +247,8 @@ void test_ql_bram_asymmetric_wider_write(ql_bram_asymmetric_wider_write_pm &pm)
     RTLIL::Wire *rd_addr_wc = nullptr;
     if (mem_rd_addr.is_wire())
         rd_addr_wc = mem_rd_addr.as_wire();
-    else if (!mem_rd_addr.chunks().empty()) {
-        auto chunk = mem_rd_addr.chunks()[0];
+    else if (!mem_rd_addr.chunks().size()!=0) {
+        auto chunk = mem_rd_addr.chunks().at(0);
         if (chunk.is_wire())
             rd_addr_wc = chunk.wire;
     }
