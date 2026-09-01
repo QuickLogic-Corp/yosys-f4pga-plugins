@@ -266,17 +266,28 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (!cell_port->get_bool_attribute(ID::clkbuf_sink))
                     continue;
 
-                // grab the wires connected to this port in the parent module
+                // Grab the wires connected to this port in the parent module,
+                // canonicalized through the sigmap. techmap gives every hard-block
+                // port its own local alias wire (e.g. $techmapNNNN\<inst>.CLK_A2_i),
+                // so one clock net reaches N BRAM ports as N distinct Wire* objects.
+                // pool<> dedupes pointer-identical wires but cannot collapse aliases,
+                // so inserting bit.wire raw makes the .clocks file list one clock per
+                // BRAM port; downstream floorplanning then spends a global clock pin
+                // on each and rejects the real design clock once the 4 pins are gone.
                 for (auto &bit : conn.second) {
                     if (!bit.wire)
                         continue;
 
+                    RTLIL::SigBit canonical = sigmap(bit);
+                    if (!canonical.wire)
+                        continue; // clkbuf_sink tied to a constant
+
                     log("Found clock wire: %s (via clkbuf_sink on cell %s port %s)\n",
-                        log_id(bit.wire->name),
+                        log_id(canonical.wire->name),
                         log_id(cell->name),
                         log_id(conn.first));
 
-                    clock_wires.insert(bit.wire);
+                    clock_wires.insert(canonical.wire);
                 }
             }
         }
