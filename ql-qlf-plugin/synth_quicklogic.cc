@@ -1073,17 +1073,6 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
         }
 
-        RTLIL::Design *design = yosys_get_design();
-        if (clocks_file.empty()) {
-            clocks_file = std::string(log_id(design->top_module()->name)) + ".clocks";
-        }
-        std::ofstream ofs(clocks_file);
-        for (RTLIL::Module *mod : design->selected_modules()) {
-            auto clock_wires = find_clock_wires(mod);
-                for (auto wire : clock_wires) {
-                    ofs << log_id(wire->name) << "\n";
-                }
-        }
         if (check_label("map_synplify", "(if -synplify)")) {
             std::string family_path = " " + lib_path + family;
             if (family == "qlf_k6n10f") {
@@ -1098,6 +1087,27 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("opt_lut_dedup");
                     run("stat");
                     run("clean");
+                }
+            }
+            // Write the clock list against the same netlist the BLIF describes.
+            // generate_floorplanning.py consumes --blif_file and --clocks_file as a
+            // pair, so the two must agree. Written before the -synplify mapping the
+            // list still held techmap's per-port alias wires: that path's cleanup
+            // (opt_merge / opt_clean -purge / clean) runs in map_synplify above, so
+            // the connections SigMap canonicalizes through did not exist yet and one
+            // clock net was emitted once per hard-block clock sink.
+            {
+                RTLIL::Design *design = yosys_get_design();
+                std::string cf = clocks_file;
+                if (cf.empty()) {
+                    cf = std::string(log_id(design->top_module()->name)) + ".clocks";
+                }
+                std::ofstream ofs(cf);
+                for (RTLIL::Module *mod : design->selected_modules()) {
+                    auto clock_wires = find_clock_wires(mod);
+                    for (auto wire : clock_wires) {
+                        ofs << log_id(wire->name) << "\n";
+                    }
                 }
             }
             if (check_label("blif", "(if -blif)")) {
