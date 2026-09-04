@@ -16,10 +16,22 @@
 // needs, and the netlist is quietly wrong -- it still synthesises, packs and
 // routes.
 //
-// The bound is 2, not the 3 the macc pattern uses: nusers counts the driver
-// plus the readers, so 2 means "driven here, read in exactly one place" -- the
-// cell this pattern is about to absorb it into. At 3 a product that also leaves
-// the module still matched, and the DSP would swallow it.
+// The bound is 2: nusers counts the driver plus the readers, so 2 means
+// "driven here, read in exactly one place" -- the cell this pattern is about to
+// absorb it into. At 3 a product that also leaves the module still matched, and
+// the DSP would swallow it.
+//
+// Where each guard sits matters as much as its bound. pmgen emits `select`
+// inside the index-BUILD loop and `filter` inside the MATCH loop, so a `select`
+// on the anchor `mul` does not reject the adder -- it removes the multiply from
+// the candidate index entirely, the pattern never fires, and the `optional`
+// fallback to a bare MULT never gets a chance. `wire prod = a*b` feeding two
+// adders then produced no DSP at all and was not even counted as left soft.
+//
+// So: the product's fanout is checked with `filter` on the matches that would
+// absorb it, and the anchor carries no fanout guard. On the non-anchor matches
+// (`add`, `acc`) a `select` is still correct, because excluding one candidate
+// there degrades to the next smaller shape rather than killing the match.
 
 pattern ql_dspv4
 
@@ -32,9 +44,11 @@ state <int> mul_nusers
 state <int> add_nusers
 
 // The multiply. Everything else hangs off this.
+//
+// No fanout guard here -- see the header. The count is recorded so the matches
+// that would absorb the product can check it at match time.
 match mul
     select mul->type.in($mul)
-    select nusers(port(mul, \Y)) <= 2
     set mul_nusers nusers(port(mul, \Y))
 endmatch
 
@@ -47,6 +61,11 @@ match add
     define <IdString> BA (AB == \A ? \B : \A)
     index <SigSpec> port(add, AB) === port(mul, \Y)
     select nusers(port(add, \Y)) <= 2
+    // Absorbing this adder makes the DSP produce the SUM, so the product stops
+    // appearing in the netlist. A second reader of it would be left with no
+    // driver. Checked here rather than on `mul` so that a shared product still
+    // reaches the bare-MULT branch.
+    filter mul_nusers <= 2
     set add_nusers nusers(port(add, \Y))
     set add_ba BA
     set add_mul_port AB
@@ -95,9 +114,25 @@ endmatch
 //
 // This index line is long on purpose: pmgen parses one statement per line, so
 // wrapping it turns the continuation into an unrecognised statement.
+//
+// Every DSP register bank is rising-edge (dsp4_logical_map.v instantiates
+// QL_DSP4_*_DFFRE_* with .clk(CLK) and no inversion), and emit() wires the
+// flop's CLK straight through. So a falling-edge flop absorbed here would be
+// re-timed onto the opposite edge with nothing to show it: an
+// `always @(negedge clk) p <= a*b` produced a QL_DSP4_ACC_DFFRE_64 clocked on
+// the rising edge. collect_flops() checks CLK_POLARITY for the OPERAND chains;
+// this is the same check for the output flop.
 match ff
     select ff->type.in($dff, $dffe, $sdff, $sdffe)
+    select param(ff, \CLK_POLARITY).as_bool()
     index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
+    // The value this flop registers must have exactly one reader -- this flop.
+    // Absorbing it makes the DSP drive Q instead of D, so any other reader of D
+    // loses its driver. When `add` or `acc` matched, their own nusers selects
+    // already cover it; when neither did, `ff` is indexed straight onto the
+    // product and this is the only thing standing between a shared product and
+    // an undriven net.
+    filter nusers(port(ff, \D)) <= 2
     optional
 endmatch
 

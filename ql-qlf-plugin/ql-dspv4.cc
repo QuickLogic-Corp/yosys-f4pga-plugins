@@ -20,9 +20,22 @@ PRIVATE_NAMESPACE_BEGIN
 // mode this pass can emit is a mode verify_techmap.py checks.
 //
 // Scope is Phase 2: MULT, MULT_ADD_C, MULT_SUB_C, MULT_ACC and MULT_ACC_C
-// (IN-5). Anything wider than 32x18 stays soft with a log_debug naming the cell
-// (IN-7) -- a silent fallback to fabric is prohibited, because it looks like
-// success and costs QoR.
+// (IN-5).
+//
+// A multiply this pass cannot place stays a $mul, and every survivor is named
+// by a log_debug at the end of execute() (IN-7) -- a silent fallback to fabric
+// is prohibited, because it looks like success and costs QoR. Note the
+// distinction the log makes:
+//
+//   "not fused"  this SHAPE does not fit, and the matcher will offer a smaller
+//                one -- the multiply itself usually still gets a DSP.
+//   "left soft"  the multiply is still in the netlist once the matcher is done.
+//
+// Only the second is counted. Anything wider than the 32x18 ports lands in the
+// first category on its own, but synth_quicklogic does not stop there: it runs
+// mul2dsp.v over the survivors to split them into 32x18 pieces and calls this
+// pass a second time, so a wide multiply reaches several DSPs rather than
+// fabric. Hence clear_flags() has to reset the counters.
 // ============================================================================
 
 // Look a mode up by name. A miss is a programming error rather than a user
@@ -133,13 +146,67 @@ static SigSpec dspv4_strip_extension(SigSpec sig, bool &is_signed)
 // Drive a design signal from a DSP output port that is wider than it. The port
 // keeps its full width -- the techmap and the leaves expect 50 bits -- and only
 // the low bits reach the design.
+//
+// The narrower-than-port direction is the only one that is safe. This used to
+// answer a wider `dst` with dst.extract(0, width), which silently left the top
+// bits of the design's net undriven; emit() now refuses that shape, and the
+// assert keeps it refused rather than letting a future caller reintroduce a
+// truncation no downstream check would catch.
 static SigSpec dspv4_wide_out(RTLIL::Module *module, SigSpec dst, int width)
 {
-    if (GetSize(dst) >= width)
-        return dst.extract(0, width);
+    log_assert(GetSize(dst) <= width);
+    if (GetSize(dst) == width)
+        return dst;
     SigSpec wide = module->addWire(NEW_ID, width);
     module->connect(dst, wide.extract(0, GetSize(dst)));
     return wide;
+}
+
+// A `(* keep *)` anywhere on a value the DSP would stop producing.
+//
+// Fusing a cell into the DSP deletes the net between it and the next cell,
+// which is exactly what the attribute asks synthesis not to do. Refusing the
+// fused shape rather than the whole match means the matcher then offers the
+// smaller one, so the kept net keeps a driver -- for
+// `(* keep *) wire prod = a*b; s = prod + c` the multiply still lands in a DSP
+// and only the addition stays in fabric.
+static bool dspv4_sig_kept(const SigSpec &sig)
+{
+    for (auto &c : sig.chunks())
+        if (c.wire != nullptr && c.wire->get_bool_attribute(ID::keep))
+            return true;
+    return false;
+}
+
+// A design flop the DSP cannot reproduce because of what the RTL asked for,
+// rather than because of its shape.
+//
+//   keep  the designer asked for this register to survive synthesis, and
+//         absorbing it deletes it.
+//   init  a power-up value. The DSP's register banks have none to set -- the
+//         leaves are `if (!R) Q <= 0; else if (E) Q <= D` with no initial
+//         block -- so a non-zero init cannot be expressed. An init of x
+//         imposes nothing, and one of 0 matches the bank, so both are fine.
+//
+// ql-dspv2.pmg checks both in its in_dffe / out_dffe subpatterns; this is the
+// same rule for the banks DSP-V4 absorbs into.
+static bool dspv4_flop_attrs_block(RTLIL::Cell *ff)
+{
+    if (ff->get_bool_attribute(ID::keep))
+        return true;
+    for (auto &c : ff->getPort(ID::Q).chunks()) {
+        if (c.wire == nullptr)
+            continue;
+        if (c.wire->get_bool_attribute(ID::keep))
+            return true;
+        auto it = c.wire->attributes.find(ID::init);
+        if (it == c.wire->attributes.end())
+            continue;
+        for (auto b : it->second.extract(c.offset, c.width))
+            if (b != State::Sx && b != State::S0)
+                return true;
+    }
+    return false;
 }
 
 struct QlDspV4Pass : public Pass {
@@ -155,11 +222,14 @@ struct QlDspV4Pass : public Pass {
         log("idioms. The cell is emitted with its control word already set;\n");
         log("dsp4_logical_map.v lowers it into the dsp4_logical leaves.\n");
         log("\n");
-        log("Multiplies wider than 32x18 are left to soft logic and reported\n");
-        log("with -verbose rather than silently dropped.\n");
+        log("Multiplies this pass cannot place are left as $mul and reported\n");
+        log("rather than silently dropped. synth_quicklogic -dspv4 then splits\n");
+        log("anything wider than 32x18 with mul2dsp.v and runs this pass again,\n");
+        log("so a wide multiply reaches several DSPs instead of fabric.\n");
         log("\n");
         log("    -verbose\n");
-        log("        Report each inferred cell, and each multiply left soft.\n");
+        log("        Report each inferred cell. Use -debug as well for the\n");
+        log("        shapes that were not fused and why.\n");
         log("\n");
     }
 
@@ -168,7 +238,16 @@ struct QlDspV4Pass : public Pass {
         return true;
     }
 
-    void clear_flags() override { verbose = false; left_soft = 0; }
+    // absorbed_regs belongs here too: the flow calls this pass twice (once at
+    // native width, once on the pieces mul2dsp split out), and Pass::clear_flags
+    // is the only thing that runs between them. Left out, the second call
+    // reported the first call's register absorption on top of its own.
+    void clear_flags() override
+    {
+        verbose = false;
+        left_soft = 0;
+        absorbed_regs = 0;
+    }
 
     void execute(std::vector<std::string> a_Args, RTLIL::Design *a_Design) override
     {
@@ -198,14 +277,37 @@ struct QlDspV4Pass : public Pass {
             // deliberate: the multiply still gets a DSP and only the part that
             // cannot be expressed stays in soft logic.
             index_module(module);
-            ql_dspv4_pm pm(module, module->selected_cells());
-            pm.run_ql_dspv4([&]() {
-                if (emit(pm, module))
-                    total++;
-            });
+            // Scoped so the matcher's destructor -- which is what actually
+            // performs the deferred autoremove -- has run before the survivors
+            // are counted below.
+            {
+                ql_dspv4_pm pm(module, module->selected_cells());
+                pm.run_ql_dspv4([&]() {
+                    if (emit(pm, module))
+                        total++;
+                });
+            }
             for (auto ff : pending_removal)
                 module->remove(ff);
             pending_removal.clear();
+
+            // IN-7: name every multiply that ended up in fabric.
+            //
+            // Counted from the survivors rather than from refusals. A refusal
+            // usually means "this SHAPE does not fit", and the matcher then
+            // offers a smaller one that does -- so counting refusals reported
+            // multiplies as soft that are sitting in a DSP. It also
+            // double-counted, because `optional` offers one multiply once per
+            // combination of the optional matches.
+            //
+            // A $mul still standing here is the real thing: every absorbed one
+            // was autoremoved above.
+            for (auto cell : module->cells())
+                if (cell->type == ID($mul)) {
+                    left_soft++;
+                    log_debug("  %s.%s: left soft\n", log_id(module),
+                              log_id(cell));
+                }
         }
         log("ql_dspv4: inferred %d QL_DSP4 cell(s), %d operand register "
             "stage(s) absorbed, %d multiply idiom(s) left soft.\n",
@@ -275,6 +377,30 @@ struct QlDspV4Pass : public Pass {
                               : st.add != nullptr   ? st.add : st.mul;
         SigSpec dsp_result = out_cell->getPort(ID::Y);
 
+        // The DSP produces 50 bits of P and nothing above it. A wider result
+        // has to be refused, not truncated: dspv4_wide_out takes the low
+        // DSPV4_P_WIDTH bits and leaves the rest of the design's net with no
+        // driver, which write_verilog renders as x and `check` does not flag.
+        // A 64-bit accumulator came out as
+        //   assign p = { 14'hxxxx, <acc>[49:0] };
+        // and reported one inferred cell and no problems.
+        //
+        // wreduce narrows most over-declared results before this pass, so what
+        // reaches here is a genuine one -- an accumulator's width cannot be
+        // reduced below what it accumulates, and bit 50 of a 50-bit C plus a
+        // product is a real carry.
+        //
+        // Refusing costs the fused shape, not the multiply: the matcher then
+        // offers the same product without the adder, so it still lands in a DSP
+        // and only the wide addition stays soft. Same trade as the C-operand
+        // guard below.
+        if (GetSize(dsp_result) > DSPV4_P_WIDTH) {
+            log_debug("  %s: not fused -- %d-bit result exceeds the %d-bit P "
+                      "port\n",
+                      log_id(st.mul), GetSize(dsp_result), DSPV4_P_WIDTH);
+            return false;
+        }
+
         // Absorb the flop only if it registers exactly that result.
         //
         // `ff` is indexed against `acc` when `acc` matched, so discarding
@@ -293,15 +419,46 @@ struct QlDspV4Pass : public Pass {
         // mode that reads P back without the P register (CR-5). Unreachable as
         // the matches stand; refusing beats emitting a combinational loop.
         if (feedback && ff_cell == nullptr) {
-            left_soft++;
-            log_debug("  %s: left soft -- accumulator flop does not register "
+            log_debug("  %s: not fused -- accumulator flop does not register "
                       "the DSP result\n", log_id(st.mul));
             return false;
         }
 
         if (mode_name == nullptr) {
-            left_soft++;
-            log_debug("  %s: left soft -- %s\n", log_id(st.mul), why.c_str());
+            log_debug("  %s: not fused -- %s\n", log_id(st.mul), why.c_str());
+            return false;
+        }
+
+        // What the RTL asked to keep. Each fusion step deletes the net between
+        // the two cells it joins, so the check is per step: `add` consumes the
+        // product, `acc` consumes `add`'s sum, and an absorbed flop consumes
+        // whichever of them produced the result. Refusing here degrades the
+        // shape by one step instead of pushing the multiply to fabric.
+        if (st.add != nullptr && dspv4_sig_kept(st.mul->getPort(ID::Y))) {
+            log_debug("  %s: not fused -- the product is marked keep\n",
+                      log_id(st.mul));
+            return false;
+        }
+        if (acc_cell != nullptr && dspv4_sig_kept(st.add->getPort(ID::Y))) {
+            log_debug("  %s: not fused -- the first sum is marked keep\n",
+                      log_id(st.mul));
+            return false;
+        }
+        if (ff_cell != nullptr && dspv4_sig_kept(dsp_result)) {
+            log_debug("  %s: not fused -- the registered value is marked keep\n",
+                      log_id(st.mul));
+            return false;
+        }
+        for (auto c : {st.add, acc_cell})
+            if (c != nullptr && c->get_bool_attribute(ID::keep)) {
+                log_debug("  %s: not fused -- %s is marked keep\n",
+                          log_id(st.mul), log_id(c));
+                return false;
+            }
+        if (ff_cell != nullptr && dspv4_flop_attrs_block(ff_cell)) {
+            log_debug("  %s: not fused -- the output flop carries keep or a "
+                      "non-zero init, which the DSP's P register cannot "
+                      "express\n", log_id(st.mul));
             return false;
         }
 
@@ -326,7 +483,6 @@ struct QlDspV4Pass : public Pass {
         bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) &&
                        fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
         if (!direct && !swapped) {
-            left_soft++;
             // Only mention the spare bit when it is actually what bit: saying
             // it for a signed x signed multiply sends the reader looking for a
             // signedness problem that is not there.
@@ -379,8 +535,7 @@ struct QlDspV4Pass : public Pass {
             // the shape instead; the matcher then offers the bare multiply, so
             // the product still lands in a DSP and only the addition stays soft.
             if (GetSize(mc) > DSPV4_C_WIDTH) {
-                left_soft++;
-                log_debug("  %s: left soft -- %d-bit C operand exceeds the "
+                log_debug("  %s: not fused -- %d-bit C operand exceeds the "
                           "%d-bit C port\n",
                           log_id(st.mul), GetSize(mc), DSPV4_C_WIDTH);
                 module->remove(cell);
@@ -614,8 +769,7 @@ struct QlDspV4Pass : public Pass {
             // value.
             if (ff_cell->hasPort(ID(SRST))) {
                 if (!ff_cell->getParam(ID(SRST_VALUE)).is_fully_zero()) {
-                    left_soft++;
-                    log_debug("  %s: left soft -- absorbed flop resets to a "
+                    log_debug("  %s: not fused -- absorbed flop resets to a "
                               "non-zero value, which the DSP cannot express\n",
                               log_id(st.mul));
                     module->remove(cell);
@@ -776,6 +930,12 @@ struct QlDspV4Pass : public Pass {
             if (sig_users(ff->getPort(ID::Q)) > 2)
                 break;
             if (!ff->getParam(ID(CLK_POLARITY)).as_bool())
+                break;
+            // keep, or an init the A/B/C banks cannot power up with. Stops the
+            // walk rather than skipping the flop: the stages behind it are one
+            // deeper than the DSP would place them, so absorbing them would
+            // change the pipeline depth.
+            if (dspv4_flop_attrs_block(ff))
                 break;
             SigSpec en(State::S1), arst(State::S1);
             bool en_inv = false, arst_inv = false;

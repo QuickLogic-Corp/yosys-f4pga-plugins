@@ -40,6 +40,12 @@ TESTS = \
 	qlf_k6n10f/dspv4_mult_regin \
 	qlf_k6n10f/dspv4_mult_sub \
 	qlf_k6n10f/dspv4_macc \
+	qlf_k6n10f/dspv4_mult_fanout \
+	qlf_k6n10f/dspv4_mult_wide \
+	qlf_k6n10f/dspv4_mult_wide_result \
+	qlf_k6n10f/dspv4_mult_negedge \
+	qlf_k6n10f/dspv4_mult_keep \
+	qlf_k6n10f/dspv4_mult_init \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
