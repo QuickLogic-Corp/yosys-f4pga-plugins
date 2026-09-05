@@ -1,5 +1,5 @@
-# Triggers a tabbycad release when a PR with the 'trigger-tabbycad-release'
-# label is merged into main.
+# Kicks off a tabbycad release when a PR that touches plugin code is merged into
+# main. Releases are automatic; label a PR `skip-tabbycad-release` to opt out.
 name: trigger-tabbycad-release
 
 on:
@@ -7,17 +7,78 @@ on:
     types: [closed]
     branches: [main]
 
-# All cross-repo work uses the GitHub App token; the default GITHUB_TOKEN
-# needs no permissions here.
-permissions: {}
+# The changed-files gate below reads the PR's file list with GITHUB_TOKEN.
+# All cross-repo work still uses the GitHub App token.
+permissions:
+  pull-requests: read
 
 jobs:
   trigger:
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'trigger-tabbycad-release')
+    # Fork PRs get no secrets, so the app-token step below would fail with
+    # "Input required and not supplied: app-id". Skip them cleanly rather than
+    # leaving a red run that looks like a broken pipeline. The label gate used to
+    # hide this, since a fork PR was never labelled in the first place.
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-tabbycad-release')
     runs-on: ubuntu-latest
 
     steps:
+      # Docs, CI config and editor dotfiles cannot change the built plugins, so
+      # they do not earn a 50-minute three-platform release. Anything not matched
+      # here counts as code: a spurious release costs a tag and a closeable PR,
+      # a missed one leaves aurora2 silently pinned to stale plugins.
+      - name: Decide whether this merge needs a release
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # previous_filename catches renames: the API reports only the new path
+          # in .filename, so `git mv ql-qlf-plugin/x.cc docs/x.md` would look
+          # docs-only while actually deleting source.
+          FILES=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          if [ -z "$FILES" ]; then
+            echo "::error::PR #$PR reported no changed files; treating as an API failure"
+            exit 1
+          fi
+          # grep exits 1 for "every line excluded" but 2 for a real error. Only
+          # the first may be read as "no code changed"; `|| true` would conflate
+          # them and silently skip a release.
+          set +e
+          CODE=$(printf '%s\n' "$FILES" | grep -vE \
+            '\.md$|^LICENSE$|^\.github/|^\.(editorconfig|clang-format|gitattributes|gitignore)$')
+          rc=$?
+          set -e
+          if [ "$rc" -gt 1 ]; then
+            echo "::error::could not classify changed files (grep exit $rc)"
+            exit 1
+          fi
+          if [ -n "$CODE" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### TabbyCAD release: triggered"
+              echo
+              echo "Plugin code changed in this merge:"
+              echo '```'
+              printf '%s\n' "$CODE"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### TabbyCAD release: skipped"
+              echo
+              echo "Docs/CI-only change — no plugin code touched, so no release was built."
+              echo "Apply the \`skip-tabbycad-release\` label to suppress a release on a code change."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Generate app token (QuickLogic-Corp)
+        if: steps.gate.outputs.release == 'true'
         uses: actions/create-github-app-token@v1
         id: app-token
         with:
@@ -26,6 +87,7 @@ jobs:
           owner: QuickLogic-Corp
 
       - name: Dispatch to tabbycad-quicklogic-build
+        if: steps.gate.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           SHA: ${{ github.event.pull_request.merge_commit_sha }}
