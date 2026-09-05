@@ -22,9 +22,49 @@
 #include "kernel/rtlil.h"
 #include "kernel/sigtools.h"
 #include <cmath>
+#include <fstream>
+#include <sstream>
 
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
+
+// All .model names of a BLIF file, in order (first = the IP module itself;
+// any later ones are embedded blackbox primitive definitions, present only if
+// the file was written with -blackbox). Used by -rel_ip_blif
+// to find and remove already-present empty blackbox definitions (the IP's
+// stub, or a primitive another IP file also embeds) before read_blif, which
+// would otherwise error on the duplicate.
+//
+// This is the second BLIF .model parser of the relative-placement flow; the
+// other one is parse_model_output_ports() in
+// aurora2/scripts/rel_macro_placement/rel_macro_blif_common.py. Keep the two
+// in agreement about what a .model line looks like.
+static std::vector<std::string> rel_ip_model_names(const std::string &filename)
+{
+    std::ifstream f(filename);
+    if (!f.is_open())
+        log_error("-rel_ip_blif: cannot open '%s'\n", filename.c_str());
+    std::vector<std::string> names;
+    std::string line;
+    while (std::getline(f, line)) {
+        size_t pos = line.find_first_not_of(" \t\r");
+        if (pos == std::string::npos || line.compare(pos, 6, ".model") != 0)
+            continue;
+        // The name may be separated from the keyword by any run of blanks, not
+        // just one space: taking ".model " literally silently skips a
+        // tab-separated line, and a later .model would then be mistaken for the
+        // IP module itself.
+        size_t name_pos = pos + 6;
+        if (name_pos < line.size() && line[name_pos] != ' ' && line[name_pos] != '\t')
+            continue;
+        std::istringstream ss(line.substr(name_pos));
+        std::string name;
+        ss >> name;
+        if (!name.empty())
+            names.push_back(name);
+    }
+    return names;
+}
 
 #define XSTR(val) #val
 #define STR(val) XSTR(val)
@@ -111,6 +151,13 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("    -blif <file>\n");
         log("        write the design to the specified BLIF file. Writing of an output file\n");
         log("        is omitted if this parameter is not specified.\n");
+        log("\n");
+        log("    -rel_ip_blif <file>\n");
+        log("        link the given pre-synthesized IP netlist (extended BLIF carrying\n");
+        log("        relative-placement .attr annotations) into the design right before\n");
+        log("        the -blif output is written, then flatten. The IP module must be\n");
+        log("        undefined or an empty blackbox stub at that point. May be given\n");
+        log("        multiple times. See docs/development/relative_macro_placement/.\n");
         log("\n");
         log("    -clocks_file <file>\n");
         log("        write the design clock nets to the specified clocks file. If not passed\n");
@@ -213,6 +260,7 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool notdpram;
     bool noOpt;
     bool synplify;
+    std::vector<std::string> rel_ip_blif_files;
 
     void clear_flags() override
     {
@@ -244,6 +292,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         lib_path = "+/quicklogic/";
         mince_num = "";
         de = "";
+        rel_ip_blif_files.clear();
     }
 
     pool<RTLIL::Wire*> find_clock_wires(RTLIL::Module *mod)
@@ -327,6 +376,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (args[argidx] == "-lib_path" && argidx + 1 < args.size()) {
                 lib_path = args[++argidx];
+                continue;
+            }
+            if (args[argidx] == "-rel_ip_blif" && argidx + 1 < args.size()) {
+                rel_ip_blif_files.push_back(args[++argidx]);
                 continue;
             }
             if (args[argidx] == "-blif" && argidx + 1 < args.size()) {
@@ -1089,6 +1142,248 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("clean");
                 }
             }
+            // NOTE: this label - like the "blif" label below - is nested
+            // inside check_label("map_synplify"), which is a pre-existing
+            // structural bug of this pass rather than something introduced
+            // here: the nesting means -run link_rel_ips:blif never reaches
+            // either label. Left as-is deliberately; restructuring the labels
+            // is a separate change.
+            if (check_label("link_rel_ips", "(if -rel_ip_blif)")) {
+                // Link pre-synthesized IP netlists carrying relative-placement
+                // annotations (.attr REL_*). The IP was a blackbox stub through
+                // user-logic synthesis, so nothing restructured its internals;
+                // replace the stub with the annotated netlist, protect the
+                // annotated cells from cleanup sweeps, and flatten so IP atoms
+                // get instance-prefixed names.
+                if (help_mode) {
+                    run("read_blif -wideports <file>", "(for each -rel_ip_blif file)");
+                    run("setattr -set keep 1 a:REL_MACRO_TYPE");
+                    run("flatten");
+                    run("opt_expr");
+                    run("opt_lut");
+                    run("opt_clean -purge");
+                    run("setattr -unset keep -unset src -unset hdlname a:REL_MACRO_TYPE");
+                    run("hierarchy -check");
+                } else if (!rel_ip_blif_files.empty()) {
+                    // (module name, the -rel_ip_blif file it came from); the
+                    // file is what the user can act on, so every later
+                    // diagnostic names it.
+                    std::vector<std::pair<std::string, std::string>> linked_ip_modules;
+                    for (const auto &ip_file : rel_ip_blif_files) {
+                        std::vector<std::string> mods = rel_ip_model_names(ip_file);
+                        if (mods.empty())
+                            log_error("-rel_ip_blif %s: no .model line found\n", ip_file.c_str());
+                        // Remove already-present box definitions the file is
+                        // about to (re)define. The IP module itself (first
+                        // .model) must still be its EMPTY user-synthesis stub -
+                        // anything else means synthesis touched it. Later
+                        // .model sections are primitive declarations, which may
+                        // already exist as techlib blackbox/whitebox simulation
+                        // models (with contents) or from an earlier
+                        // -rel_ip_blif file; those just need the blackbox
+                        // attribute to be safely replaced.
+                        for (size_t imod = 0; imod < mods.size(); imod++) {
+                            const std::string &mod = mods[imod];
+                            RTLIL::Module *existing = active_design->module(RTLIL::escape_id(mod));
+                            if (existing == nullptr)
+                                continue;
+                            // "Empty" must mean empty of everything a module
+                            // can hold, not just of cells: a stub that kept a
+                            // process, a memory or a connection has been
+                            // through synthesis.
+                            bool is_empty_stub = existing->cells().size() == 0 && existing->processes.empty()
+                                                 && existing->memories.empty() && existing->connections().empty();
+                            if (imod == 0 && (!existing->get_blackbox_attribute() || !is_empty_stub))
+                                log_error("-rel_ip_blif %s: module '%s' is already defined and is "
+                                          "not an empty blackbox stub - the IP must pass through "
+                                          "user-logic synthesis untouched\n",
+                                          ip_file.c_str(), mod.c_str());
+                            if (imod > 0 && !existing->get_blackbox_attribute())
+                                log_error("-rel_ip_blif %s: module '%s' is already defined and is "
+                                          "not a blackbox\n",
+                                          ip_file.c_str(), mod.c_str());
+                            active_design->remove(existing);
+                        }
+                        run(stringf("read_blif -wideports %s", ip_file.c_str()));
+
+                        // The whole relative-placement flow keys on
+                        // REL_MACRO_TYPE: it selects the cells to protect from
+                        // optimization, and the constraint generator reads the
+                        // REL_* attributes back out of the written BLIF. An IP
+                        // that carries no annotation (annotate step skipped, or
+                        // it produced nothing) would link, optimize and pack
+                        // like ordinary logic, and the flow would report success
+                        // with the macro silently unconstrained. Refuse it.
+                        RTLIL::Module *linked = active_design->module(RTLIL::escape_id(mods.front()));
+                        if (linked == nullptr)
+                            log_error("-rel_ip_blif %s: module '%s' is missing after read_blif\n",
+                                      ip_file.c_str(), mods.front().c_str());
+
+                        const RTLIL::IdString id_rel_type = RTLIL::escape_id("REL_MACRO_TYPE");
+                        const RTLIL::IdString id_rel_x = RTLIL::escape_id("REL_X");
+                        const RTLIL::IdString id_rel_y = RTLIL::escape_id("REL_Y");
+                        const RTLIL::IdString id_rel_subtile = RTLIL::escape_id("REL_SUBTILE");
+                        // SITE_PATH carries no REL_ prefix on purpose: REL_X/REL_Y/
+                        // REL_SUBTILE are offsets relative to the macro's anchor, while a
+                        // site path is the absolute location of a primitive inside its
+                        // cluster (and it matches the site_path attribute of VPR's
+                        // constraints XML). It is still part of the annotation set
+                        // validated here.
+                        const RTLIL::IdString id_site_path = RTLIL::escape_id("SITE_PATH");
+                        size_t num_annotated = 0;
+                        for (auto cell : linked->cells()) {
+                            // A cell carrying part of the annotation is worse
+                            // than one carrying none: the selectors below key on
+                            // REL_MACRO_TYPE, so a cell missing exactly that
+                            // attribute is neither protected from optimization
+                            // nor given a REL_MACRO_NAME, while its remaining
+                            // annotation attributes suggest it is constrained.
+                            // Mixed annotated/unannotated cells are normal, so
+                            // only cells with a partial set are an error.
+                            bool has_type = cell->attributes.count(id_rel_type) != 0;
+                            bool has_offsets = cell->attributes.count(id_rel_x) != 0
+                                               || cell->attributes.count(id_rel_y) != 0
+                                               || cell->attributes.count(id_rel_subtile) != 0
+                                               || cell->attributes.count(id_site_path) != 0;
+                            if (!has_type && !has_offsets)
+                                continue;
+                            if (!has_type || cell->attributes.count(id_rel_x) == 0
+                                || cell->attributes.count(id_rel_y) == 0
+                                || cell->attributes.count(id_rel_subtile) == 0) {
+                                log_error("-rel_ip_blif %s: cell '%s' of module '%s' carries an incomplete "
+                                          "relative-placement annotation (REL_MACRO_TYPE, REL_X, REL_Y and "
+                                          "REL_SUBTILE are all required; SITE_PATH is optional). Re-author the "
+                                          "IP netlist.\n",
+                                          ip_file.c_str(), log_id(cell->name), mods.front().c_str());
+                            }
+                            num_annotated++;
+                        }
+                        if (num_annotated == 0)
+                            log_error("-rel_ip_blif %s: module '%s' carries no relative-placement annotation "
+                                      "(no cell has a REL_MACRO_TYPE attribute), so it cannot be constrained. "
+                                      "Was the annotate step of the IP authoring flow skipped?\n",
+                                      ip_file.c_str(), mods.front().c_str());
+                        log("Relative placement: linked '%s' from %s (%zu annotated cell(s))\n",
+                            mods.front().c_str(), ip_file.c_str(), num_annotated);
+
+                        linked_ip_modules.push_back(std::make_pair(mods.front(), ip_file));
+                    }
+
+                    // Stamp a design-unique REL_MACRO_NAME on each IP instance's
+                    // annotated cells, derived from the instance name (the user
+                    // design is flat by this point, so instance names are
+                    // unique). The library netlist deliberately carries no
+                    // name; several instances of one IP share its module, so
+                    // every instance after the first gets its own module copy
+                    // before stamping.
+                    const RTLIL::IdString id_type = RTLIL::escape_id("REL_MACRO_TYPE");
+                    const RTLIL::IdString id_name = RTLIL::escape_id("REL_MACRO_NAME");
+                    pool<std::string> used_inst_names;
+                    for (const auto &linked_ip : linked_ip_modules) {
+                        const std::string &mod_name = linked_ip.first;
+                        const std::string &ip_file = linked_ip.second;
+                        RTLIL::Module *ip = active_design->module(RTLIL::escape_id(mod_name));
+                        if (ip == nullptr)
+                            continue;
+                        std::vector<RTLIL::Cell *> insts;
+                        for (auto module : active_design->modules())
+                            if (module != ip)
+                                for (auto cell : module->cells())
+                                    if (cell->type == ip->name)
+                                        insts.push_back(cell);
+                        if (insts.empty()) {
+                            // Not a warning: an IP that is linked but never
+                            // instantiated contributes no cells, so its whole
+                            // macro silently disappears from the constraints.
+                            log_error("-rel_ip_blif %s: module '%s' is never instantiated, so it would "
+                                      "contribute no relative-placement constraints\n",
+                                      ip_file.c_str(), mod_name.c_str());
+                        }
+                        for (size_t i = 0; i < insts.size(); i++) {
+                            std::string inst_name = log_id(insts[i]->name);
+                            if (!used_inst_names.insert(inst_name).second)
+                                log_error("-rel_ip_blif: duplicate IP instance name '%s' - "
+                                          "REL_MACRO_NAME values must be design-unique (is the "
+                                          "user design flattened?)\n", inst_name.c_str());
+                            RTLIL::Module *target = ip;
+                            if (i > 0) {
+                                RTLIL::Module *copy = ip->clone();
+                                copy->name = RTLIL::escape_id(mod_name + "$" + inst_name);
+                                active_design->add(copy);
+                                insts[i]->type = copy->name;
+                                target = copy;
+                            }
+                            for (auto cell : target->cells())
+                                if (cell->attributes.count(id_type))
+                                    cell->attributes[id_name] = RTLIL::Const(inst_name);
+                        }
+                    }
+
+                    run("setattr -set keep 1 a:REL_MACRO_TYPE");
+                    run("flatten");
+                    // Fold the ordinary constant expressions the linked netlist
+                    // carries, which the IP's standalone synthesis run would
+                    // have folded before write.
+                    //
+                    // What protects the annotated atoms here is NOT the keep
+                    // attribute: opt_expr has no keep check on cells at all (its
+                    // only keep test is on wires). They are safe because
+                    // opt_expr has no rewrite rule and no fold-table entry for
+                    // $lut/$sop, so it cannot rewrite a LUT atom. Two opt_expr
+                    // paths do reach keep-marked cells - constant-connection
+                    // replacement, and the clock-polarity celltype swap for
+                    // .latch-based designs - so do not assume keep is a shield
+                    // in this pass. (QL IPs instantiate .subckt dffre/sdffre
+                    // rather than .latch, so the swap path is not reachable for
+                    // them today.)
+                    run("opt_expr");
+                    // opt_expr cannot fold a LUT mask at all (see above), and
+                    // it also cannot see BLIF constants as constants: read_blif
+                    // materialises $false/$true as wires driven by degenerate
+                    // .names cells. opt_lut evaluates the LUT masks themselves
+                    // and collapses such cells (a LUT reading one net on several
+                    // inputs degenerates to a buffer or a constant). Without
+                    // this, cross-instance reductions over constant IP outputs
+                    // survive into the packed netlist, where a port with the
+                    // same net on two pins breaks the post-routing atom-pin
+                    // remapping. opt_lut does respect keep: a keep-marked cell
+                    // is used neither as absorber nor as absorbed, so the
+                    // annotated atoms are preserved.
+                    run("opt_lut");
+                    // Merge and purge the port-boundary alias wires flatten
+                    // leaves behind; without this, write_blif emits
+                    // duplicate-driver alias buffers (including degenerate
+                    // self-aliases), which VPR rejects as duplicate atom names.
+                    // opt_clean respects keep (its keep cache retains
+                    // keep-marked wires and cells, and -purge does not override
+                    // that), so the annotated atoms are not swept.
+                    run("opt_clean -purge");
+                    // The attributes above have done their job. keep must not
+                    // survive into the written BLIF: write_blif -attr dumps the
+                    // whole attribute dict, so it would ship as junk in the
+                    // product netlist, and on any read-back (e.g. the DSP-V4
+                    // round-trip below) it would block the very buffer folding
+                    // that round-trip exists to perform. src/hdlname are
+                    // dropped for the same reason - they would leak absolute
+                    // build paths of the authoring machine into a shipped
+                    // netlist.
+                    //
+                    // Do NOT add the annotation attributes (REL_MACRO_NAME,
+                    // REL_MACRO_TYPE, REL_X, REL_Y, REL_SUBTILE, SITE_PATH) to
+                    // this list. Unlike keep they have a downstream consumer:
+                    // the written BLIF is what the constraint generator reads to
+                    // build the relative_macro_list, so stripping them here
+                    // yields a constraints file with no macros (or, for
+                    // SITE_PATH alone, macros with no site pins) and silently
+                    // turns the feature off.
+                    run("setattr -unset keep -unset src -unset hdlname a:REL_MACRO_TYPE");
+                    // hierarchy -check and check -noinit both run BEFORE this
+                    // label, so nothing has validated the linked-in netlist. An
+                    // IP BLIF whose .subckt names an undefined model would
+                    // otherwise pass synthesis and fail deep inside VPR.
+                    run("hierarchy -check");
+                }
+            }
             // Write the clock list against the same netlist the BLIF describes.
             // generate_floorplanning.py consumes --blif_file and --clocks_file as a
             // pair, so the two must agree. Written before the -synplify mapping the
@@ -1112,7 +1407,50 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (check_label("blif", "(if -blif)")) {
                 if (help_mode || !blif_file.empty()) {
-                    run(stringf("write_blif -param %s", help_mode ? "<file-name>" : blif_file.c_str()));
+                    // The default flow writes exactly what upstream wrote. Only the
+                    // relative-placement flow (-rel_ip_blif) extends the write:
+                    // -attr/-iattr preserve cell attributes (the REL_* annotations)
+                    // on .subckt and .names/.latch atoms, and -blackbox embeds a
+                    // .model section per primitive so the downstream constraint
+                    // generator can derive VPR atom names from port directions.
+                    bool rel_flow = !rel_ip_blif_files.empty();
+                    if (!help_mode && rel_flow) {
+                        // The preparation below is destructive - it removes
+                        // modules and calls makeblackbox(), which drops cells,
+                        // processes, memories and connections - and it is only
+                        // wanted for what write_blif emits. Do it on a scratch
+                        // copy, exactly like the DSP-V4 round-trip below, so the
+                        // real in-memory netlist survives for the later -edif
+                        // and -verilog labels (without this, -rel_ip_blif
+                        // -verilog x.v writes empty stubs where the default
+                        // flow writes techlib bodies).
+                        run("design -push-copy");
+                        // write_blif -blackbox emits a .model section for every
+                        // blackbox module; drop uninstantiated ones (e.g. abc9's
+                        // $__ABC9_DELAY helper) - VPR requires every blackbox
+                        // model in the BLIF to match an architecture model.
+                        pool<RTLIL::IdString> used_types;
+                        for (auto module : active_design->modules())
+                            for (auto cell : module->cells())
+                                used_types.insert(cell->type);
+                        std::vector<RTLIL::Module *> prune;
+                        for (auto module : active_design->modules())
+                            if (module->get_blackbox_attribute() && !used_types.count(module->name))
+                                prune.push_back(module);
+                        for (auto module : prune)
+                            active_design->remove(module);
+                        // Instantiated blackbox/whitebox modules that still carry
+                        // behavioral contents (techlib simulation models, e.g. the
+                        // dffre/QL_DSP4_* bodies some flows load) trip write_blif's
+                        // unmapped-process check once -blackbox includes them,
+                        // even though only their port interface is written. Reduce
+                        // them to true stubs.
+                        for (auto module : active_design->modules())
+                            if (module->get_blackbox_attribute() && (!module->processes.empty() || !module->memories.empty()))
+                                module->makeblackbox();
+                    }
+                    const char *blif_flags = rel_flow ? "-param -attr -iattr -blackbox" : "-param";
+                    run(stringf("write_blif %s %s", blif_flags, help_mode ? "<file-name>" : blif_file.c_str()));
                     if (dspv4 && !help_mode && !blif_file.empty()) {
                         // ---------------------------------------------------------------
                         // DSP-V4 BLIF buffer cleanup (round-trip).
@@ -1150,8 +1488,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                         run("read_blif " + blif_file);                          // reload our BLIF: aliases -> identity $lut cells
                         run("opt_expr");                                        // collapse the identity $luts to connections
                         run("opt_clean -purge");                                // merge toward the output-port names (drops buffers)
-                        run(stringf("write_blif -param %s", blif_file.c_str())); // rewrite the buffer-free BLIF
+                        run(stringf("write_blif %s %s", blif_flags, blif_file.c_str())); // rewrite the buffer-free BLIF (same flags as the first write)
                         run("design -pop");                                     // restore the real design untouched
+                    }
+                    if (!help_mode && rel_flow) {
+                        // Discard the scratch copy prepared for write_blif.
+                        run("design -pop");
                     }
                 }
             }
