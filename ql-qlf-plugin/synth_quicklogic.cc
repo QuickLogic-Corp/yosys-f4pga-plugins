@@ -344,146 +344,122 @@ struct SynthQuickLogicPass : public ScriptPass {
         return clock_wires;
     }
 
-    void execute(std::vector<std::string> args, RTLIL::Design *design) override
+    // Option handling: parse_options() fills the members, finalize_options()
+    // applies the defaults and checks that depend on the family or the design.
+
+    // A value option and the member it sets. -run, -top and -rel_ip_blif are
+    // handled explicitly in parse_options().
+    struct ValueOption {
+        const char *name;
+        std::string *target;
+    };
+    // A switch, the member it sets and the value. -no_opt sets two members
+    // and is handled explicitly in parse_options().
+    struct SwitchOption {
+        const char *name;
+        bool *target;
+        bool value;
+    };
+
+    // Split "-run <from>[:<to>]"; a bare label runs only that label.
+    static void parse_run_range(const std::string &spec, std::string &run_from, std::string &run_to)
     {
-        string run_from, run_to;
-        clear_flags();
+        size_t pos = spec.find(':');
+        if (pos == std::string::npos) {
+            run_from = spec;
+            run_to = spec;
+        } else {
+            run_from = spec.substr(0, pos);
+            run_to = spec.substr(pos + 1);
+        }
+    }
+
+    // Fill the option members from the command line. Returns the index of
+    // the first non-option argument.
+    size_t parse_options(const std::vector<std::string> &args, std::string &run_from, std::string &run_to)
+    {
+        const ValueOption value_options[] = {
+            {"-edif", &edif_file},
+            {"-family", &family},
+            {"-lib_path", &lib_path},
+            {"-blif", &blif_file},
+            {"-verilog", &verilog_file},
+            {"-clocks_file", &clocks_file},
+            {"-custom_abc_script", &custom_abc_script},
+            {"-mince_num", &mince_num},
+            {"-de", &de},
+        };
+        const SwitchOption switch_options[] = {
+            {"-no_dsp", &nodsp, true},
+            {"-no_adder", &inferAdder, false},
+            {"-no_bram", &inferBram, false},
+            {"-bram_types", &bramTypes, true},
+            {"-no_abc_opt", &abcOpt, false},
+            {"-no_abc9", &abc9, false},
+            {"-no_ff_map", &noffmap, true},
+            {"-nosdff", &nosdff, true},
+            {"-no_ffenable", &noffenable, true},
+            {"-ioff", &ioff, true},
+            {"-bramecc", &bramecc, true},
+            {"-dspv2", &dspv2, true},
+            {"-dspv4", &dspv4, true},
+            {"-no_tdpram", &notdpram, true},
+            {"-synplify", &synplify, true},
+        };
+
         size_t argidx;
         for (argidx = 1; argidx < args.size(); argidx++) {
-            if (args[argidx] == "-run" && argidx + 1 < args.size()) {
-                size_t pos = args[argidx + 1].find(':');
-                if (pos == std::string::npos) {
-                    run_from = args[++argidx];
-                    run_to = args[argidx];
-                } else {
-                    run_from = args[++argidx].substr(0, pos);
-                    run_to = args[argidx].substr(pos + 1);
-                }
+            const std::string &arg = args[argidx];
+            bool has_value = argidx + 1 < args.size();
+
+            if (arg == "-run" && has_value) {
+                parse_run_range(args[++argidx], run_from, run_to);
                 continue;
             }
-            if (args[argidx] == "-top" && argidx + 1 < args.size()) {
+            if (arg == "-top" && has_value) {
                 top_opt = "-top " + args[++argidx];
                 continue;
             }
-            if (args[argidx] == "-edif" && argidx + 1 < args.size()) {
-                edif_file = args[++argidx];
-                continue;
-            }
-
-            if (args[argidx] == "-family" && argidx + 1 < args.size()) {
-                family = args[++argidx];
-                continue;
-            }
-            if (args[argidx] == "-lib_path" && argidx + 1 < args.size()) {
-                lib_path = args[++argidx];
-                continue;
-            }
-            if (args[argidx] == "-rel_ip_blif" && argidx + 1 < args.size()) {
+            if (arg == "-rel_ip_blif" && has_value) {
                 rel_ip_blif_files.push_back(args[++argidx]);
                 continue;
             }
-            if (args[argidx] == "-blif" && argidx + 1 < args.size()) {
-                blif_file = args[++argidx];
-                continue;
-            }
-            if (args[argidx] == "-verilog" && argidx + 1 < args.size()) {
-                verilog_file = args[++argidx];
-                continue;
-            }
-            if (args[argidx] == "-clocks_file" && argidx + 1 < args.size()) {
-                clocks_file = args[++argidx];
-                continue;
-            }
-            if (args[argidx] == "-no_dsp") {
-                nodsp = true;
-                continue;
-            }
-            if (args[argidx] == "-use_dsp_cfg_params") {
+            if (arg == "-use_dsp_cfg_params") {
                 use_dsp_cfg_params = " -use_dsp_cfg_params";
                 continue;
             }
-            if (args[argidx] == "-no_adder") {
-                inferAdder = false;
-                continue;
-            }
-            if (args[argidx] == "-no_bram") {
-                inferBram = false;
-                continue;
-            }
-            if (args[argidx] == "-bram_types") {
-                bramTypes = true;
-                continue;
-            }
-            if (args[argidx] == "-no_abc_opt") {
-                abcOpt = false;
-                continue;
-            }
-            if (args[argidx] == "-no_abc9") {
-                abc9 = false;
-                continue;
-            }
-            if (args[argidx] == "-custom_abc_script" && argidx + 1 < args.size()) {
-                custom_abc_script = args[++argidx];
-                continue;
-            }
-            if (args[argidx] == "-no_ff_map") {
-                noffmap = true;
-                continue;
-            }
-            if (args[argidx] == "-nosdff") {
-                nosdff = true;
-                continue;
-            }
-            if (args[argidx] == "-no_ffenable") {
-                noffenable = true;
-                continue;
-            }
-            if (args[argidx] == "-mince_num" && argidx + 1 < args.size()) {
-                mince_num = args[++argidx];
-                continue;
-            }
-            if (args[argidx] == "-ioff") {
-                ioff = true;
-                continue;
-            }
-            if (args[argidx] == "-bramecc") {
-                bramecc = true;
-                continue;
-            } 
-            if (args[argidx] == "-dspv2") {
-                dspv2 = true;
-                continue;
-            }
-            if (args[argidx] == "-dspv4") {
-                dspv4 = true;
-                continue;
-            }
-            if (args[argidx] == "-no_tdpram") {
-                notdpram = true;
-                continue;
-            }
-            if (args[argidx] == "-no_opt") {
+            if (arg == "-no_opt") {
                 noOpt = true;
                 abcOpt = false;
                 continue;
             }
-            if (args[argidx] == "-synplify") {
-                synplify = true;
-                continue;
-            }
-            if (args[argidx] == "-de" && argidx + 1 < args.size()) {
-                de = args[++argidx];
-                continue;
-            }
 
-            break;
+            bool matched = false;
+            for (const auto &opt : value_options) {
+                if (arg == opt.name && has_value) {
+                    *opt.target = args[++argidx];
+                    matched = true;
+                    break;
+                }
+            }
+            for (const auto &opt : switch_options) {
+                if (!matched && arg == opt.name) {
+                    *opt.target = opt.value;
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched)
+                break;
         }
-        if(lib_path == "+/quicklogic/")
-            lib_path = design->scratchpad_get_string("ql.lib_path", lib_path);
-        extra_args(args, argidx, design);
+        return argidx;
+    }
 
-        if (!design->full_selection())
-            log_cmd_error("This command only operates on fully selected designs!\n");
+    // Defaults and checks that depend on the family or on the design.
+    void finalize_options(RTLIL::Design *design)
+    {
+        if (lib_path == "+/quicklogic/")
+            lib_path = design->scratchpad_get_string("ql.lib_path", lib_path);
 
         if (family != "pp3" && family != "qlf_k4n8" && family != "qlf_k6n10" && family != "qlf_k6n10f")
             log_cmd_error("Invalid family specified: '%s'\n", family.c_str());
@@ -508,6 +484,19 @@ struct SynthQuickLogicPass : public ScriptPass {
                 design->scratchpad_set_int("abc9.W", 1000); // set interconnet delay as 1ns
             }
         }
+    }
+
+    void execute(std::vector<std::string> args, RTLIL::Design *design) override
+    {
+        string run_from, run_to;
+        clear_flags();
+        size_t argidx = parse_options(args, run_from, run_to);
+        extra_args(args, argidx, design);
+
+        if (!design->full_selection())
+            log_cmd_error("This command only operates on fully selected designs!\n");
+
+        finalize_options(design);
 
         log_header(design, "Executing SYNTH_QUICKLOGIC pass.\n");
         log_push();
