@@ -1,0 +1,26 @@
+# Hierarchical IP netlist: two .model sections with contents.
+.model rel_ip
+.inputs clk d
+.outputs q
+.names $true
+1
+.subckt rel_ip_core clk=clk d=d q=q
+.end
+
+.model rel_ip_core
+.inputs clk d
+.outputs q
+.names $true
+1
+.names d n_inv
+0 1
+.attr REL_MACRO_TYPE "TEST_MACRO"
+.attr REL_X "0"
+.attr REL_Y "0"
+.attr REL_SUBTILE "0"
+.subckt dffre C=clk D=n_inv E=$true Q=q R=$true
+.attr REL_MACRO_TYPE "TEST_MACRO"
+.attr REL_X "0"
+.attr REL_Y "0"
+.attr REL_SUBTILE "1"
+.end
