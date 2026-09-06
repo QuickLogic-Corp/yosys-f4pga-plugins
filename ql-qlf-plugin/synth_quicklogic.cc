@@ -1380,7 +1380,8 @@ struct SynthQuickLogicPass : public ScriptPass {
             // (opt_merge / opt_clean -purge / clean) runs in map_synplify above, so
             // the connections SigMap canonicalizes through did not exist yet and one
             // clock net was emitted once per hard-block clock sink.
-            {
+            // Not in help mode: plain C++, and the help run has no design.
+            if (!help_mode) {
                 RTLIL::Design *design = yosys_get_design();
                 std::string cf = clocks_file;
                 if (cf.empty()) {
