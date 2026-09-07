@@ -1,0 +1,5 @@
+# outputs of the test run
+synth_options.blif
+synth_options.edif
+synth_options_out.v
+synth_options_abc.log
