@@ -1,0 +1,30 @@
+# Same IP as write_blif -blackbox writes it: a .blackbox declaration of dffre,
+# placed first. The cell library already defines dffre; the link step must
+# keep the library's version (its clkbuf_sink attribute feeds the .clocks file).
+.model dffre
+.inputs C D E R
+.outputs Q
+.blackbox
+.end
+
+.model rel_ip
+.inputs clk d
+.outputs q k
+.names $false
+.names $true
+1
+.names $false k
+1 1
+.names d n_inv
+0 1
+.attr REL_MACRO_TYPE "TEST_MACRO"
+.attr REL_X "0"
+.attr REL_Y "0"
+.attr REL_SUBTILE "0"
+.subckt dffre C=clk D=n_inv E=$true Q=q R=$true
+.attr REL_MACRO_TYPE "TEST_MACRO"
+.attr REL_X "0"
+.attr REL_Y "0"
+.attr REL_SUBTILE "1"
+.attr SITE_PATH "clb[0][default]/ff[0][DFFRE]/DFFRE[0]"
+.end

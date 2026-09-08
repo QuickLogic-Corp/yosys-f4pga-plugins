@@ -54,7 +54,14 @@ TESTS = \
 	qlf_k6n10f/ioff_pol \
 	qlf_k6n10f/ioff_flags \
 	qlf_k6n10f/ioff_blif \
-	qlf_k6n10f/io_translate
+	qlf_k6n10f/io_translate \
+	qlf_k6n10f/rel_ip_blif \
+	qlf_k6n10f/rel_ip_blif_noannot \
+	qlf_k6n10f/rel_ip_blif_notflat \
+	qlf_k6n10f/rel_ip_blif_unquoted \
+	qlf_k6n10f/rel_ip_blif_badstub \
+	qlf_k6n10f/rel_ip_blif_noprim \
+	qlf_k6n10f/synth_options
 #	qlf_k6n10_bram \
 
 SIM_TESTS = \
@@ -125,4 +132,18 @@ qlf_k6n10f-ioff_pol_verify = true
 qlf_k6n10f-ioff_flags_verify = true
 qlf_k6n10f-ioff_blif_verify = true
 qlf_k6n10f-io_translate_verify = true
+# The help text must list the option and the link step (help used to crash).
+qlf_k6n10f-synth_options_verify = true
+qlf_k6n10f-rel_ip_blif_verify = grep -q -- '-rel_ip_blif <file>' qlf_k6n10f/rel_ip_blif/rel_ip_blif.log && grep -q 'link_rel_ips:' qlf_k6n10f/rel_ip_blif/rel_ip_blif.log
+# Expected-failure tests: yosys must exit non-zero AND the log must carry the intended error.
+qlf_k6n10f/rel_ip_blif_noannot_negative = 1
+qlf_k6n10f-rel_ip_blif_noannot_verify = grep -q 'carries no relative-placement annotation' qlf_k6n10f/rel_ip_blif_noannot/rel_ip_blif_noannot.log
+qlf_k6n10f/rel_ip_blif_notflat_negative = 1
+qlf_k6n10f-rel_ip_blif_notflat_verify = grep -q 'both have contents' qlf_k6n10f/rel_ip_blif_notflat/rel_ip_blif_notflat.log
+qlf_k6n10f/rel_ip_blif_unquoted_negative = 1
+qlf_k6n10f-rel_ip_blif_unquoted_verify = grep -q 'must be a quoted string' qlf_k6n10f/rel_ip_blif_unquoted/rel_ip_blif_unquoted.log
+qlf_k6n10f/rel_ip_blif_badstub_negative = 1
+qlf_k6n10f-rel_ip_blif_badstub_verify = grep -q "port 'd' is 1 bits wide in the IP netlist but 2 in the stub" qlf_k6n10f/rel_ip_blif_badstub/rel_ip_blif_badstub.log
+qlf_k6n10f/rel_ip_blif_noprim_negative = 1
+qlf_k6n10f-rel_ip_blif_noprim_verify = grep -q "primitive 'QL_OTHER_PRIM', which the cell library does not define" qlf_k6n10f/rel_ip_blif_noprim/rel_ip_blif_noprim.log
 #qlf_k6n10_bram_verify = true

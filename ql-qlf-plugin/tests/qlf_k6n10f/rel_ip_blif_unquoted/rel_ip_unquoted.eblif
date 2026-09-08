@@ -1,0 +1,16 @@
+# REL_X is not quoted: read_blif turns it into a bit vector, which the
+# constraint generator rejects. The link step must refuse it first.
+.model rel_ip
+.inputs clk d
+.outputs q
+.names $false
+.names $true
+1
+.names d n_inv
+0 1
+.attr REL_MACRO_TYPE "TEST_MACRO"
+.attr REL_X 0
+.attr REL_Y "0"
+.attr REL_SUBTILE "0"
+.subckt dffre C=clk D=n_inv E=$true Q=q R=$true
+.end

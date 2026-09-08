@@ -123,12 +123,25 @@ Detailed help on the supported command(s) can be obtained by running `help <comm
 
 ## Releasing to TabbyCAD / Aurora (QuickLogic)
 
-Merging a change here can automatically produce a new TabbyCAD release and open a
-version-bump PR in `aurora2` — **only if you opt in**:
+Merging a change that touches plugin code into `main` automatically produces a new
+TabbyCAD release and opens a version-bump PR in `aurora2`. No label is needed.
 
-1. Add the label **`trigger-tabbycad-release`** to your PR before merging it into `main`.
-2. On merge, a TabbyCAD release build (~2h, all platforms) is kicked off automatically and,
-   when it finishes, an automated bump PR is opened in `QL-Proprietary/aurora2`.
+- **Docs/CI-only change** — `*.md`, `LICENSE`, `.github/**`, and the editor dotfiles
+  `.editorconfig`, `.clang-format`, `.gitattributes`, `.gitignore`. No release is built.
+- **Anything else counts as code**, including a path that does not exist today. A
+  TabbyCAD release build (typically ~50 min, all three platforms, occasionally up to ~2 h)
+  starts on merge, and when it finishes an automated PR is opened in
+  `QL-Proprietary/aurora2` bumping both the TabbyCAD release tag and the `yosys-plugins`
+  submodule pin. Review and merge it. The bias is deliberate: a spurious release costs a
+  tag and a closeable PR, while a missed one leaves `aurora2` silently pinned to stale
+  plugins.
+- **Opting out:** add the label **`skip-tabbycad-release`** to a PR before merging to
+  suppress the release even though it touches code.
 
-Merging **without** the label does nothing. Full reference (manual trigger, versioning,
-prerequisites): `tabbycad-quicklogic-build/docs/automated-release-pipeline.md`.
+A path-based skip runs the `trigger-tabbycad-release` job and records the reason in its
+job summary. The `skip-tabbycad-release` label is checked at job level, so it skips the
+whole job instead — the run shows a skipped job with no summary. Merged PRs from forks
+also skip, because fork runs receive no secrets.
+
+Full reference (manual trigger, versioning, prerequisites):
+`tabbycad-quicklogic-build/docs/automated-release-pipeline.md`.
