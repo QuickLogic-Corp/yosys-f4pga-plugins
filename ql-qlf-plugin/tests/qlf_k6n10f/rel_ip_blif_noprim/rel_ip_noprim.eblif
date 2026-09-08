@@ -1,0 +1,14 @@
+# The IP uses a primitive this cell library does not have (authored for
+# another device or DSP option).
+.model rel_ip
+.inputs clk d
+.outputs q
+.names $false
+.names $true
+1
+.subckt QL_OTHER_PRIM C=clk D=d Q=q
+.attr REL_MACRO_TYPE "TEST_MACRO"
+.attr REL_X "0"
+.attr REL_Y "0"
+.attr REL_SUBTILE "0"
+.end

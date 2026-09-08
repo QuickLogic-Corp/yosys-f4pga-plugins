@@ -1,0 +1,11 @@
+# An IP netlist that skipped the annotate step: no cell carries REL_*.
+.model rel_ip
+.inputs clk d
+.outputs q
+.names $false
+.names $true
+1
+.names d n_inv
+0 1
+.subckt dffre C=clk D=n_inv E=$true Q=q R=$true
+.end
