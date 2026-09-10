@@ -105,7 +105,21 @@ match add
     select add->type.in($add, $sub)
     choice <IdString> AB {\A, \B}
     define <IdString> BA (AB == \A ? \B : \A)
-    index <SigSpec> port(add, AB) === (mff != nullptr ? port(mff, \Q) : port(mul, \Y))
+    // The operand only has to CONTAIN the product in its low bits, with sign
+    // padding above -- the same tolerance `mff` needs, for the same reason.
+    // wreduce narrows the multiply when the upper product bits reach nothing,
+    // but leaves the adder's operand at its declared width, so the adder reads
+    // the product sign-extended. An exact `===` index then never matches and the
+    // adder silently stays in fabric: dsp_multadd fuses standalone (mul.Y 36 vs
+    // add.B 36) and does not when flattened into dsp_multadd_wrap (36 vs 48).
+    // That cost 29 of the 102 dsp testcases their adder fusion.
+    //
+    // ql-dspv4.cc checks the padding really is a sign extension.
+    // Written longhand rather than with `define`: pmgen emits a define into the
+    // index-BUILD scope, where the matched cells are not in scope yet.
+    index <SigBit> port(add, AB)[0] === (mff != nullptr ? port(mff, \Q)[0] : port(mul, \Y)[0])
+    filter GetSize(port(add, AB)) >= GetSize(mff != nullptr ? port(mff, \Q) : port(mul, \Y))
+    filter port(add, AB).extract(0, GetSize(mff != nullptr ? port(mff, \Q) : port(mul, \Y))) == (mff != nullptr ? port(mff, \Q) : port(mul, \Y))
     // Absorbing this adder makes the DSP produce the SUM, so whatever feeds it
     // stops appearing in the netlist. A second reader would be left with no
     // driver. The net to guard is the one this adder actually reads: the M

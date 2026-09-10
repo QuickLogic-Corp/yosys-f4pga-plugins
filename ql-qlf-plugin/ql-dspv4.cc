@@ -484,6 +484,37 @@ struct QlDspV4Pass : public Pass {
         RTLIL::Cell *ff2_cell =
             (st.add == nullptr && acc_cell == nullptr && ff_cell != nullptr &&
              st.ff2 != nullptr) ? st.ff2 : nullptr;
+        // Report a further output register we could not take. The DSP has two
+        // register positions between the multiplier and P -- M and P -- and none
+        // after P, so a second stage behind an absorbed output register can never
+        // come in. Scanned directly rather than read off `ff2`, because `ff2`
+        // usually cannot even match here: on an accumulator the absorbed flop's Q
+        // has two readers (the feedback and this register), which its fanout
+        // filter rejects.
+        //
+        // Worth saying out loud. Nothing else in the pass mentions an output
+        // register it declined, so the flop just appeared in fabric while the log
+        // talked about operand chains -- the silent QoR loss IN-7 exists to
+        // prevent. dsp_multacc_regout leaves 36 bits this way.
+        if (log_force_debug && ff_cell != nullptr) {
+            SigSpec q = sigmapper(ff_cell->getPort(ID::Q));
+            for (auto c : module->cells()) {
+                if (c == ff_cell || !c->hasPort(ID::D) || !c->hasPort(ID::Q))
+                    continue;
+                SigSpec d = sigmapper(c->getPort(ID::D));
+                bool reads = false;
+                for (auto bit : d)
+                    for (auto qbit : q)
+                        if (bit == qbit)
+                            reads = true;
+                if (!reads)
+                    continue;
+                log_debug("  %s: output register %s (%s) stays in fabric -- the "
+                          "DSP has no register stage after P\n",
+                          log_id(st.mul), log_id(c), log_id(c->type));
+            }
+        }
+
         // The M register -- a flop between the multiply and the adder, held in
         // QL_DSP4_M_DFFR_50 rather than left in fabric.
         //
@@ -596,6 +627,29 @@ struct QlDspV4Pass : public Pass {
                           log_id(st.mul), why);
                 return false;
             }
+        }
+
+        // The adder's product-side operand may be WIDER than the product, with
+        // sign padding above it -- see the note on the `add` index in the .pmg.
+        // The pattern checked that the product occupies the low bits; confirm the
+        // rest really is a sign extension of it and not a concatenation with
+        // something else. Sound for the same reason as the M register: the ALU is
+        // 64 bits and sign-extends, so the padding is what it would add itself.
+        if (st.add != nullptr) {
+            SigSpec op = sigmapper(st.add->getPort(st.add_mul_port));
+            SigSpec src = sigmapper(st.mff != nullptr && mff_cell != nullptr
+                                        ? mff_cell->getPort(ID::Q)
+                                        : st.mul->getPort(ID::Y));
+            bool sgn = st.mul->getParam(ID::A_SIGNED).as_bool() &&
+                       st.mul->getParam(ID::B_SIGNED).as_bool();
+            SigBit pad = sgn ? src[GetSize(src) - 1] : SigBit(State::S0);
+            for (int i = GetSize(src); i < GetSize(op); i++)
+                if (op[i] != pad) {
+                    log_debug("  %s: not fused -- the adder reads the product "
+                              "with padding that is not a sign extension of it\n",
+                              log_id(st.mul));
+                    return false;
+                }
         }
 
         // feedback is derived from st.ff, so a rejected flop must not leave a
