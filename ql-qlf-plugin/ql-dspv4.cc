@@ -381,7 +381,7 @@ struct QlDspV4Pass : public Pass {
         // Refusing the whole match is the safe answer: the flop belongs to the
         // DSP that got there first, and the smaller shape the matcher offers
         // next does not need it.
-        for (auto claimed : {st.mff, st.ff})
+        for (auto claimed : {st.mff, st.ff, st.ff2})
             if (claimed != nullptr && absorbed.count(claimed)) {
                 log_debug("  %s: not fused -- flop %s is already absorbed by "
                           "another DSP\n", log_id(st.mul), log_id(claimed));
@@ -469,75 +469,47 @@ struct QlDspV4Pass : public Pass {
         // Testing D against the result rather than special-casing that shape
         // keeps the rule true for every combination of the optional matches.
         //
-        // One shape does move the goalposts: two output register stages and no
-        // adder at all --
-        //
-        //     always @(posedge clk) prod1 <= a * b;
-        //     always @(posedge clk) prod  <= prod1;
-        //
-        // The DSP holds one stage in M and one in P, which is what having both
-        // banks is for, so both registers can come in. `ff` then registers the M
-        // register's Q rather than the DSP result, and that is the value to test
-        // D against. Phase 3 lists "output-register absorption beyond the single
-        // PREG stage" under Not attempted; this is that case for the depth the
-        // hardware actually has.
-        bool two_stage_out =
-            st.add == nullptr && acc_cell == nullptr && st.mff != nullptr &&
-            st.ff != nullptr &&
-            st.ff->getPort(ID::D) == st.mff->getPort(ID::Q);
-        SigSpec ff_expect =
-            two_stage_out ? st.mff->getPort(ID::Q) : dsp_result;
-
         RTLIL::Cell *ff_cell =
-            (st.ff != nullptr && st.ff->getPort(ID::D) == ff_expect) ? st.ff
+            (st.ff != nullptr && st.ff->getPort(ID::D) == dsp_result) ? st.ff
                                                                      : nullptr;
 
+        // Second output register stage: `mul -> reg -> reg` with no adder. The
+        // DSP has two register positions between the multiplier and P, so both
+        // stages come inside -- the first in M, the second in P. Phase 3 lists
+        // "output-register absorption beyond the single PREG stage" under Not
+        // attempted; this is that case for the depth the hardware has.
+        //
+        // Only without an adder: with one, both stages sit downstream of the ALU
+        // and M is upstream of it, so only P is reachable.
+        RTLIL::Cell *ff2_cell =
+            (st.add == nullptr && acc_cell == nullptr && ff_cell != nullptr &&
+             st.ff2 != nullptr) ? st.ff2 : nullptr;
         // The M register -- a flop between the multiply and the adder, held in
         // QL_DSP4_M_DFFR_50 rather than left in fabric.
         //
-        // Dropped when no adder matched: then the product register IS the result
-        // register and belongs in P, which ff_cell above already covers. Keeping
-        // it here would double-absorb, because pmgen can hand the same cell to
-        // both `mff` (indexed on mul.Y) and `ff` (indexed on mul.Y when add and
-        // acc are absent).
-        //
-        // Also dropped, rather than refusing the whole fusion, when it cannot be
-        // expressed: giving up the M stage costs one fabric flop, while refusing
-        // costs the multiply. The flop then simply stays where it was, because
-        // `add` indexed on its Q -- so the adder still reads a real net.
-        // No adder: the product register IS the result register, and that
-        // belongs in P (ff_cell above), not M. Dropping it here is safe --
-        // nothing else in this match reads it -- and it also stops pmgen handing
-        // the same cell to both `mff` (indexed on mul.Y) and `ff`.
-        RTLIL::Cell *mff_cell =
-            (st.add != nullptr || two_stage_out) ? st.mff : nullptr;
+        // Ignored when no adder matched: then the product register IS the result
+        // register and belongs in P, which ff_cell above already covers. Taking
+        // it here as well would double-absorb, because pmgen can hand the same
+        // cell to both `mff` and `ff` -- both index on the product.
+        RTLIL::Cell *mff_cell = (st.add != nullptr) ? st.mff : nullptr;
+
+        // Reassign for the two-stage output shape: the flop `ff` matched becomes
+        // the M register and the second one becomes P. Everything downstream
+        // keys off ff_cell for P -- the PREG parameter, CEP, ACCRSTN, the result
+        // net, autoremove -- so swapping here means the rest of emit() needs no
+        // special case at all.
+        if (ff2_cell != nullptr) {
+            mff_cell = ff_cell;
+            ff_cell = ff2_cell;
+        }
 
         // The M register's Q vanishes inside the DSP in the two-stage shape, so
         // a `keep` on it has to refuse the absorption the same way `keep` on the
         // DSP result does below.
-        if (two_stage_out && mff_cell != nullptr &&
+        if (ff2_cell != nullptr && mff_cell != nullptr &&
             dspv4_sig_kept(mff_cell->getPort(ID::Q))) {
             log_debug("  %s: not fused -- the first output register's value is "
                       "marked keep\n", log_id(st.mul));
-            return false;
-        }
-
-        // An M register matched but this shape has no use for it: refuse, so the
-        // matcher offers the shape that does.
-        //
-        // `ff` is indexed on the M register's Q. With `mff` bound, no adder and
-        // no second stage, there is nothing for `ff` to match, so the product
-        // register would be left in fabric -- while pmgen's next offer, with
-        // `mff` unbound, indexes `ff` on the product itself and absorbs it as
-        // PREG. That is the better covering and the one a plain
-        // `always @(posedge clk) p <= a * b;` wants.
-        //
-        // Skipped this and dspv4_mult_regin_concat lost its 24-bit output
-        // register: the pass emitted a DSP that absorbed nothing and reported
-        // success.
-        if (st.mff != nullptr && mff_cell == nullptr) {
-            log_debug("  %s: not fused -- M register matched but unusable in "
-                      "this shape; retrying without it\n", log_id(st.mul));
             return false;
         }
 

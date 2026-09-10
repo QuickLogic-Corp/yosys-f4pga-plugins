@@ -184,7 +184,7 @@ endmatch
 match ff
     select ff->type.in($dff, $dffe, $sdff, $sdffe)
     select param(ff, \CLK_POLARITY).as_bool()
-    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : mff != nullptr ? port(mff, \Q) : port(mul, \Y))
+    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
     // The value this flop registers must have exactly one reader -- this flop.
     // Absorbing it makes the DSP drive Q instead of D, so any other reader of D
     // loses its driver. When `add` or `acc` matched, their own nusers selects
@@ -192,6 +192,36 @@ match ff
     // product and this is the only thing standing between a shared product and
     // an undriven net.
     filter nusers(port(ff, \D)) <= 2
+    optional
+endmatch
+
+// Optional SECOND output register stage, for `mul -> reg -> reg` with no adder:
+//
+//     always @(posedge clk) prod1 <= a * b;
+//     always @(posedge clk) p     <= prod1;
+//
+// The DSP has two register positions between the multiplier and P, so both
+// stages come inside -- the first in the M bank, the second in P. ql-dspv4.cc
+// does that by reassigning: the flop `ff` matched becomes the M register and
+// this one becomes the P register, so the rest of emit() needs no special case.
+//
+// Indexed on `ff`'s Q rather than on the product, so this cannot bind the same
+// cell as `ff`. An earlier attempt made `ff`'s own index depend on `mff`
+// instead; that created a covering where `mff` bound the product register and
+// nothing could use it, and the matcher did not offer the alternative -- the
+// multiply was left soft entirely. Adding a separate match leaves every
+// existing shape's enumeration untouched.
+//
+// $dffe / $sdffe are excluded because the M bank has no clock enable, and the
+// first stage is the one that lands there.
+//
+// Only meaningful without an adder: with one, both stages sit downstream of the
+// ALU and only P is reachable. ql-dspv4.cc gates on that.
+match ff2
+    select ff2->type.in($dff, $sdff)
+    select param(ff2, \CLK_POLARITY).as_bool()
+    index <SigSpec> port(ff2, \D) === (ff == nullptr ? SigSpec() : port(ff, \Q))
+    filter nusers(port(ff2, \D)) <= 2
     optional
 endmatch
 
