@@ -55,6 +55,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_macc_rsub \
 	qlf_k6n10f/dspv4_macc_areset \
 	qlf_k6n10f/dspv4_mult_rsub_c \
+	qlf_k6n10f/dspv4_mult_shared_operand \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \

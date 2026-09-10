@@ -263,6 +263,8 @@ struct QlDspV4Pass : public Pass {
         absorb_stall.clear();
         absorb_end_none = 0;
         absorb_end_exhausted = 0;
+        shared_replicated = 0;
+        shared_dropped = 0;
     }
 
     void execute(std::vector<std::string> a_Args, RTLIL::Design *a_Design) override
@@ -307,6 +309,50 @@ struct QlDspV4Pass : public Pass {
                 module->remove(ff);
             pending_removal.clear();
 
+            // Copied operand flops (see claim()) were deliberately left
+            // standing. Any whose readers were all absorbed is now dead. Users
+            // are recounted from scratch: bit_users was indexed before the
+            // rewiring, so it still shows the multiplies that are now DSPs.
+            if (!shared_claimed.empty()) {
+                int copied = GetSize(shared_claimed), dropped = 0;
+                // To a fixpoint: a two-stage chain drops its stage-1 flop only
+                // once stage 0 is gone, since stage 0 was its only reader. One
+                // pass left the deeper flop standing.
+                bool again = true;
+                while (again) {
+                    again = false;
+                    dict<SigBit, int> live;
+                    SigMap sm(module);
+                    for (auto cell : module->cells())
+                        for (auto &conn : cell->connections())
+                            if (!cell->output(conn.first))
+                                for (auto bit : sm(conn.second))
+                                    live[bit]++;
+                    for (auto wire : module->wires())
+                        if (wire->port_output)
+                            for (auto bit : sm(wire))
+                                live[bit]++;
+                    for (auto it = shared_claimed.begin();
+                         it != shared_claimed.end();) {
+                        RTLIL::Cell *ff = *it;
+                        bool read = false;
+                        for (auto bit : sm(ff->getPort(ID::Q)))
+                            if (live.count(bit) && live.at(bit) > 0) {
+                                read = true; break;
+                            }
+                        if (read) { ++it; continue; }
+                        it = shared_claimed.erase(it);
+                        module->remove(ff);
+                        dropped++;
+                        again = true;
+                    }
+                }
+                log_debug("  copied %d shared operand flop(s); %d became userless "
+                          "and were dropped\n", copied, dropped);
+                shared_replicated += copied;
+                shared_dropped += dropped;
+            }
+            shared_claimed.clear();
 
             // IN-7: name every multiply that ended up in fabric.
             //
@@ -339,6 +385,10 @@ struct QlDspV4Pass : public Pass {
             for (auto &r : ranked)
                 log("  %8d x  %s\n", r.first, r.second.c_str());
         }
+        if (shared_replicated)
+            log("ql_dspv4: %d shared operand register(s) copied into a bank rather "
+                "than moved; %d became userless and left fabric entirely.\n",
+                shared_replicated, shared_dropped);
         if (absorb_end_none || absorb_end_exhausted)
             log("ql_dspv4: operand-register walks that ended with nothing left to "
                 "take (not stalls): %d with no register on the operand, %d having "
@@ -1145,7 +1195,16 @@ struct QlDspV4Pass : public Pass {
         // prevented by the sole-reader guard in collect_flops -- a register
         // feeding both operands has three readers and stops the walk -- but a
         // duplicate here would be a double module->remove(), so check anyway.
-        auto claim = [&](RTLIL::Cell *f) {
+        auto claim = [&](RTLIL::Cell *f, bool shared) {
+            // A copy, not a move: the original has to survive for its other
+            // readers, so it goes to the userless sweep instead of straight to
+            // removal. Whether this is a copy is a property of the CHAIN -- see
+            // FlopChain::shared.
+            if (shared) {
+                absorbed.insert(f);
+                shared_claimed.insert(f);
+                return;
+            }
             if (absorbed.count(f))
                 return;
             absorbed.insert(f);
@@ -1156,7 +1215,7 @@ struct QlDspV4Pass : public Pass {
         auto claim_stages = [&](const FlopChain &c, int n) {
             for (int i = 0; i < n; i++)
                 for (auto f : c.stage_flops[i])
-                    claim(f);
+                    claim(f, c.shared);
         };
         claim_stages(ca, na);
         claim_stages(cb, nb);
@@ -1181,6 +1240,15 @@ struct QlDspV4Pass : public Pass {
         // the caller wire the port from an arbitrary mix of registers.
         std::vector<std::vector<RTLIL::Cell *>> stage_flops;
         std::vector<SigSpec> stage_d;
+        // Set once any stage in this chain has a reader besides this operand.
+        // It applies to the WHOLE chain, not just that stage: if stage 0 is
+        // copied into several DSPs, every one of those copies needs stage 1 as
+        // well, so stage 1 has to be copied too even though its own only reader
+        // is stage 0. Getting this wrong let the first DSP move the deeper flop
+        // out from under the others, which then stalled on
+        // "already absorbed by another DSP" and absorbed one stage instead of
+        // two -- shared_input_1reg_wrap took 12 A1 banks down to 2.
+        bool shared = false;
         SigSpec source;                     // D of the last stage -- the port value
         SigSpec clk;
         // Enable and async reset are kept as the RAW signal plus its polarity,
@@ -1360,17 +1428,30 @@ struct QlDspV4Pass : public Pass {
                           "strip the rest", log_id(ff), bits_used.at(ff), GetSize(q));
                     ok = false; break;
                 }
-                if (absorbed.count(ff)) {
+                // A flop with several readers is COPIED rather than moved: the
+                // bank is wired from the flop's D, so it recomputes the same
+                // value on the same edge, and the fabric flop is left standing
+                // for its other readers. Once every reader has taken a copy the
+                // original is userless and gets dropped at the end of the run.
+                //
+                // This is what Synplify does, and it is free: the bank exists
+                // inside the DSP tile whether or not it is used, so a shared
+                // operand register costs one bank per reader and no fabric flop
+                // at all. shared_input_1reg_wrap is 12 A2 banks over 6 registers
+                // with nothing left outside; refusing instead left 108 flops in
+                // fabric. Not a cascade -- Synplify uses no ACIN/BCIN anywhere.
+                //
+                // A flop already MOVED by an earlier DSP is a different matter:
+                // that one is queued for removal, so a second claim on it would
+                // be reading a value that is about to disappear. Only shared
+                // flops can be claimed twice.
+                if (absorbed.count(ff) && !shared_claimed.count(ff)) {
                     STALL("driving flop already absorbed by another DSP",
                           "already absorbed by another DSP");
                     ok = false; break;
                 }
-                if (sig_users(q) > 2) {
-                    STALL("flop has more than one reader (fan-out guard)",
-                          "flop %s has %d readers, not 1 -- absorbing would strip the "
-                          "value from the others", log_id(ff), sig_users(q) - 1);
-                    ok = false; break;
-                }
+                if (sig_users(q) > 2 || shared_claimed.count(ff))
+                    chain.shared = true;
                 if (!ff->getParam(ID(CLK_POLARITY)).as_bool()) {
                     STALL("falling-edge flop (banks are rising-edge)", "falling-edge flop");
                     ok = false; break;
@@ -1468,6 +1549,7 @@ struct QlDspV4Pass : public Pass {
         bit_users.clear();
         bit_driver.clear();
         absorbed.clear();
+        shared_claimed.clear();
         sigmapper.set(module);
         for (auto cell : module->cells()) {
             for (auto &conn : cell->connections()) {
@@ -1521,6 +1603,11 @@ struct QlDspV4Pass : public Pass {
     // bits" right before giving up.
     dict<SigBit, std::pair<RTLIL::Cell *, int>> flop_bit;
     pool<RTLIL::Cell *> absorbed;
+    // Operand flops copied into a bank rather than moved into one, because they
+    // have other readers. Never removed directly -- swept once userless.
+    pool<RTLIL::Cell *> shared_claimed;
+    int shared_replicated = 0;
+    int shared_dropped = 0;
     std::vector<RTLIL::Cell *> pending_removal;
 
     bool verbose = false;
