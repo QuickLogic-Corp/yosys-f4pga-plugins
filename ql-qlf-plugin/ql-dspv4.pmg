@@ -184,7 +184,7 @@ endmatch
 match ff
     select ff->type.in($dff, $dffe, $sdff, $sdffe)
     select param(ff, \CLK_POLARITY).as_bool()
-    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
+    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : mff != nullptr ? port(mff, \Q) : port(mul, \Y))
     // The value this flop registers must have exactly one reader -- this flop.
     // Absorbing it makes the DSP drive Q instead of D, so any other reader of D
     // loses its driver. When `add` or `acc` matched, their own nusers selects
