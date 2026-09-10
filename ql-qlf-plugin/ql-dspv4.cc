@@ -265,6 +265,7 @@ struct QlDspV4Pass : public Pass {
         absorb_end_exhausted = 0;
         shared_replicated = 0;
         shared_dropped = 0;
+        acc_merged = 0;
     }
 
     void execute(std::vector<std::string> a_Args, RTLIL::Design *a_Design) override
@@ -284,6 +285,11 @@ struct QlDspV4Pass : public Pass {
         // T2.3 matches; T2.4 classifies and emits.
         int total = 0;
         for (auto module : a_Design->selected_modules()) {
+            // Duplicate accumulator loops go first. Two accumulators over one
+            // product give it two readers and the fan-out guards then refuse
+            // both, so the shape has to be gone before anything is matched --
+            // there is nothing to repair afterwards.
+            acc_merged += merge_accumulators(module);
             // `optional` makes pmgen enumerate both branches, so one $mul is
             // offered twice -- once with the adder and once bare. Emitting on
             // the first (larger) match and calling pm.autoremove() on the $mul
@@ -389,6 +395,9 @@ struct QlDspV4Pass : public Pass {
             log("ql_dspv4: %d shared operand register(s) copied into a bank rather "
                 "than moved; %d became userless and left fabric entirely.\n",
                 shared_replicated, shared_dropped);
+        if (acc_merged)
+            log("ql_dspv4: %d duplicate accumulator loop(s) merged into a register "
+                "with the same clock, reset and next state.\n", acc_merged);
         if (absorb_end_none || absorb_end_exhausted)
             log("ql_dspv4: operand-register walks that ended with nothing left to "
                 "take (not stalls): %d with no register on the operand, %d having "
@@ -1223,6 +1232,267 @@ struct QlDspV4Pass : public Pass {
         return true;
     }
 
+    // ---- Duplicate accumulator loops ------------------------------------
+    //
+    // Two registers accumulating the same value in the same shape are one
+    // register. A design instantiating several accumulator variants over one
+    // shared operand pair ends up with `out <= out + a*b` beside
+    // `acc <= acc + a*b`: same clock, same reset, same reset value, same next
+    // state. Both loops read the one product opt_merge left behind, so the
+    // product has two accumulator readers and the fan-out guards refuse both --
+    // correctly, because unlike an operand register an accumulator cannot be
+    // copied. Its value is its own history. The adders and the registers land
+    // in fabric instead: dsp_multacc_wrap_shared kept 216 sdffre and 144
+    // adder_carry where Synplify kept 72 and none.
+    //
+    // opt_merge cannot collapse the pair. Its CSE asks whether the two adders
+    // have equal inputs, and they do not -- each reads its own flop's Q. The
+    // adders are equal once the flops are known equal, and the flops are equal
+    // once the adders are: a circle no syntactic comparison breaks. Measured on
+    // that design, opt_merge, opt_merge -share_all, opt -full and opt_merge run
+    // twice all take the four $mul down to two and leave all four $add and both
+    // accumulator pairs standing.
+    //
+    // Induction breaks it, which is why this lives here and not in opt. Each
+    // loop is keyed on its next-state function with the flop's own Q left OUT:
+    // the adder's shape, and the operand that is not the feedback. Two loops
+    // with the same key have the same next state GIVEN that the registers are
+    // already equal. The rest of the key is the base case -- one common
+    // synchronous reset to one common value, and one common power-up value --
+    // which makes them equal to begin with. Both halves are load-bearing: the
+    // step on its own proves only that two accumulators stay however far apart
+    // they started, so a pair with no reset is refused rather than merged.
+
+    // One accumulator loop: a flop whose D is an add or subtract of its own Q
+    // and one other operand.
+    struct AccLoop {
+        RTLIL::Cell *ff;
+        RTLIL::Cell *add;
+    };
+
+    // The power-up value of a flop's Q, rendered LSB first, one bit at a time.
+    // Not assembled from each chunk's as_string(): chunks run LSB first while
+    // the bits inside one print MSB first, so a Q held in one 2-bit wire and a Q
+    // held in two 1-bit wires can render the same "10" from opposite power-up
+    // states -- a false match on the half of the key that carries the base case.
+    static std::string flop_init(RTLIL::Cell *ff)
+    {
+        std::string init;
+        for (auto bit : ff->getPort(ID::Q)) {
+            RTLIL::State v = State::Sx;
+            if (bit.wire != nullptr) {
+                auto it = bit.wire->attributes.find(ID::init);
+                if (it != bit.wire->attributes.end() &&
+                    bit.offset < GetSize(it->second))
+                    v = it->second[bit.offset];
+            }
+            init += RTLIL::Const(v).as_string();
+        }
+        return init;
+    }
+
+    // Merge accumulator loops that are provably the same register. Returns how
+    // many loops were removed.
+    int merge_accumulators(RTLIL::Module *module)
+    {
+        int removed = 0;
+        bool again = true;
+        // To a fixpoint. A pair whose shared operand is computed from another
+        // pair of accumulators keys differently until that pair is merged, and
+        // identically once it is.
+        while (again) {
+            again = false;
+            SigMap sm(module);
+
+            // Driver plus readers, the convention sig_users() uses -- except
+            // that a module output counts as a reader here. sig_users() can
+            // ignore ports because the nets it guards are internal by
+            // construction; a sum that leaves the module would otherwise look
+            // sole-read and lose its driver along with its adder.
+            dict<SigBit, int> users;
+            dict<SigBit, RTLIL::Cell *> driver;
+            for (auto cell : module->cells())
+                for (auto &conn : cell->connections()) {
+                    for (auto bit : sm(conn.second))
+                        users[bit]++;
+                    if (cell->output(conn.first))
+                        for (auto bit : sm(conn.second))
+                            driver[bit] = cell;
+                }
+            for (auto wire : module->wires())
+                if (wire->port_output)
+                    for (auto bit : sm(wire))
+                        users[bit]++;
+            auto worst_users = [&](const SigSpec &sig) {
+                int worst = 0;
+                for (auto bit : sm(sig))
+                    if (users.count(bit))
+                        worst = std::max(worst, users.at(bit));
+                return worst;
+            };
+
+            // Every flop carrying the loop SHAPE, keyed before any guard runs.
+            // The guards below report a refusal only when some other loop shares
+            // the step key, so a design with a single accumulator says nothing --
+            // there was nothing to merge it with, and a refusal nobody could act
+            // on is the noise that buried the absorption stalls.
+            struct Cand { AccLoop loop; std::string step, base; };
+            std::vector<Cand> cands;
+            std::map<std::string, int> step_count;
+
+            for (auto ff : module->cells()) {
+                // The four shapes index_module() accepts. $dff and $dffe are
+                // here so the missing-reset refusal below can name them, not
+                // because they can be merged.
+                if (!ff->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe)))
+                    continue;
+                SigSpec q = sm(ff->getPort(ID::Q));
+                SigSpec d = sm(ff->getPort(ID::D));
+                if (GetSize(d) == 0)
+                    continue;
+                auto dr = driver.find(d[0]);
+                if (dr == driver.end())
+                    continue;
+                RTLIL::Cell *add = dr->second;
+                if (!add->type.in(ID($add), ID($sub)))
+                    continue;
+                // The whole of D has to be the sum and the whole of one operand
+                // has to be Q. A partial or sign-padded match is a different
+                // function of a different value, and this comparison is not
+                // enough to prove two of those equal.
+                if (sm(add->getPort(ID::Y)) != d)
+                    continue;
+                IdString fb;
+                if (sm(add->getPort(ID::A)) == q)
+                    fb = ID::A;
+                else if (sm(add->getPort(ID::B)) == q)
+                    fb = ID::B;
+                else
+                    continue;
+
+                Cand c;
+                c.loop.ff = ff;
+                c.loop.add = add;
+                // Which port the feedback sits on is part of the key rather
+                // than normalised away. $sub does not commute, and taking
+                // `out - a*b` for `a*b - out` is a sign error no structural
+                // check downstream would see. $add does commute, so a commuted
+                // pair is refused where it could have been merged; none of the
+                // dsp shapes writes one, and guessing costs more than it saves.
+                c.step = add->type.str();
+                c.step += fb == ID::A ? "|fbA|" : "|fbB|";
+                for (auto p : {ID::A_WIDTH, ID::B_WIDTH, ID::Y_WIDTH,
+                               ID::A_SIGNED, ID::B_SIGNED})
+                    c.step += stringf("%d|", add->getParam(p).as_int());
+                c.step += log_signal(sm(add->getPort(fb == ID::A ? ID::B
+                                                                 : ID::A)));
+                c.step += "|";
+                c.step += ff->type.str();
+                c.step += stringf("|%d|%d|", GetSize(q),
+                                  ff->getParam(ID(CLK_POLARITY)).as_bool());
+                c.step += log_signal(sm(ff->getPort(ID(CLK))));
+                if (ff->hasPort(ID(EN))) {
+                    c.step += "|";
+                    c.step += log_signal(sm(ff->getPort(ID(EN))));
+                    c.step += stringf("|%d",
+                                      ff->getParam(ID(EN_POLARITY)).as_bool());
+                }
+                if (ff->hasPort(ID(SRST))) {
+                    c.base += log_signal(sm(ff->getPort(ID(SRST))));
+                    c.base += stringf("|%d|",
+                                      ff->getParam(ID(SRST_POLARITY)).as_bool());
+                    // The reset VALUE only has to be common, not zero. The DSP
+                    // needs zero to hold the accumulator in its own bank, and
+                    // ff_cell's guard says so where that matters; two registers
+                    // clearing to the same non-zero value are still one
+                    // register, and refusing them here would cost the fabric
+                    // adder as well as the flop.
+                    c.base += ff->getParam(ID(SRST_VALUE)).as_string();
+                }
+                c.base += "|";
+                c.base += flop_init(ff);
+                cands.push_back(c);
+                step_count[c.step]++;
+            }
+
+            // Survivors of the guards, grouped by the full key, and counted
+            // by step key on their own: a loop whose only same-next-state peer
+            // was refused above has already had that refusal reported, and
+            // saying "the reset differs" about it as well would name the wrong
+            // guard.
+            std::map<std::string, std::vector<Cand>> groups;
+            std::map<std::string, int> step_kept;
+            for (auto &c : cands) {
+                int peers = step_count.at(c.step) - 1;
+                const char *why = nullptr;
+                // Merging deletes one flop and one adder, so `keep` on either
+                // has to refuse: the attribute asks for precisely the net the
+                // merge removes.
+                if (dspv4_flop_attrs_block(c.loop.ff))
+                    why = "the flop carries keep or a non-zero power-up value";
+                else if (c.loop.add->get_bool_attribute(ID::keep))
+                    why = "the adder is marked keep";
+                // The sum goes with its adder, so this flop has to be its only
+                // reader.
+                else if (worst_users(c.loop.add->getPort(ID::Y)) > 2)
+                    why = "the sum has another reader, which would lose its "
+                          "driver along with the adder";
+                // A missing reset is not a detail to wave through. Two
+                // accumulators with the same next state stay exactly as far
+                // apart as they powered up, forever: the step holds and the base
+                // case does not, and a SAT induction proof fails on this and
+                // nothing else.
+                else if (!c.loop.ff->hasPort(ID(SRST)))
+                    why = "the flop has no synchronous reset, so the two "
+                          "registers are equal only if they powered up equal";
+                if (why != nullptr) {
+                    if (peers > 0)
+                        log_debug("  %s: accumulator not merged with %d loop(s) "
+                                  "having the same next state -- %s\n",
+                                  log_id(c.loop.ff), peers, why);
+                    continue;
+                }
+                groups[c.step + "||" + c.base].push_back(c);
+                step_kept[c.step]++;
+            }
+
+            for (auto &g : groups) {
+                std::vector<Cand> &loops = g.second;
+                if (GetSize(loops) < 2) {
+                    int peers = step_kept.at(loops[0].step) - 1;
+                    if (peers > 0)
+                        log_debug("  %s: accumulator not merged with %d loop(s) "
+                                  "having the same next state -- the reset net, "
+                                  "its polarity, the reset value or the power-up "
+                                  "value differs\n",
+                                  log_id(loops[0].loop.ff), peers);
+                    continue;
+                }
+                // Keep the first and fold the rest onto it. The dead flop's Q is
+                // CONNECTED to the survivor's rather than rewritten into its
+                // readers: a Q that is also a module output still needs a
+                // driver, and leaving the readers alone means no cell that
+                // emit() later compares by RAW port has its ports moved under
+                // it. The cells are removed before the connect so the dead net
+                // is never briefly double-driven.
+                SigSpec keep = loops[0].loop.ff->getPort(ID::Q);
+                for (int i = 1; i < GetSize(loops); i++) {
+                    SigSpec dead = loops[i].loop.ff->getPort(ID::Q);
+                    log_debug("  %s: accumulator merged into %s -- same clock, "
+                              "enable, reset, reset value and next state\n",
+                              log_id(loops[i].loop.ff),
+                              log_id(loops[0].loop.ff));
+                    module->remove(loops[i].loop.add);
+                    module->remove(loops[i].loop.ff);
+                    module->connect(dead, keep);
+                    removed++;
+                    again = true;
+                }
+            }
+        }
+        return removed;
+    }
+
     // ---- Phase 3: operand register absorption (T3.1 / T3.2) -------------
     //
     // A chain of design flops walked back from a multiply operand, plus the
@@ -1608,6 +1878,9 @@ struct QlDspV4Pass : public Pass {
     pool<RTLIL::Cell *> shared_claimed;
     int shared_replicated = 0;
     int shared_dropped = 0;
+    // Duplicate accumulator loops folded onto another register before the
+    // matcher ran -- see merge_accumulators().
+    int acc_merged = 0;
     std::vector<RTLIL::Cell *> pending_removal;
 
     bool verbose = false;
