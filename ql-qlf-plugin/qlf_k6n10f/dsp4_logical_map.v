@@ -149,12 +149,19 @@ module QL_DSP4 #(
     localparam Z_READS_P = Z_ACC || (Z_SEL == 3'b110);
     localparam USES_P = (W_SEL == 2'b01) || (X_SEL == 2'b10) || Z_READS_P;
 
-    // MREG and PREG each add one cycle between multiplier and P. With only one
-    // requested, realise that stage on the ACC/P register and omit the M/MV
-    // flops: same latency, one physical stage, ALU inside the registered path.
-    // The dedicated M stage appears only when both are requested.
-    localparam USE_MREG = (MREG && PREG);
-    localparam USE_PREG = (MREG || PREG);
+    // MREG and PREG each add one cycle between multiplier and P. A lone MREG can
+    // be realised on the ACC/P register instead -- same latency, one bank, and a
+    // shorter critical path -- but only when the ALU sees nothing but the
+    // multiplier's own U/V. The fold puts the ALU inside the registered path,
+    // which reschedules any other ALU input by a cycle (C(t) becomes C(t-1)), and
+    // nothing compensates for it.
+    localparam ALU_MULT_ONLY = (X_SEL == 2'b01)                    // X = U
+                            && (Y_SEL == 2'b01 || Y_SEL == 2'b00)  // Y = V or 0, not C
+                            && !W_CONN && !Z_CONN;                 // no C, no PCIN, no P
+
+    // Both requested means two pipeline stages, so both banks exist regardless.
+    localparam USE_MREG = MREG && (PREG || !ALU_MULT_ONLY);
+    localparam USE_PREG = PREG || (MREG && ALU_MULT_ONLY);
 
     // -- configurations this techmap does not implement --------------------
     // Reject rather than mis-map (see the header). Each term is a capability
@@ -165,9 +172,8 @@ module QL_DSP4 #(
         || (Y_SEL == 2'b10)                             // reserved Y encoding
         || (A_IN_SEL || B_IN_SEL)                       // ACIN / BCIN inputs
         || (INMODE[0] || INMODE[4])                     // reg-path select, see below
-        // Combinational P feedback. Tests PREG, *not* USE_PREG: the folding below
-        // sets USE_PREG whenever MREG is set, so USE_PREG here would let
-        // MREG=1/PREG=0 through and dsp4_top.v would have p_acc = alu_result.
+        // Combinational P feedback. Tests PREG, *not* USE_PREG, so a lone MREG can
+        // never satisfy it: dsp4_top.v has `p_acc = PREG ? p_reg : alu_result`.
         || (USES_P && !PREG);                           // combinational P feedback
 
     wire _TECHMAP_FAIL_ = UNSUPPORTED;
@@ -296,9 +302,9 @@ module QL_DSP4 #(
                          .KN(mult_kn));
 
     // =======================================================================
-    // Multiplier-output registers (registers both partial products). Only used
-    // when MREG and PREG are both set -- a lone MREG folds onto the P register
-    // below (see USE_MREG / USE_PREG).
+    // Multiplier-output registers (registers both partial products). Used when
+    // MREG is set and the ALU takes an input other than the multiplier's U/V; a
+    // lone MREG on a plain multiply folds onto the P register below.
     // =======================================================================
     wire [49:0] msel, vsel;
     wire        knsel;
