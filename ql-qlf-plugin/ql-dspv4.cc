@@ -359,6 +359,35 @@ struct QlDspV4Pass : public Pass {
         auto &st = pm.st_ql_dspv4;
         std::string why;
 
+        // A flop another DSP has already claimed must not be claimed again.
+        // The two removal paths do not know about each other: pmgen's
+        // autoremove fires in the matcher's destructor, the operand/C chains
+        // are drained from pending_removal afterwards, and a cell in both is
+        // passed to module->remove() twice -- a segfault at the drain
+        // (ql-dspv4.cc:292), not a wrong netlist.
+        //
+        // MREG inference is what made this reachable. A product register is the
+        // M stage of its own multiply AND a C-path operand register for the
+        // multiply that adds it, so in a chain like
+        //
+        //     cc_p_reg    <= a_cc * b_cc;        // M stage here
+        //     ma1_mul_reg <= a1 * b_shared_reg;
+        //     ma1_p        = ma1_mul_reg + cc_p_reg;   // ...C operand here
+        //
+        // whichever multiply the matcher offers first takes the flop, and the
+        // other must not take it as well. It cost the cascade_shared_*_regout
+        // designs a crash rather than a miscompare.
+        //
+        // Refusing the whole match is the safe answer: the flop belongs to the
+        // DSP that got there first, and the smaller shape the matcher offers
+        // next does not need it.
+        for (auto claimed : {st.mff, st.ff})
+            if (claimed != nullptr && absorbed.count(claimed)) {
+                log_debug("  %s: not fused -- flop %s is already absorbed by "
+                          "another DSP\n", log_id(st.mul), log_id(claimed));
+                return false;
+            }
+
         // A matched flop is an accumulator only when its output comes back
         // round as the adder's other operand. Otherwise it is an ordinary
         // pipeline register on the result, which the DSP's P register can hold
@@ -382,6 +411,23 @@ struct QlDspV4Pass : public Pass {
         // only reads `acc` under `ff`, and autoremove() deleted that adder
         // anyway -- leaving its result net with no driver at all.
         RTLIL::Cell *acc_cell = feedback ? st.acc : nullptr;
+
+        // Absorbing `acc` makes the first adder's sum internal to the DSP, so it
+        // must have exactly one reader -- `acc` itself. The pattern carries no
+        // fanout guard on that net, because when `acc` is NOT absorbed the sum is
+        // the DSP's P output and any number of readers can have it. This is the
+        // one shape where it matters, so the check lives here.
+        // Refuse the match rather than just dropping acc_cell: classify() reads
+        // st.acc directly, so a null acc_cell with st.acc still set would emit a
+        // MULT_ACC_C control word for a cell that does not implement the second
+        // addition. pmgen then offers the same shape without `acc`, which is a
+        // plain MULT_ACC with the C adder left in fabric.
+        if (acc_cell != nullptr && st.add_nusers > 2) {
+            log_debug("  %s: not fused as MULT_ACC_C -- the first adder's sum has "
+                      "%d readers, and absorbing the second adder would strip it\n",
+                      log_id(st.mul), st.add_nusers - 1);
+            return false;
+        }
 
         // Which cell's output this DSP actually produces.
         RTLIL::Cell *out_cell = acc_cell != nullptr ? acc_cell
@@ -425,6 +471,110 @@ struct QlDspV4Pass : public Pass {
         RTLIL::Cell *ff_cell =
             (st.ff != nullptr && st.ff->getPort(ID::D) == dsp_result) ? st.ff
                                                                      : nullptr;
+
+        // The M register -- a flop between the multiply and the adder, held in
+        // QL_DSP4_M_DFFR_50 rather than left in fabric.
+        //
+        // Dropped when no adder matched: then the product register IS the result
+        // register and belongs in P, which ff_cell above already covers. Keeping
+        // it here would double-absorb, because pmgen can hand the same cell to
+        // both `mff` (indexed on mul.Y) and `ff` (indexed on mul.Y when add and
+        // acc are absent).
+        //
+        // Also dropped, rather than refusing the whole fusion, when it cannot be
+        // expressed: giving up the M stage costs one fabric flop, while refusing
+        // costs the multiply. The flop then simply stays where it was, because
+        // `add` indexed on its Q -- so the adder still reads a real net.
+        // No adder: the product register IS the result register, and that
+        // belongs in P (ff_cell above), not M. Dropping it here is safe --
+        // nothing else in this match reads it -- and it also stops pmgen handing
+        // the same cell to both `mff` (indexed on mul.Y) and `ff`.
+        RTLIL::Cell *mff_cell = (st.add != nullptr) ? st.mff : nullptr;
+
+        // Diagnostic for the case the guards above cannot see: pmgen never
+        // offered an M register at all. Without this the pass is silent about a
+        // product register it did not take, which is indistinguishable from
+        // there not being one.
+        if (log_force_debug && st.mff == nullptr) {
+            SigSpec muly = sigmapper(st.mul->getPort(ID::Y));
+            for (auto c : module->cells()) {
+                if (!c->hasPort(ID::D) || !c->hasPort(ID::Q))
+                    continue;
+                SigSpec d = sigmapper(c->getPort(ID::D));
+                bool touches = false;
+                for (auto bit : d)
+                    for (auto ybit : muly)
+                        if (bit == ybit)
+                            touches = true;
+                if (!touches)
+                    continue;
+                log_debug("  %s: product register %s (%s) not offered as an M "
+                          "stage -- D is %d bits of a %d-bit product, "
+                          "CLK_POLARITY=%d, product has %d user(s)\n",
+                          log_id(st.mul), log_id(c), log_id(c->type),
+                          GetSize(d), GetSize(muly),
+                          c->hasParam(ID(CLK_POLARITY))
+                              ? c->getParam(ID(CLK_POLARITY)).as_bool() : -1,
+                          st.mul_nusers);
+            }
+        }
+        // If the M register cannot go in, the whole fusion has to be refused --
+        // NOT just the register. `add` was indexed on this flop's Q, so the
+        // adder about to be absorbed reads it. Keeping the adder while leaving
+        // the flop behind would emit a DSP that adds the *unregistered* product
+        // and delete the flop's only reader with it: a lost pipeline stage and a
+        // stranded net. Returning false lets pmgen offer the smaller shape
+        // instead, which is a bare MULT with the product register in P.
+        if (mff_cell != nullptr) {
+            const char *why = nullptr;
+
+            if (dspv4_flop_attrs_block(mff_cell))
+                why = "keep/init attribute";
+
+            // The bank is DFFR: synchronous, active-low, resetting to zero.
+            else if (mff_cell->hasPort(ID(SRST)) &&
+                     !mff_cell->getParam(ID(SRST_VALUE)).is_fully_zero())
+                why = "resets to a non-zero value";
+
+            // M and P are separate banks but share one CLK pin. Their resets
+            // need not agree (M takes RSTN, P takes ACCRSTN); their clocks must.
+            else if (ff_cell != nullptr &&
+                     sigmapper(mff_cell->getPort(ID(CLK))) !=
+                         sigmapper(ff_cell->getPort(ID(CLK))))
+                why = "clock differs from the output register's";
+
+            // D may be WIDER than the product. wreduce narrows the multiply when
+            // the upper product bits reach nothing downstream but leaves the
+            // register at its declared width, so D arrives as the product with
+            // sign padding on top -- see the diagram in ql-dspv4.pmg. The
+            // pattern already checked that the product occupies D's low bits;
+            // what is left is to confirm the bits above it really are that
+            // padding, and not a concatenation with unrelated data.
+            //
+            // Absorbing the wider register is sound: the M bank and the ALU are
+            // 50 bits and sign-extend, which is the same padding.
+            else {
+                SigSpec d = sigmapper(mff_cell->getPort(ID::D));
+                SigSpec y = sigmapper(st.mul->getPort(ID::Y));
+                bool sgn = st.mul->getParam(ID::A_SIGNED).as_bool() &&
+                           st.mul->getParam(ID::B_SIGNED).as_bool();
+                SigBit pad = sgn ? y[GetSize(y) - 1] : SigBit(State::S0);
+                for (int i = GetSize(y); i < GetSize(d); i++)
+                    if (d[i] != pad) {
+                        why = sgn ? "bits above the product are not a sign "
+                                    "extension of it"
+                                  : "bits above the product are not zero";
+                        break;
+                    }
+            }
+
+            if (why != nullptr) {
+                log_debug("  %s: not fused -- M register cannot be absorbed "
+                          "(%s), and the adder reads it\n",
+                          log_id(st.mul), why);
+                return false;
+            }
+        }
 
         // feedback is derived from st.ff, so a rejected flop must not leave a
         // mode that reads P back without the P register (CR-5). Unreachable as
@@ -577,15 +727,21 @@ struct QlDspV4Pass : public Pass {
         int na = 0, nb = 0, nc = 0;
         FlopChain ca, cb, cc;
         {
-            bool seeded = ff_cell != nullptr;
+            // The M bank shares RSTN with the operand banks, so when an M
+            // register is being absorbed it -- not the output flop, whose reset
+            // goes to its own ACCRSTN pin -- is the authoritative seed for the
+            // agreement below. Falls back to ff_cell exactly as before when no M
+            // register is in play.
+            RTLIL::Cell *seed_ff = mff_cell != nullptr ? mff_cell : ff_cell;
+            bool seeded = seed_ff != nullptr;
             SigSpec seed_clk, seed_rst(State::S1);
             bool seed_rst_inv = false;
             if (seeded) {
-                seed_clk = ff_cell->getPort(ID(CLK));
-                if (ff_cell->hasPort(ID(SRST))) {
-                    seed_rst = ff_cell->getPort(ID(SRST));
+                seed_clk = seed_ff->getPort(ID(CLK));
+                if (seed_ff->hasPort(ID(SRST))) {
+                    seed_rst = seed_ff->getPort(ID(SRST));
                     seed_rst_inv =
-                        ff_cell->getParam(ID(SRST_POLARITY)).as_bool();
+                        seed_ff->getParam(ID(SRST_POLARITY)).as_bool();
                 }
             }
             ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed_clk,
@@ -633,6 +789,28 @@ struct QlDspV4Pass : public Pass {
                 nc = 0;
             if (nc > 0 && nb > 0 && !agrees(cb, cc))
                 nc = 0;
+
+            // M shares CLK and RSTN with the operand banks, so it has to agree
+            // with whichever chains survived. It seeded them, so this only fires
+            // when a chain was evicted for disagreeing with another chain and the
+            // survivor is the one that differs from M. Dropping M rather than the
+            // chains costs one flop instead of several.
+            if (mff_cell != nullptr && (na > 0 || nb > 0 || nc > 0)) {
+                const FlopChain &any = na > 0 ? ca : (nb > 0 ? cb : cc);
+                SigSpec m_rst(State::S1);
+                bool m_rst_inv = false;
+                if (mff_cell->hasPort(ID(SRST))) {
+                    m_rst = mff_cell->getPort(ID(SRST));
+                    m_rst_inv = mff_cell->getParam(ID(SRST_POLARITY)).as_bool();
+                }
+                if (!same(any.clk, mff_cell->getPort(ID(CLK))) ||
+                    !same(any.arst, m_rst) || any.arst_inv != m_rst_inv) {
+                    log_debug("  %s: M register not absorbed -- clock or reset "
+                              "differs from the operand chains'\n",
+                              log_id(st.mul));
+                    mff_cell = nullptr;
+                }
+            }
         }
 
         // Clock-enable crossbar. The tile feeds all five CE pins from a 3-input
@@ -733,6 +911,14 @@ struct QlDspV4Pass : public Pass {
         // out of the accumulator flops either way.
         cell->setParam(ID(PREG), RTLIL::Const(ff_cell != nullptr ? 1 : 0, 1));
 
+        // MREG: the flop between the multiply and the ALU. The techmap gives it
+        // a real M/MV/MK bank whenever the ALU has an input other than the
+        // multiplier's own U/V -- which is always true here, because mff_cell is
+        // only kept when an adder matched, so Z or W carries C. A lone MREG on a
+        // plain multiply would be folded onto P instead, which is why the bare
+        // product register goes through PREG (ff_cell) rather than this.
+        cell->setParam(ID(MREG), RTLIL::Const(mff_cell != nullptr ? 1 : 0, 1));
+
         // Clock enables and resets default to inactive. ARSTN/RSTN/ACCRSTN are
         // active-low, so 1 means "not resetting".
         for (auto id : {ID(CEA), ID(CEB), ID(CEC), ID(CED), ID(CEP)})
@@ -760,6 +946,23 @@ struct QlDspV4Pass : public Pass {
                 cell->setPort(ID(RSTN),
                               resolve(module, any.arst, any.arst_inv));
             absorbed_regs += na + nb + nc;
+        }
+
+        // The M register may be the only one absorbed -- no operand chains, no
+        // output flop -- and it still needs CLK, plus RSTN if it resets. When a
+        // chain or the output flop is also present these were set above from a
+        // source the M register was required to agree with, so writing them
+        // again is a no-op rather than a conflict.
+        if (mff_cell != nullptr) {
+            cell->setPort(ID(CLK), mff_cell->getPort(ID(CLK)));
+            if (mff_cell->hasPort(ID(SRST))) {
+                SigSpec srst = mff_cell->getPort(ID(SRST));
+                // RSTN is active-low; $sdff's polarity says how SRST reads.
+                if (mff_cell->getParam(ID(SRST_POLARITY)).as_bool())
+                    srst = module->Not(NEW_ID, srst);
+                cell->setPort(ID(RSTN), srst);
+            }
+            absorbed_regs += 1;
         }
 
         if (ff_cell != nullptr) {
@@ -808,6 +1011,15 @@ struct QlDspV4Pass : public Pass {
         pm.autoremove(st.mul);
         if (st.add)
             pm.autoremove(st.add);
+        if (mff_cell) {
+            pm.autoremove(mff_cell);
+            // Same reason as the output flop below: autoremove is deferred to the
+            // matcher's destructor, so this cell is still in the module -- and
+            // still reachable by a later match's operand or C walk -- until then.
+            // Recording it stops a second claim and the double module->remove()
+            // that follows.
+            absorbed.insert(mff_cell);
+        }
         if (acc_cell)
             pm.autoremove(acc_cell);
         if (ff_cell) {
