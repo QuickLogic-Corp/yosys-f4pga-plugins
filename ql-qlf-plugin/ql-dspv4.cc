@@ -64,6 +64,19 @@ static void dspv4_apply_mode(RTLIL::Cell *cell, const Dspv4Mode &m)
     cell->setParam(ID(AMULTSEL), RTLIL::Const(m.amultsel, 1));
     cell->setParam(ID(BMULTSEL), RTLIL::Const(m.bmultsel, 1));
     cell->setParam(ID(PREADDINSEL), RTLIL::Const(m.preaddinsel, 1));
+
+    // The reverse-subtract direction computes ~Z + (W+X+Y) + CIN, which is
+    // (W+X+Y) - Z only at CIN=1. Every other direction wants CIN=0, and an
+    // undriven CIN already gives that (the ALU leaf coerces open/x to 0), so
+    // only ALUMODE=01 needs a tie-off. Safe to key on ALUMODE alone because
+    // every such mode carries CARRYINSEL=000, which routes the ALU's carry-in
+    // from this port rather than from CCIN.
+    //
+    // This is also what makes RSUB_AB_C correct. It came from the spreadsheet
+    // with CARRYINSEL=000 and no carry-in, so on this arithmetic it was off by
+    // one -- latent only because nothing selected it.
+    if (m.alumode == 1)
+        cell->setPort(ID(CIN), RTLIL::State::S1);
 }
 
 
@@ -294,6 +307,7 @@ struct QlDspV4Pass : public Pass {
                 module->remove(ff);
             pending_removal.clear();
 
+
             // IN-7: name every multiply that ended up in fabric.
             //
             // Counted from the survivors rather than from refusals. A refusal
@@ -343,22 +357,17 @@ struct QlDspV4Pass : public Pass {
             // The adder's other operand is the flop's own output, so this is an
             // accumulator rather than an add of an external value.
             if (st.add_is_sub) {
-                // Direction matters, as it does for MULT_SUB_C below. With the
-                // multiply on the subtrahend port this is P - A*B, which is
-                // ALU_SUB (Z - (W+X+Y)) over MULT_ACC's operand muxes:
-                // MULT_ACC_SUB. That direction needs CIN=0, which is what an
-                // undriven CIN gives, so there is no carry tie-off to make.
-                if (st.add_mul_port != ID(B)) {
-                    why = "a*b - out needs the reverse-subtract direction, "
-                          "which requires CIN=1";
-                    return nullptr;
-                }
                 if (st.acc != nullptr) {
                     why = "accumulate with a subtract and a C term has no "
                           "control word";
                     return nullptr;
                 }
-                return "MULT_ACC_SUB";
+                // Operand order picks the ALU direction over MULT_ACC's
+                // operand muxes: out - a*b is P - A*B, the subtract;
+                // a*b - out is A*B - P, the reverse-subtract, which
+                // dspv4_apply_mode ties CIN high for.
+                return st.add_mul_port == ID(B) ? "MULT_ACC_SUB"
+                                                : "MULT_ACC_RSUB";
             }
             // Two adders: the first took C, the second the feedback, so the DSP
             // computes A*B + P + C in one cell.
@@ -366,13 +375,10 @@ struct QlDspV4Pass : public Pass {
         }
         if (!st.add_is_sub)
             return "MULT_ADD_C";
-        // Operand order matters on subtract. C - A*B is MULT_SUB_C; A*B - C has
-        // no multiply-form control word at all, so it stays soft rather than
-        // being mapped to something that looks close.
-        if (st.add_mul_port == ID(B))
-            return "MULT_SUB_C";
-        why = "A*B - C has no multiply-form control word (only C - A*B)";
-        return nullptr;
+        // Operand order picks the ALU direction, nothing more: C - A*B is the
+        // subtract, A*B - C the reverse-subtract. The latter is only right with
+        // CIN=1, which dspv4_apply_mode ties off.
+        return st.add_mul_port == ID(B) ? "MULT_SUB_C" : "MULT_RSUB_C";
     }
 
     bool emit(ql_dspv4_pm &pm, RTLIL::Module *module)

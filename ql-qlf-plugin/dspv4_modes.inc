@@ -97,6 +97,8 @@ static const Dspv4Mode DSPV4_MODES[] = {
     {"MACC100S_HI",          453, 0, 0, 0, 0, 0, 0, 0, false},
     {"NOT_SUM_AB_C",         51, 2, 0, 0, 0, 0, 0, 0, true},
     {"MULT_ACC_SUB",         37, 3, 0, 0, 0, 0, 0, 0, true},
+    {"MULT_RSUB_C",          53, 1, 0, 0, 0, 0, 0, 0, true},
+    {"MULT_ACC_RSUB",        37, 1, 0, 0, 0, 0, 0, 0, true},
 };
 
 static const size_t DSPV4_MODE_COUNT = sizeof(DSPV4_MODES) / sizeof(DSPV4_MODES[0]);

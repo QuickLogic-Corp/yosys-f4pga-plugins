@@ -1,9 +1,10 @@
-// The other direction: out <= a*b - out.
+// The other accumulate direction: out <= a*b - out.
 //
 // A*B - P is the reverse-subtract direction, which the ALU computes as
-// ~Z + (W+X+Y) + CIN -- correct only at CIN=1. ql_dspv4 never drives the CIN
-// port and the leaf coerces an undriven CIN to 0, so taking this shape would be
-// off by one. It stays soft until CIN is wired.
+// ~Z + (W+X+Y) + CIN -- correct only at CIN=1. ql_dspv4 ties CIN high for every
+// ALUMODE=01 mode, so this maps to MULT_ACC_RSUB. Proved equivalent over all
+// inputs by verify_equiv.py (shape mult_acc_rsub_srst), which is the check that
+// matters here: an off-by-one would still look right in a cell count.
 module dspv4_macc_rsub (input clk, input rst, input signed [17:0] a,
                         input signed [17:0] b, output reg signed [35:0] p);
   // Synchronous reset: every DSP register bank resets synchronously, so an
