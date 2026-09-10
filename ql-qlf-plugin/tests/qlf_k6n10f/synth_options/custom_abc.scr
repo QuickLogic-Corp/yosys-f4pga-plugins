@@ -1,0 +1,19 @@
+echo ""
+echo "** custom abc script for the options test"
+echo ""
+strash 
+&get -n 
+&fraig -x 
+&put 
+scorr
+dc2 
+dretime 
+strash 
+dch -f 
+if 
+mfs2 
+lutpack -S 1 
+print_stats
+echo ""
+echo "** custom abc script done"
+echo ""
