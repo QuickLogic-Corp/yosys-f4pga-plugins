@@ -248,6 +248,8 @@ struct QlDspV4Pass : public Pass {
         left_soft = 0;
         absorbed_regs = 0;
         absorb_stall.clear();
+        absorb_end_none = 0;
+        absorb_end_exhausted = 0;
     }
 
     void execute(std::vector<std::string> a_Args, RTLIL::Design *a_Design) override
@@ -323,6 +325,11 @@ struct QlDspV4Pass : public Pass {
             for (auto &r : ranked)
                 log("  %8d x  %s\n", r.first, r.second.c_str());
         }
+        if (absorb_end_none || absorb_end_exhausted)
+            log("ql_dspv4: operand-register walks that ended with nothing left to "
+                "take (not stalls): %d with no register on the operand, %d having "
+                "absorbed every stage present.\n",
+                absorb_end_none, absorb_end_exhausted);
     }
 
     // Map a matched shape to a mode name, or nullptr if this shape has no
@@ -1238,6 +1245,21 @@ struct QlDspV4Pass : public Pass {
                       why_mul ? log_id(why_mul) : "?", port,                      \
                       GetSize(chain.stage_flops), ##__VA_ARGS__);                       \
         } while (0)
+        // The walk has to stop somewhere, and stopping is not a refusal: an
+        // operand that never had a register, or one whose every stage is already
+        // taken, is a *finished* walk. Counting those as stalls buried the
+        // refusals worth acting on -- on the dsp suite they outnumbered them 664
+        // to 10, and the ranked summary opened with the one line that meant
+        // nothing.
+#define WALK_END(reason, ...)                                                     \
+        do {                                                                      \
+            if (GetSize(chain.stage_flops) == 0) absorb_end_none++;               \
+            else absorb_end_exhausted++;                                          \
+            log_debug("  %s: %s operand register walk ended after %d stage(s)"    \
+                      " -- " reason "\n",                                         \
+                      why_mul ? log_id(why_mul) : "?", port,                      \
+                      GetSize(chain.stage_flops), ##__VA_ARGS__);                 \
+        } while (0)
         FlopChain chain;
         chain.source = sig;
         // Seeding pins the clock and the reset from the absorbed output flop --
@@ -1283,9 +1305,14 @@ struct QlDspV4Pass : public Pass {
                 if (nasync > 0 && nff == 0)
                     STALL("driver is an async-reset flop (no routable async reset on the DSP)",
                           "driver is an async-reset flop");
+                else if (nff == 0)
+                    WALK_END("operand is combinational here, no register stage to take"
+                             " (%d comb bit(s))", ncomb);
                 else
-                    STALL("operand is not fully register-driven",
-                          "operand is not fully register-driven (%d ff / %d async / %d comb bits)",
+                    STALL("operand is only partly register-driven",
+                          "operand is only partly register-driven -- absorbing part of a"
+                          " stage would leave the rest a cycle behind"
+                          " (%d ff / %d async / %d comb bits)",
                           nff, nasync, ncomb);
                 break;
             }
@@ -1395,6 +1422,7 @@ struct QlDspV4Pass : public Pass {
         if (GetSize(chain.stage_flops) == max_depth)
             absorb_stall["reached the bank depth limit"]++;
 #undef STALL
+#undef WALK_END
         return chain;
     }
 
@@ -1451,6 +1479,10 @@ struct QlDspV4Pass : public Pass {
     // reported at the end. Without this the only symptom is flops left in
     // fabric, with nothing in the log to say which guard refused them.
     dict<std::string, int> absorb_stall;
+    // A walk that runs out of registers has not refused anything, so it is
+    // counted apart from absorb_stall -- see WALK_END.
+    int absorb_end_none = 0;
+    int absorb_end_exhausted = 0;
 
     SigMap sigmapper;
     dict<SigBit, int> bit_users;
