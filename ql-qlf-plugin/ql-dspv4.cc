@@ -343,8 +343,22 @@ struct QlDspV4Pass : public Pass {
             // The adder's other operand is the flop's own output, so this is an
             // accumulator rather than an add of an external value.
             if (st.add_is_sub) {
-                why = "accumulate with a subtract has no Phase 2 control word";
-                return nullptr;
+                // Direction matters, as it does for MULT_SUB_C below. With the
+                // multiply on the subtrahend port this is P - A*B, which is
+                // ALU_SUB (Z - (W+X+Y)) over MULT_ACC's operand muxes:
+                // MULT_ACC_SUB. That direction needs CIN=0, which is what an
+                // undriven CIN gives, so there is no carry tie-off to make.
+                if (st.add_mul_port != ID(B)) {
+                    why = "a*b - out needs the reverse-subtract direction, "
+                          "which requires CIN=1";
+                    return nullptr;
+                }
+                if (st.acc != nullptr) {
+                    why = "accumulate with a subtract and a C term has no "
+                          "control word";
+                    return nullptr;
+                }
+                return "MULT_ACC_SUB";
             }
             // Two adders: the first took C, the second the feedback, so the DSP
             // computes A*B + P + C in one cell.

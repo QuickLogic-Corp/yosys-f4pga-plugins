@@ -29,6 +29,12 @@ $PASS_NAME -family qlf_k6n10f -top dspv4_macc -dspv4 -no_abc9 -lib_path $LIB/
 yosys cd dspv4_macc
 # The DSP was used.
 select -assert-count 1 t:QL_DSP4_MULT
+# ...and the accumulator went into the DSP's own bank, which is the claim the
+# $add/$sub assertions below cannot actually make: by post-synth a fabric
+# accumulator is adder_carry and LUTs, not $add.
+select -assert-count 1 t:QL_DSP4_ACC_DFFRE_64
+select -assert-count 1 t:QL_DSP4_ALU_ADD
+select -assert-count 0 t:adder_carry
 # Nothing fell back to fabric: no soft arithmetic survives.
 select -assert-count 0 t:\$mul
 select -assert-count 0 t:\$add
