@@ -266,6 +266,7 @@ struct QlDspV4Pass : public Pass {
         shared_replicated = 0;
         shared_dropped = 0;
         acc_merged = 0;
+        coef_refolded = 0;
     }
 
     void execute(std::vector<std::string> a_Args, RTLIL::Design *a_Design) override
@@ -290,6 +291,11 @@ struct QlDspV4Pass : public Pass {
             // both, so the shape has to be gone before anything is matched --
             // there is nothing to repair afterwards.
             acc_merged += merge_accumulators(module);
+            // Then put back any power of two wreduce took out of a constant
+            // coefficient. It leaves the product sitting k bits up inside the
+            // adder's operand, which the `add` match cannot see at all -- so
+            // this too has to happen before anything is matched.
+            coef_refolded += refold_shifted_coefficients(module);
             // `optional` makes pmgen enumerate both branches, so one $mul is
             // offered twice -- once with the adder and once bare. Emitting on
             // the first (larger) match and calling pm.autoremove() on the $mul
@@ -398,6 +404,9 @@ struct QlDspV4Pass : public Pass {
         if (acc_merged)
             log("ql_dspv4: %d duplicate accumulator loop(s) merged into a register "
                 "with the same clock, reset and next state.\n", acc_merged);
+        if (coef_refolded)
+            log("ql_dspv4: %d constant coefficient(s) widened to put the product "
+                "back in the low bits of the adder's operand.\n", coef_refolded);
         if (absorb_end_none || absorb_end_exhausted)
             log("ql_dspv4: operand-register walks that ended with nothing left to "
                 "take (not stalls): %d with no register on the operand, %d having "
@@ -1493,6 +1502,203 @@ struct QlDspV4Pass : public Pass {
         return removed;
     }
 
+    // ---- A coefficient wreduce split into a shift --------------------------
+    //
+    // wreduce rewrites `x * c`, for a constant c with k low zero bits, as
+    // `(x * (c >> k)) << k`: the constant and the product both narrow by k, and
+    // the consumer reads the product k bits up with k constant zeros beneath
+    // it. Same value, and fabric logic does not care.
+    //
+    // The `add` match does care. It tolerates sign padding ABOVE the product --
+    // the other thing wreduce does -- and nothing below it, because the DSP
+    // multiplies into the low bits of the ALU input and has no shifter. So the
+    // adder is never even offered: the index tests the operand's bit 0, which is
+    // now a constant zero, and no candidate is built. Nothing is refused, so
+    // nothing is logged.
+    //
+    // Which product it hits matters. Yosys builds a sum left-associatively, so
+    // the outermost adder can only ever be absorbed by the LAST term's DSP --
+    // every earlier adder has a nearer product to go to. A power of two in the
+    // last coefficient therefore costs that adder AND the output register the
+    // same DSP would have held in P, and no other DSP can pick either up.
+    //
+    // dsp_filter_matrix's direct-form FIR is
+    // `fd_y_r <= z0*C0 + z1*C1 + z2*C2 + z3*C3`. FD_C3 is -9876, divisible by
+    // four; the other three are odd and fused. That one coefficient cost 34
+    // adder_carry and 36 sdffre, measured on the shape in isolation
+    // (tests/qlf_k6n10f/dspv4_mult_add_evencoef). Making FD_C3 odd fused all
+    // three adders and the register, which is what identified this.
+    //
+    // The fix is to undo the split rather than to teach the pattern about it:
+    // fold 2^k back into the constant and widen the product by k bits at the
+    // bottom, which is the multiply the RTL wrote to begin with. Relaxing the
+    // index instead would mean indexing on some bit other than 0, which changes
+    // how every existing shape enumerates.
+    //
+    // Worth doing only where an adder is waiting for it. The shift is free in
+    // fabric, so widening the constant for a multiply that is then left soft
+    // costs area for nothing -- hence the sole-reader-is-an-adder requirement
+    // and the port capacity check.
+    int refold_shifted_coefficients(RTLIL::Module *module)
+    {
+        int refolded = 0;
+        SigMap sm(module);
+
+        // Driver plus readers, with a module output counted as a reader -- the
+        // same convention merge_accumulators uses, and for the same reason: the
+        // product's net stops being driven below, so every reader of it has to
+        // be one this rewrite can see and rewrite.
+        dict<SigBit, int> users;
+        dict<SigBit, std::pair<RTLIL::Cell *, IdString>> reader;
+        for (auto cell : module->cells())
+            for (auto &conn : cell->connections()) {
+                for (auto bit : sm(conn.second))
+                    users[bit]++;
+                if (!cell->output(conn.first))
+                    for (auto bit : sm(conn.second))
+                        reader[bit] = std::make_pair(cell, conn.first);
+            }
+        for (auto wire : module->wires())
+            if (wire->port_output)
+                for (auto bit : sm(wire))
+                    users[bit]++;
+
+        // Collected first: the loop below retypes ports and adds wires, and
+        // iterating the cell list while doing that is asking for trouble.
+        std::vector<RTLIL::Cell *> muls;
+        for (auto cell : module->cells())
+            if (cell->type == ID($mul))
+                muls.push_back(cell);
+
+        for (auto mul : muls) {
+            SigSpec yraw = mul->getPort(ID::Y);
+            SigSpec y = sm(yraw);
+            int n = GetSize(y);
+            if (n == 0)
+                continue;
+
+            int worst = 0;
+            for (auto bit : y)
+                if (users.count(bit))
+                    worst = std::max(worst, users.at(bit));
+            if (worst > 2)
+                continue;
+            auto rd = reader.find(y[0]);
+            if (rd == reader.end())
+                continue;
+            RTLIL::Cell *add = rd->second.first;
+            IdString port = rd->second.second;
+            if (!add->type.in(ID($add), ID($sub)))
+                continue;
+
+            // Where the product sits inside the operand, and what is under it.
+            // Searched rather than derived from the operand's leading zeros: a
+            // product whose own low bits happen to be constant would make that
+            // count overshoot.
+            SigSpec op = add->getPort(port);
+            SigSpec opm = sm(op);
+            int k = -1;
+            for (int i = 0; i + n <= GetSize(opm); i++)
+                if (opm.extract(i, n) == y) {
+                    k = i;
+                    break;
+                }
+            if (k <= 0)
+                continue;               // k == 0 is what the pattern already takes
+            if (!opm.extract(0, k).is_fully_zero())
+                continue;
+
+            // Above the product the operand must be the padding the pattern and
+            // emit() already tolerate, so that rebuilding it from the wider
+            // product's own sign bit is the same value.
+            bool sgn = mul->getParam(ID::A_SIGNED).as_bool() &&
+                       mul->getParam(ID::B_SIGNED).as_bool();
+            SigBit pad = sgn ? y[n - 1] : SigBit(State::S0);
+            bool padded = true;
+            for (int i = k + n; i < GetSize(opm); i++)
+                if (opm[i] != pad)
+                    padded = false;
+            if (!padded)
+                continue;
+
+            // Only a constant can take the shift back. A shifted product of two
+            // variables is genuinely beyond the cell, and saying so is the point
+            // of IN-7 -- this is the shape whose silence cost the FIR its adder.
+            IdString cp;
+            if (sm(mul->getPort(ID::B)).is_fully_const())
+                cp = ID::B;
+            else if (sm(mul->getPort(ID::A)).is_fully_const())
+                cp = ID::A;
+            else {
+                log_debug("  %s: adder %s reads the product shifted up %d bit(s) "
+                          "and neither operand is constant, so the shift cannot "
+                          "be folded into one -- the DSP has no shifter and the "
+                          "adder stays in fabric\n",
+                          log_id(mul), log_id(add), k);
+                continue;
+            }
+            SigSpec c = sm(mul->getPort(cp));
+            if (!c.is_fully_def())
+                continue;
+
+            // c * 2^k, which is k zero bits under c's own bits.
+            SigSpec c2(RTLIL::Const(State::S0, k));
+            c2.append(c);
+
+            // The widened constant still has to fit a port, or this turns a
+            // multiply that at least reached a DSP into a soft one. Same test as
+            // emit()'s, on the same raw port widths: the multiplier is signed, so
+            // an unsigned operand needs a spare bit.
+            IdString op_port = cp == ID::A ? ID::B : ID::A;
+            int wc = GetSize(c2), wo = GetSize(mul->getPort(op_port));
+            bool c_signed = mul->getParam(cp == ID::A ? ID::A_SIGNED
+                                                      : ID::B_SIGNED).as_bool();
+            bool o_signed = mul->getParam(op_port == ID::A ? ID::A_SIGNED
+                                                           : ID::B_SIGNED)
+                                .as_bool();
+            auto fits = [](int w, bool s, int p) { return w <= (s ? p : p - 1); };
+            if (!((fits(wc, c_signed, DSPV4_A_WIDTH) &&
+                   fits(wo, o_signed, DSPV4_B_WIDTH)) ||
+                  (fits(wc, c_signed, DSPV4_B_WIDTH) &&
+                   fits(wo, o_signed, DSPV4_A_WIDTH)))) {
+                log_debug("  %s: coefficient not widened by %d bit(s) -- %dx%d "
+                          "would no longer fit the %dx%d ports, and the multiply "
+                          "is better off soft-shifted than soft entirely\n",
+                          log_id(mul), k, wo, wc, DSPV4_A_WIDTH, DSPV4_B_WIDTH);
+                continue;
+            }
+
+            SigSpec ynew = module->addWire(NEW_ID, n + k);
+            mul->setPort(cp, c2);
+            mul->setParam(cp == ID::A ? ID::A_WIDTH : ID::B_WIDTH, GetSize(c2));
+            mul->setPort(ID::Y, ynew);
+            mul->setParam(ID::Y_WIDTH, n + k);
+
+            // The operand's low k zeros and the product become the wider
+            // product; the padding above is rebuilt from its sign bit, which is
+            // the same bit the narrow product's was.
+            SigSpec fixed = ynew;
+            SigBit npad = sgn ? ynew[n + k - 1] : SigBit(State::S0);
+            while (GetSize(fixed) < GetSize(op))
+                fixed.append(npad);
+            add->setPort(port, fixed);
+
+            // The narrow product's net is CONNECTED to the wide one's high bits
+            // rather than left undriven. wreduce fills the bits it dropped with
+            // module-level connections off the product's own top bit, and those
+            // do not appear in the cell-port tally above -- so the tally can
+            // call the product sole-read while a connection still refers to it.
+            // Same reasoning as the merged accumulator's Q.
+            module->connect(yraw, ynew.extract(k, n));
+
+            log_debug("  %s: coefficient widened to %d bits so the product lands "
+                      "in the low bits of %s -- wreduce had split out a factor of "
+                      "2^%d\n", log_id(mul), GetSize(c2), log_id(add), k);
+            refolded++;
+        }
+        return refolded;
+    }
+
     // ---- Phase 3: operand register absorption (T3.1 / T3.2) -------------
     //
     // A chain of design flops walked back from a multiply operand, plus the
@@ -1881,6 +2087,9 @@ struct QlDspV4Pass : public Pass {
     // Duplicate accumulator loops folded onto another register before the
     // matcher ran -- see merge_accumulators().
     int acc_merged = 0;
+    // Multiplies whose coefficient had a power of two folded back into it
+    // before the matcher ran -- see refold_shifted_coefficients().
+    int coef_refolded = 0;
     std::vector<RTLIL::Cell *> pending_removal;
 
     bool verbose = false;
