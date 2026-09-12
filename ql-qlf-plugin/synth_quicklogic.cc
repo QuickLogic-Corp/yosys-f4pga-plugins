@@ -185,6 +185,9 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        flow this converts the QL_DSPV2 cells Synplify infers into\n");
         log("        generic monolithic QL_DSP4 base cells (runs ql_dspv2_to_dspv4 in place\n");
         log("        of ql_dspv2_types). Phase-1 scope.\n");
+        log("        Without -synplify, ql_dspv4 infers QL_DSP4 from RTL directly, and\n");
+        log("        multiplies too wide for one cell's 32x18 ports are split with\n");
+        log("        mul2dsp.v and inferred piecewise.\n");
         log("\n");
         log("    -no_tdpram\n");
         log("        By default infer TDP BRAM for architectures that support them.\n");
@@ -1001,6 +1004,60 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // Multiplies the DSP cannot hold stay as $mul for the
                             // ordinary soft path, each named by a log_debug (IN-7).
                             run("ql_dspv4");
+
+                            // Wide multiplies. ql_dspv4 above only takes what
+                            // fits one cell's 32x18 ports, so a 48x32 was still
+                            // a $mul afterwards and went to fabric whole -- 2952
+                            // LUTs where four DSPs would do. mul2dsp.v splits it
+                            // into 32x18 pieces plus $shl/$add glue, the same way
+                            // the V2 arm below and the V1 arm above use it.
+                            //
+                            // No dsp_map.v equivalent is needed. mul2dsp emits
+                            // DSP_NAME cells with a $mul interface -- same five
+                            // parameters, same A/B/Y ports -- so chtype hands the
+                            // pieces straight back to the pass that already knows
+                            // how to emit QL_DSP4, control word and all. That is
+                            // also what keeps V4 off the V1/V2 device collateral
+                            // a DSP-V4 device does not ship (see above).
+                            //
+                            // ql_dspv4 runs FIRST because mul2dsp knows nothing
+                            // about MULT_ADD_C / MULT_ACC or absorbed registers
+                            // and would chop a fusable multiply apart. Same order
+                            // as the V2 arm's ql_dsp_macc -> mul2dsp.
+                            //
+                            // MINWIDTH is 2, not the V2 arm's 10: mul2dsp's last
+                            // partial is A_WIDTH - 31*floor((A_WIDTH-2)/31), whose
+                            // minimum is exactly 2 (17 for B), so 2 never rejects
+                            // a partial, and 10 would push one to fabric where it
+                            // would still need its adder. SIGNEDONLY gives an
+                            // unsigned operand the spare bit the signed
+                            // Baugh-Wooley multiplier needs, which is the same
+                            // rule ql_dspv4's own capacity check applies.
+                            run("techmap -map +/mul2dsp.v "
+                                "-D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 "
+                                "-D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 "
+                                "-D DSP_SIGNEDONLY "
+                                "-D DSP_NAME=$__QL_DSP4_MUL");
+                            // Before the opt below, so no unknown cell type is
+                            // ever in the design.
+                            run("chtype -set $mul t:$__QL_DSP4_MUL");
+                            // Trim the glue mul2dsp just emitted without
+                            // disturbing the rest of the design, as the V1 arm
+                            // does.
+                            run("select a:mul2dsp");
+                            run("setattr -unset mul2dsp");
+                            if (!noOpt) {
+                                run("opt_expr -fine");
+                                run("wreduce");
+                            }
+                            run("select -clear");
+                            run("ql_dspv4");
+                            // Restore the multiplies mul2dsp declined as too
+                            // narrow. Last, so they stay a distinct type across
+                            // the run above and MINWIDTH keeps meaning something
+                            // -- ql_dspv4 has no lower width bound of its own and
+                            // would otherwise re-claim them.
+                            run("chtype -set $mul t:$__soft_mul");
                         }
                         if (!synplify && !dspv4) {
                             // DSPv2 arm — ported from YosysHQ/yosys#4932

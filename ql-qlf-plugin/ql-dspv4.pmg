@@ -16,10 +16,22 @@
 // needs, and the netlist is quietly wrong -- it still synthesises, packs and
 // routes.
 //
-// The bound is 2, not the 3 the macc pattern uses: nusers counts the driver
-// plus the readers, so 2 means "driven here, read in exactly one place" -- the
-// cell this pattern is about to absorb it into. At 3 a product that also leaves
-// the module still matched, and the DSP would swallow it.
+// The bound is 2: nusers counts the driver plus the readers, so 2 means
+// "driven here, read in exactly one place" -- the cell this pattern is about to
+// absorb it into. At 3 a product that also leaves the module still matched, and
+// the DSP would swallow it.
+//
+// Where each guard sits matters as much as its bound. pmgen emits `select`
+// inside the index-BUILD loop and `filter` inside the MATCH loop, so a `select`
+// on the anchor `mul` does not reject the adder -- it removes the multiply from
+// the candidate index entirely, the pattern never fires, and the `optional`
+// fallback to a bare MULT never gets a chance. `wire prod = a*b` feeding two
+// adders then produced no DSP at all and was not even counted as left soft.
+//
+// So: the product's fanout is checked with `filter` on the matches that would
+// absorb it, and the anchor carries no fanout guard. On the non-anchor matches
+// (`add`, `acc`) a `select` is still correct, because excluding one candidate
+// there degrades to the next smaller shape rather than killing the match.
 
 pattern ql_dspv4
 
@@ -30,23 +42,101 @@ state <bool> add_is_sub
 
 state <int> mul_nusers
 state <int> add_nusers
+state <int> mff_nusers
 
 // The multiply. Everything else hangs off this.
+//
+// No fanout guard here -- see the header. The count is recorded so the matches
+// that would absorb the product can check it at match time.
 match mul
     select mul->type.in($mul)
-    select nusers(port(mul, \Y)) <= 2
     set mul_nusers nusers(port(mul, \Y))
+endmatch
+
+// Optional register between the multiply and the adder -- the DSP's M stage.
+//
+// Only meaningful when an adder follows: it registers the product *before* the
+// ALU. With no adder the product register is the result register, and that
+// belongs in P, which the `ff` match below already handles. ql-dspv4.cc drops
+// this match when `add` did not match, for exactly that reason -- and because
+// pmgen can otherwise hand the same flop to both `mff` and `ff`.
+//
+// $dffe / $sdffe are deliberately excluded. The M bank is QL_DSP4_M_DFFR_50
+// (with MV_DFFR_43 / MK_DFFR for the multiplier's other two outputs) and its
+// port set is {D, R, clk} -- there is NO clock enable, unlike the output flop
+// which has CEP. An enabled flop has nowhere to put its enable here.
+//
+// Absorbing this flop makes the product vanish inside the DSP, so the same
+// sole-reader rule the adder needs applies to the multiply's Y.
+// The flop's D is NOT required to be the product signal itself -- it only has
+// to CONTAIN it, in the low bits, with sign padding above. wreduce narrows the
+// multiply when the upper product bits reach nothing downstream but leaves the
+// register at its declared width, so D and Y end up different widths with the
+// gap filled by copies of the sign bit. An exact `===` index silently never
+// offered the flop at all: gng kept its product register in fabric while the
+// same module in isolation absorbed it.
+//
+// Hence: index on one bit, then check the product occupies D's low bits. The
+// padding itself is verified in ql-dspv4.cc, which has the signedness to hand.
+//
+// Worked example, diagrams and the reasoning for why absorbing the wider
+// register is sound: docs/dspv4-mreg-product-width.md
+//
+// $dffe / $sdffe stay excluded: QL_DSP4_M_DFFR_50's port set is {D, R, clk},
+// with no clock enable, unlike the output flop's CEP.
+match mff
+    select mff->type.in($dff, $sdff)
+    select param(mff, \CLK_POLARITY).as_bool()
+    index <SigBit> port(mff, \D)[0] === port(mul, \Y)[0]
+    filter GetSize(port(mff, \D)) >= GetSize(port(mul, \Y))
+    filter port(mff, \D).extract(0, GetSize(port(mul, \Y))) == port(mul, \Y)
+    filter mul_nusers <= 2
+    set mff_nusers nusers(port(mff, \Q))
+    optional
 endmatch
 
 // Optional add/sub consuming the product. `choice` covers commutativity; for
 // $sub the side matters and is recorded, because C - A*B has a control word
 // (MULT_SUB_C) while A*B - C does not -- see the classification.
+//
+// The indexed operand is the M register's Q when one matched, otherwise the
+// product itself. Same one-statement-per-line constraint as `ff` below.
 match add
     select add->type.in($add, $sub)
     choice <IdString> AB {\A, \B}
     define <IdString> BA (AB == \A ? \B : \A)
-    index <SigSpec> port(add, AB) === port(mul, \Y)
-    select nusers(port(add, \Y)) <= 2
+    // The operand only has to CONTAIN the product in its low bits, with sign
+    // padding above -- the same tolerance `mff` needs, for the same reason.
+    // wreduce narrows the multiply when the upper product bits reach nothing,
+    // but leaves the adder's operand at its declared width, so the adder reads
+    // the product sign-extended. An exact `===` index then never matches and the
+    // adder silently stays in fabric: dsp_multadd fuses standalone (mul.Y 36 vs
+    // add.B 36) and does not when flattened into dsp_multadd_wrap (36 vs 48).
+    // That cost 29 of the 102 dsp testcases their adder fusion.
+    //
+    // ql-dspv4.cc checks the padding really is a sign extension.
+    // Written longhand rather than with `define`: pmgen emits a define into the
+    // index-BUILD scope, where the matched cells are not in scope yet.
+    index <SigBit> port(add, AB)[0] === (mff != nullptr ? port(mff, \Q)[0] : port(mul, \Y)[0])
+    filter GetSize(port(add, AB)) >= GetSize(mff != nullptr ? port(mff, \Q) : port(mul, \Y))
+    filter port(add, AB).extract(0, GetSize(mff != nullptr ? port(mff, \Q) : port(mul, \Y))) == (mff != nullptr ? port(mff, \Q) : port(mul, \Y))
+    // Absorbing this adder makes the DSP produce the SUM, so whatever feeds it
+    // stops appearing in the netlist. A second reader would be left with no
+    // driver. The net to guard is the one this adder actually reads: the M
+    // register's Q when it matched, the product otherwise. Checked here rather
+    // than on `mul` so that a shared product still reaches the bare-MULT branch.
+    filter (mff != nullptr ? mff_nusers : mul_nusers) <= 2
+    // NOTE: there is deliberately no guard on this adder's own output fanout.
+    // The sum leaves the DSP on P, so any number of readers can have it. It only
+    // needs guarding when something downstream absorbs it as well -- `acc` taking
+    // it as an operand, or `ff` registering it -- and those two cases are covered
+    // where they arise: `ff` carries its own nusers filter, and ql-dspv4.cc checks
+    // add_nusers when it decides to absorb `acc`.
+    //
+    // A `select nusers(port(add, \Y)) <= 2` here refused oc8051_top's
+    // `mul_result = mul_result1 + shifted`, whose sum has three readers (des1,
+    // des2 and the tmp_mul feedback) and no output register -- a textbook
+    // MULT_ADD_C that fell back to a bare multiply for no reason.
     set add_nusers nusers(port(add, \Y))
     set add_ba BA
     set add_mul_port AB
@@ -70,7 +160,9 @@ match acc
     choice <IdString> AB {\A, \B}
     define <IdString> BA (AB == \A ? \B : \A)
     index <SigSpec> port(acc, AB) === (add == nullptr ? SigSpec() : port(add, \Y))
-    select nusers(port(acc, \Y)) <= 2
+    // No fanout guard here either, for the same reason as `add`: this sum leaves
+    // on P. `acc` is only ever absorbed together with `ff` (see ql-dspv4.cc), and
+    // `ff`'s own filter guards the net it registers.
     set acc_ba BA
     optional
 endmatch
@@ -95,9 +187,55 @@ endmatch
 //
 // This index line is long on purpose: pmgen parses one statement per line, so
 // wrapping it turns the continuation into an unrecognised statement.
+//
+// Every DSP register bank is rising-edge (dsp4_logical_map.v instantiates
+// QL_DSP4_*_DFFRE_* with .clk(CLK) and no inversion), and emit() wires the
+// flop's CLK straight through. So a falling-edge flop absorbed here would be
+// re-timed onto the opposite edge with nothing to show it: an
+// `always @(negedge clk) p <= a*b` produced a QL_DSP4_ACC_DFFRE_64 clocked on
+// the rising edge. collect_flops() checks CLK_POLARITY for the OPERAND chains;
+// this is the same check for the output flop.
 match ff
     select ff->type.in($dff, $dffe, $sdff, $sdffe)
+    select param(ff, \CLK_POLARITY).as_bool()
     index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
+    // The value this flop registers must have exactly one reader -- this flop.
+    // Absorbing it makes the DSP drive Q instead of D, so any other reader of D
+    // loses its driver. When `add` or `acc` matched, their own nusers selects
+    // already cover it; when neither did, `ff` is indexed straight onto the
+    // product and this is the only thing standing between a shared product and
+    // an undriven net.
+    filter nusers(port(ff, \D)) <= 2
+    optional
+endmatch
+
+// Optional SECOND output register stage, for `mul -> reg -> reg` with no adder:
+//
+//     always @(posedge clk) prod1 <= a * b;
+//     always @(posedge clk) p     <= prod1;
+//
+// The DSP has two register positions between the multiplier and P, so both
+// stages come inside -- the first in the M bank, the second in P. ql-dspv4.cc
+// does that by reassigning: the flop `ff` matched becomes the M register and
+// this one becomes the P register, so the rest of emit() needs no special case.
+//
+// Indexed on `ff`'s Q rather than on the product, so this cannot bind the same
+// cell as `ff`. An earlier attempt made `ff`'s own index depend on `mff`
+// instead; that created a covering where `mff` bound the product register and
+// nothing could use it, and the matcher did not offer the alternative -- the
+// multiply was left soft entirely. Adding a separate match leaves every
+// existing shape's enumeration untouched.
+//
+// $dffe / $sdffe are excluded because the M bank has no clock enable, and the
+// first stage is the one that lands there.
+//
+// Only meaningful without an adder: with one, both stages sit downstream of the
+// ALU and only P is reachable. ql-dspv4.cc gates on that.
+match ff2
+    select ff2->type.in($dff, $sdff)
+    select param(ff2, \CLK_POLARITY).as_bool()
+    index <SigSpec> port(ff2, \D) === (ff == nullptr ? SigSpec() : port(ff, \Q))
+    filter nusers(port(ff2, \D)) <= 2
     optional
 endmatch
 
