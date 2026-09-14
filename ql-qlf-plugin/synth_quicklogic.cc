@@ -870,6 +870,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 			    // techmap (map_dsp) rewrites QL_DSP4 into these; read as black
 			    // boxes so they carry through to write_blif for VPR packing.
 			    run("read_verilog -lib -specify -nomem2reg" + family_path + "/QL_DSP4_leaves.v");
+			    run("read_verilog" + family_path + "/ql_dsp4_macros.v");
 			}
             run(stringf("hierarchy -check %s", help_mode ? "-top <top>" : top_opt.c_str()));
         }
