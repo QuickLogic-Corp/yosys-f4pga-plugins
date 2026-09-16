@@ -52,6 +52,30 @@ match mul
     select mul->type.in($mul)
     set mul_nusers nusers(port(mul, \Y))
 endmatch
+// Optional pre-adder feeding a multiply operand: the DSP's own front-end
+// adder, computing D +/- (A|B) into one multiplier port.
+//
+// Two matches rather than one `choice`, and the anchor stays on `mul`. Both
+// are forced by pmgen, not preference -- see the spec, "Step 1: see the adder".
+match padd_a
+    select padd_a->type.in($add, $sub)
+    index <SigBit> port(padd_a, \Y)[0] === port(mul, \A)[0]
+    filter GetSize(port(mul, \A)) >= GetSize(port(padd_a, \Y))
+    filter port(mul, \A).extract(0, GetSize(port(padd_a, \Y))) == port(padd_a, \Y)
+    filter nusers(port(padd_a, \Y)) <= 2
+    optional
+endmatch
+
+// The B-path mirror. If both match there is still only one pre-adder, so
+// ql-dspv4.cc refuses that combination -- see the spec.
+match padd_b
+    select padd_b->type.in($add, $sub)
+    index <SigBit> port(padd_b, \Y)[0] === port(mul, \B)[0]
+    filter GetSize(port(mul, \B)) >= GetSize(port(padd_b, \Y))
+    filter port(mul, \B).extract(0, GetSize(port(padd_b, \Y))) == port(padd_b, \Y)
+    filter nusers(port(padd_b, \Y)) <= 2
+    optional
+endmatch
 
 // Optional register between the multiply and the adder -- the DSP's M stage.
 //

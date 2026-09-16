@@ -84,6 +84,14 @@ static const int DSPV4_A_WIDTH = 32;
 static const int DSPV4_B_WIDTH = 18;
 static const int DSPV4_C_WIDTH = 50;
 static const int DSPV4_P_WIDTH = 50;
+// The pre-adder's dedicated operand. 27 bits, NOT 32 -- the pre-adder result AD
+// is 32 bits wide but the D input feeding it is narrower.
+static const int DSPV4_D_WIDTH = 27;
+
+// How much of the pre-adder result reaches each multiplier port. Neither
+// path saturates: AD wraps, and nothing reports it.
+static const int DSPV4_AD_A_WIDTH = 32;
+static const int DSPV4_AD_B_WIDTH = 18;
 
 // Operand register stages the DSP can hold (Phase 3, T3.2). This is the
 // hardware limit, not a policy choice: AREG0 drives QL_DSP4_A1_DFFRE_32 and
@@ -152,6 +160,19 @@ static SigSpec dspv4_strip_extension(SigSpec sig, bool &is_signed)
     if (i + 2 < n)
         return sig.extract(0, i + 2);
     return sig;
+}
+
+// Bits needed to hold the signed value, after stripping a redundant
+// sign-extension run. Shared with ql_dsp4_check.
+static int signed_width(const SigSpec &sig)
+{
+    int n = GetSize(sig);
+    if (n <= 1)
+        return n;
+    int i = n - 2;
+    while (i >= 0 && sig[i] == sig[n - 1])
+        i--;
+    return i + 2;
 }
 
 // Drive a design signal from a DSP output port that is wider than it. The port
@@ -792,8 +813,94 @@ struct QlDspV4Pass : public Pass {
         bool b_signed = st.mul->getParam(ID::B_SIGNED).as_bool();
 
         auto fits = [](int w, bool sgn, int port) { return w <= (sgn ? port : port - 1); };
-        bool direct = fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) && fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
-        bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) && fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
+
+        // Decided before the operand-capacity test below, so rewriting
+        // ma/mb leaves every later stage unchanged.
+        RTLIL::Cell *padd_cell = nullptr;
+        SigSpec md;
+        bool d_signed = false;
+
+        if (st.padd_a != nullptr && st.padd_b != nullptr) {
+            // One pre-adder, so refuse both and let pmgen offer the
+            // one-sided shapes next.
+            absorb_stall["both multiply operands are pre-adder sums, and the DSP "
+                         "has one pre-adder"]++;
+        } else if (st.padd_a != nullptr || st.padd_b != nullptr) {
+            RTLIL::Cell *p = st.padd_a != nullptr ? st.padd_a : st.padd_b;
+            bool sum_on_a = st.padd_a != nullptr;
+
+            SigSpec p0 = p->getPort(ID::A), p1 = p->getPort(ID::B);
+            bool p0_signed = p->getParam(ID::A_SIGNED).as_bool();
+            bool p1_signed = p->getParam(ID::B_SIGNED).as_bool();
+            SigSpec other = sum_on_a ? mb : ma;
+            bool other_signed = sum_on_a ? b_signed : a_signed;
+
+            // D +/- X needs one bit more than the wider operand. AD wraps rather
+            // than saturating, so a sum that does not fit is a silent wrong
+            // answer -- this bound is the whole guard.
+            int w_sum = std::max(signed_width(p0), signed_width(p1)) + 1;
+
+            // $add is commutative, so either operand can take the D port.
+            // Port widths differ per path, so the orientation is chosen.
+            SigSpec d, x;
+            bool ds = false, xs = false;
+            auto orient = [&](int x_port) {
+                d = p0; ds = p0_signed; x = p1; xs = p1_signed;
+                if (!fits(GetSize(x), xs, x_port) ||
+                    !fits(GetSize(d), ds, DSPV4_D_WIDTH)) {
+                    std::swap(d, x);
+                    std::swap(ds, xs);
+                }
+                return fits(GetSize(x), xs, x_port) &&
+                       fits(GetSize(d), ds, DSPV4_D_WIDTH);
+            };
+
+            if (st.add != nullptr) {
+                absorb_stall["pre-adder with a fused adder is not inferred yet "
+                             "(Phase 4 step 2)"]++;
+            } else if (p->type == ID($sub)) {
+                absorb_stall["pre-adder subtract direction is not inferred yet "
+                             "(Phase 4 step 2)"]++;
+            } else if (w_sum <= DSPV4_AD_A_WIDTH &&
+                       fits(GetSize(other), other_signed, DSPV4_B_WIDTH) &&
+                       orient(DSPV4_A_WIDTH)) {
+                // (D + A) * B -- the sum keeps all 32 bits of AD.
+                mode_name = "PREADD_A_MULT_B";
+                ma = x; a_signed = xs;
+                mb = other; b_signed = other_signed;
+                md = d; d_signed = ds;
+                padd_cell = p;
+            } else if (w_sum <= DSPV4_AD_B_WIDTH &&
+                       fits(GetSize(other), other_signed, DSPV4_A_WIDTH) &&
+                       orient(DSPV4_B_WIDTH)) {
+                // (D + B) * A -- AD is truncated to 18 bits here, which is why
+                // this path is tried second and needs the tighter proof.
+                mode_name = "PREADD_B_MULT_A";
+                mb = x; b_signed = xs;
+                ma = other; a_signed = other_signed;
+                md = d; d_signed = ds;
+                padd_cell = p;
+            } else {
+                absorb_stall["pre-adder sum may exceed the multiplier port"]++;
+                log_debug("  %s: pre-adder not fused -- D +/- X needs %d bits, "
+                          "which exceeds AD's %d on the A path and %d on the B "
+                          "path once the other operand is placed\n",
+                          log_id(st.mul), w_sum, DSPV4_AD_A_WIDTH,
+                          DSPV4_AD_B_WIDTH);
+            }
+        }
+
+        bool direct = fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) &&
+                      fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
+        bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) &&
+                       fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
+        if (padd_cell != nullptr) {
+            // The pre-adder pinned which operand goes where -- the mode name
+            // encodes it. Swapping now would move the sum off the port its mode
+            // routes AD to.
+            direct = true;
+            swapped = false;
+        }
         if (!direct && !swapped) {
             // Only mention the spare bit when it is actually what bit: saying
             // it for a signed x signed multiply sends the reader looking for a
@@ -1031,6 +1138,13 @@ struct QlDspV4Pass : public Pass {
             cell->setPort(ID(C), dspv4_fit(module, mc, DSPV4_C_WIDTH, c_signed));
         }
 
+        // DREG stated, not defaulted: absorbing onto D comes later, and an
+        // unstated register parameter is a silent default.
+        if (padd_cell != nullptr) {
+            cell->setPort(ID(D), dspv4_fit(module, md, DSPV4_D_WIDTH, d_signed));
+            cell->setParam(ID(DREG), RTLIL::Const(0, 1));
+        }
+
         cell->setPort(ID(P), dspv4_wide_out(module, result, DSPV4_P_WIDTH));
 
         // Operand register stages. The encoding is the bridge's
@@ -1151,6 +1265,10 @@ struct QlDspV4Pass : public Pass {
         pm.autoremove(st.mul);
         if (st.add)
             pm.autoremove(st.add);
+            // Only if it actually folded. Removing a cell whose value the DSP
+            // does not compute leaves a net undriven.
+        if (padd_cell)
+            pm.autoremove(padd_cell);
         if (mff_cell) {
             pm.autoremove(mff_cell);
             // Same reason as the output flop below: autoremove is deferred to the
@@ -2078,19 +2196,8 @@ struct QlDspV4Pass : public Pass {
 // instantiation), so one check covers every route to the cell.
 // ============================================================================
 
-// Bits needed to hold the signed value: the width left after stripping a
-// redundant sign-extension run off the top. An 18-bit value sign-extended to 32
-// returns 18, so extension does not read as risk.
-static int signed_width(const SigSpec &sig)
-{
-    int n = GetSize(sig);
-    if (n <= 1)
-        return n;
-    int i = n - 2;
-    while (i >= 0 && sig[i] == sig[n - 1])
-        i--;
-    return i + 2;
-}
+// signed_width() lives up with the other operand helpers, because the inference
+// pass needs the same "does this fit" answer when it selects a pre-adder mode.
 
 struct QlDsp4CheckPass : public Pass {
     QlDsp4CheckPass() : Pass("ql_dsp4_check", "warn about QL_DSP4 arithmetic that can silently overflow") {}
