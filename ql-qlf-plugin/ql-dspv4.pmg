@@ -8,7 +8,7 @@
 //   $mul -> $add -> $dff (feedback)   -> MULT_ACC,   PREG=1
 //   $mul -> $add(C) -> $add -> $dff   -> MULT_ACC_C, PREG=1
 //
-// `add` and `ff` are optional because a bare multiply is a valid match; the
+// `add` and `ff` are optional because a bare mul is a valid match; the
 // classification in ql-dspv4.cc decides which mode a given shape is.
 //
 // The nusers guards are load-bearing, not tidiness. Absorbing a cell whose
@@ -27,7 +27,7 @@
 //
 // Where each guard sits matters as much as its bound. pmgen emits `select`
 // inside the index-BUILD loop and `filter` inside the MATCH loop, so a `select`
-// on the anchor `mul` does not reject the adder -- it removes the multiply from
+// on the anchor `mul` does not reject the adder -- it removes the mul from
 // the candidate index entirely, the pattern never fires, and the `optional`
 // fallback to a bare MULT never gets a chance. `wire prod = a*b` feeding two
 // adders then produced no DSP at all and was not even counted as left soft.
@@ -48,7 +48,7 @@ state <int> mul_nusers
 state <int> add_nusers
 state <int> mff_nusers
 
-// The multiply. Everything else hangs off this.
+// The mul. Everything else hangs off this.
 //
 // No fanout guard here -- see the header. The count is recorded so the matches
 // that would absorb the product can check it at match time.
@@ -56,8 +56,32 @@ match mul
     select mul->type.in($mul)
     set mul_nusers nusers(port(mul, \Y))
 endmatch
+// Optional pre-adder feeding a mul operand: the DSP's own front-end
+// adder, computing D +/- (A|B) into one multiplier port.
+//
+// Two matches rather than one `choice`, and the anchor stays on `mul`. Both
+// are forced by pmgen, not preference -- see the spec, "Step 1: see the adder".
+match padd_a
+    select padd_a->type.in($add, $sub)
+    index <SigBit> port(padd_a, \Y)[0] === port(mul, \A)[0]
+    filter GetSize(port(mul, \A)) >= GetSize(port(padd_a, \Y))
+    filter port(mul, \A).extract(0, GetSize(port(padd_a, \Y))) == port(padd_a, \Y)
+    filter nusers(port(padd_a, \Y)) <= 2
+    optional
+endmatch
 
-// Optional register between the multiply and the adder -- the DSP's M stage.
+// The B-path mirror. If both match there is still only one pre-adder, so
+// ql-dspv4.cc refuses that combination -- see the spec.
+match padd_b
+    select padd_b->type.in($add, $sub)
+    index <SigBit> port(padd_b, \Y)[0] === port(mul, \B)[0]
+    filter GetSize(port(mul, \B)) >= GetSize(port(padd_b, \Y))
+    filter port(mul, \B).extract(0, GetSize(port(padd_b, \Y))) == port(padd_b, \Y)
+    filter nusers(port(padd_b, \Y)) <= 2
+    optional
+endmatch
+
+// Optional register between the mul and the adder -- the DSP's M stage.
 //
 // Only meaningful when an adder follows: it registers the product *before* the
 // ALU. With no adder the product register is the result register, and that
@@ -71,10 +95,10 @@ endmatch
 // which has CEP. An enabled flop has nowhere to put its enable here.
 //
 // Absorbing this flop makes the product vanish inside the DSP, so the same
-// sole-reader rule the adder needs applies to the multiply's Y.
+// sole-reader rule the adder needs applies to the mul's Y.
 // The flop's D is NOT required to be the product signal itself -- it only has
 // to CONTAIN it, in the low bits, with sign padding above. wreduce narrows the
-// multiply when the upper product bits reach nothing downstream but leaves the
+// mul when the upper product bits reach nothing downstream but leaves the
 // register at its declared width, so D and Y end up different widths with the
 // gap filled by copies of the sign bit. An exact `===` index silently never
 // offered the flop at all: gng kept its product register in fabric while the
@@ -111,7 +135,7 @@ match add
     define <IdString> BA (AB == \A ? \B : \A)
     // The operand only has to CONTAIN the product in its low bits, with sign
     // padding above -- the same tolerance `mff` needs, for the same reason.
-    // wreduce narrows the multiply when the upper product bits reach nothing,
+    // wreduce narrows the mul when the upper product bits reach nothing,
     // but leaves the adder's operand at its declared width, so the adder reads
     // the product sign-extended. An exact `===` index then never matches and the
     // adder silently stays in fabric: dsp_multadd fuses standalone (mul.Y 36 vs
@@ -140,7 +164,7 @@ match add
     // A `select nusers(port(add, \Y)) <= 2` here refused oc8051_top's
     // `mul_result = mul_result1 + shifted`, whose sum has three readers (des1,
     // des2 and the tmp_mul feedback) and no output register -- a textbook
-    // MULT_ADD_C that fell back to a bare multiply for no reason.
+    // MULT_ADD_C that fell back to a bare mul for no reason.
     set add_nusers nusers(port(add, \Y))
     set add_ba BA
     set add_mul_port AB
@@ -150,12 +174,12 @@ endmatch
 
 // Optional second adder, for A*B + P + C.
 //
-// Only meaningful when the chain ends in an accumulator flop. pmgen matches this
+// Only meaningful when the chain ends in an acc flop. pmgen matches this
 // before `ff`, so the constraint cannot be expressed here -- ql-dspv4.cc gates
 // it on `ff` and must keep doing so. See the comment there.
 //
 // Yosys keeps the RTL's bracketing, and `p + a*b + c` associates LEFT: the
-// first adder takes the accumulator feedback and the product, the second adds
+// first adder takes the acc feedback and the product, the second adds
 // C on top, so this match is the C adder and the feedback lands on `add`.
 // Bracketed the other way, `p + (a*b + c)`, the first adder takes C and this
 // one takes the feedback. ql-dspv4.cc looks for the flop's Q on both.
@@ -173,7 +197,7 @@ endmatch
 
 // Optional flop on the result. Two different shapes land here:
 //
-//   accumulator     Q feeds `add`'s other operand, so the DSP adds to its own
+//   acc     Q feeds `add`'s other operand, so the DSP adds to its own
 //                   previous output -- MULT_ACC / MULT_ACC_C.
 //   output register a plain pipeline register on the result -- the mode is
 //                   whatever the combinational shape was, with PREG=1.
@@ -181,12 +205,12 @@ endmatch
 // Both use the DSP's P register, so both are worth absorbing; only the feedback
 // tells them apart, and that test lives in ql-dspv4.cc rather than here. An
 // earlier version indexed on `port(ff, \Q) === port(add, add_ba)` to force the
-// accumulator case, which also meant a pipeline register on the result never
+// acc case, which also meant a pipeline register on the result never
 // matched at all and stayed in fabric -- the cost that made the registered
 // cascade_* designs unroutable.
 //
 // D comes from the last cell in the chain: `acc` for the three-input form,
-// otherwise `add`, otherwise the multiply itself. The bare-multiply branch is
+// otherwise `add`, otherwise the mul itself. The bare-mul branch is
 // what lets `p <= a * b` be absorbed.
 //
 // This index line is long on purpose: pmgen parses one statement per line, so
@@ -227,7 +251,7 @@ endmatch
 // cell as `ff`. An earlier attempt made `ff`'s own index depend on `mff`
 // instead; that created a covering where `mff` bound the product register and
 // nothing could use it, and the matcher did not offer the alternative -- the
-// multiply was left soft entirely. Adding a separate match leaves every
+// mul was left soft entirely. Adding a separate match leaves every
 // existing shape's enumeration untouched.
 //
 // $dffe / $sdffe are excluded because the M bank has no clock enable, and the
