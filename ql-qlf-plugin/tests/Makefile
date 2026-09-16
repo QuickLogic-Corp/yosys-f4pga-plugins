@@ -58,6 +58,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_mult_shared_operand \
 	qlf_k6n10f/dspv4_macc_dup \
 	qlf_k6n10f/dspv4_mult_add_evencoef \
+	qlf_k6n10f/dspv4_preadd_a \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \

@@ -53,6 +53,58 @@ match mul
     set mul_nusers nusers(port(mul, \Y))
 endmatch
 
+// Optional pre-adder feeding a multiply operand -- the DSP's own front-end
+// adder, which computes D +/- (A|B) and hands the result to one multiplier port.
+// Phase 4 (aurora2 docs/specs/dspv4-preadder-inference/).
+//
+//     assign y = (d + a) * b;     ->  one QL_DSP4, zero fabric adders
+//
+// TWO matches rather than one with a `choice`, and that is forced by pmgen
+// rather than chosen. `choice` is emitted inside the index-BUILD loop and varies
+// the CANDIDATE cell, so the index key is computed per (candidate, choice). At
+// match time pmgen does exactly ONE lookup, with the key built from the
+// already-matched cells -- there is no iteration over alternatives on that side.
+// So a `choice` can say "either operand of the cell being matched", which is
+// what `add` below uses it for, but it cannot say "either operand of `mul`",
+// because `mul` is already bound and sits on the lookup side. Hence one match
+// per multiplier port, each with a fixed RHS.
+//
+// The anchor deliberately stays on `mul`. Anchoring on the pre-adder instead
+// would make every bare multiply enumerate a pre-adder that is usually not
+// there, and -- worse -- a `select` on a new anchor is the item 1 failure:
+// the candidate is dropped from the index entirely and the multiply infers
+// NOTHING, rather than degrading to a plain MULT.
+//
+// The sole-reader filter is load-bearing. Absorbing the pre-adder makes its sum
+// vanish inside the DSP, so a second reader would be left with no driver.
+//
+// The containment filters (rather than an exact `===`) follow `mff` and `add`.
+// Measured on the prepare sequence, `wreduce` narrows the $add's Y and the
+// $mul's operand to the SAME SigSpec, so an exact match would work today for
+// the shapes probed -- but items 9, 15 and 18 were all this assumption failing
+// in three different places, and the tolerant form costs nothing.
+match padd_a
+    select padd_a->type.in($add, $sub)
+    index <SigBit> port(padd_a, \Y)[0] === port(mul, \A)[0]
+    filter GetSize(port(mul, \A)) >= GetSize(port(padd_a, \Y))
+    filter port(mul, \A).extract(0, GetSize(port(padd_a, \Y))) == port(padd_a, \Y)
+    filter nusers(port(padd_a, \Y)) <= 2
+    optional
+endmatch
+
+// The B-path mirror. When BOTH match -- `(d + a) * (e + b)` -- the DSP has only
+// one pre-adder, so ql-dspv4.cc refuses that combination and pmgen then offers
+// the shapes with one side null, which do fuse. Refusing rather than silently
+// picking one is what keeps the choice visible in the log.
+match padd_b
+    select padd_b->type.in($add, $sub)
+    index <SigBit> port(padd_b, \Y)[0] === port(mul, \B)[0]
+    filter GetSize(port(mul, \B)) >= GetSize(port(padd_b, \Y))
+    filter port(mul, \B).extract(0, GetSize(port(padd_b, \Y))) == port(padd_b, \Y)
+    filter nusers(port(padd_b, \Y)) <= 2
+    optional
+endmatch
+
 // Optional register between the multiply and the adder -- the DSP's M stage.
 //
 // Only meaningful when an adder follows: it registers the product *before* the
