@@ -52,6 +52,19 @@ static const Dspv4Mode &dspv4_mode(const char *name)
               name);
 }
 
+// The pre-adder subtracts in two's complement and yields a SIGNED result, while
+// an unsigned RTL subtract wraps: for m < x, RTL gives (m - x) mod 2^w and the
+// DSP gives the negative value. They differ on about half of all operand pairs,
+// and nothing downstream reports it -- the netlist packs, routes and computes a
+// plausible wrong answer. Found by verify_inference.py's square_presub shape
+// failing 150 of 300 unsigned vectors.
+//
+// Only the SUBTRACT direction is affected: an unsigned add cannot go negative.
+static bool dspv4_presub_operands_ok(bool sub, bool a_sgn, bool b_sgn)
+{
+    return !sub || (a_sgn && b_sgn);
+}
+
 // Apply a mode's control word to a QL_DSP4 cell. Widths match the YAML's
 // declared field widths, checked at generation time.
 static void dspv4_apply_mode(RTLIL::Cell *cell, const Dspv4Mode &m)
@@ -868,27 +881,125 @@ struct QlDspV4Pass : public Pass {
         SigSpec md;
         bool d_signed = false;
 
-        if (st.padd_a != nullptr && st.padd_b != nullptr) {
-            // (d + a) * (e + b). There is one pre-adder, so only one of the two
-            // could ever fold. Refusing both lets pmgen offer the one-sided
-            // shapes next, which do fold; silently picking a side here would
-            // make the choice invisible.
+        // Squaring: one value reaching BOTH multiplier ports. The DSP does this
+        // with a single pre-adder whose result feeds both (AMULTSEL and BMULTSEL
+        // are both set), so it costs one pre-adder, not two.
+        //
+        //   x * x               -> SQ_*_ONLY   (D gated off, AD passes x)
+        //   (m + x) * (m + x)   -> SQ_A / SQ_A_SUB and their +C / +P forms
+        //
+        // The pre-adder form is the one that matters: it used to hit the
+        // both-sides refusal below and leave the adder in fabric.
+        bool sq_padd = st.padd_a != nullptr && st.padd_a == st.padd_b;
+        bool sq_plain = st.padd_a == nullptr && st.padd_b == nullptr &&
+                        sigmapper(st.mul->getPort(ID::A)) ==
+                            sigmapper(st.mul->getPort(ID::B));
+
+        if (sq_plain) {
+            // A * A. No pre-adder involved, so nothing to absorb and no adder
+            // to save -- the gain is that one multiplier port is left free,
+            // which the mode table expresses as AD feeding both.
+            const char *m = st.add == nullptr      ? "SQ_A_ONLY"
+                          : nullptr;
+            if (m == nullptr) {
+                absorb_stall["squaring with an ALU term has no control word"]++;
+            } else if (fits(GetSize(ma), a_signed, DSPV4_A_WIDTH)) {
+                mode_name = m;
+                mb = ma; b_signed = a_signed;  // same value, both ports
+            }
+        } else if (sq_padd) {
+            // (m +/- x) squared. One pre-adder, result to both ports.
+            bool psub = st.padd_a->type == ID($sub);
+            const char *m = nullptr;
+            if (!dspv4_presub_operands_ok(
+                    psub, st.padd_a->getParam(ID::A_SIGNED).as_bool(),
+                    st.padd_a->getParam(ID::B_SIGNED).as_bool())) {
+                absorb_stall["pre-adder subtract on unsigned operands wraps "
+                             "where the DSP signs"]++;
+            } else if (st.add == nullptr)
+                m = psub ? "SQ_A_SUB" : "SQ_A";
+            else if (!strcmp(mode_name, "MULT_ADD_C") && !psub)
+                m = "SQ_A_C";
+            else if (!strcmp(mode_name, "MULT_ACC") && !psub)
+                m = "SQ_A_ACC";
+            if (m == nullptr) {
+                absorb_stall["squared pre-adder with this ALU direction has no "
+                             "control word"]++;
+            } else {
+                RTLIL::Cell *p = st.padd_a;
+                bool sq_neg = p->type == ID($neg);
+                SigSpec p0 = p->getPort(ID::A);
+                SigSpec p1 = sq_neg ? SigSpec() : p->getPort(ID::B);
+                bool p0s = p->getParam(ID::A_SIGNED).as_bool();
+                bool p1s = sq_neg ? p0s : p->getParam(ID::B_SIGNED).as_bool();
+                int w_sum = (sq_neg ? signed_width(p0)
+                              : std::max(signed_width(p0), signed_width(p1))) + 1;
+                // Both ports take AD, so the tighter B-path ceiling applies:
+                // the 18-bit port truncates whatever the A path would keep.
+                if (w_sum <= DSPV4_AD_B_WIDTH &&
+                    (sq_neg || fits(GetSize(p0), p0s, DSPV4_D_WIDTH)) &&
+                    (sq_neg || fits(GetSize(p1), p1s, DSPV4_A_WIDTH))) {
+                    mode_name = m;
+                    md = p0; d_signed = p0s;
+                    ma = p1; a_signed = p1s;
+                    mb = p1; b_signed = p1s;
+                    padd_cell = p;
+                    } else {
+                    absorb_stall["squared pre-adder sum may exceed the "
+                                 "multiplier port"]++;
+                }
+            }
+        } else if (st.padd_a != nullptr && st.padd_b != nullptr) {
+            // (d + a) * (e + b) from two DIFFERENT adders. There is one
+            // pre-adder, so only one could ever fold. Refusing both lets pmgen
+            // offer the one-sided shapes next, which do fold; silently picking
+            // a side here would make the choice invisible.
             absorb_stall["both multiply operands are pre-adder sums, and the DSP "
                          "has one pre-adder"]++;
         } else if (st.padd_a != nullptr || st.padd_b != nullptr) {
             RTLIL::Cell *p = st.padd_a != nullptr ? st.padd_a : st.padd_b;
             bool sum_on_a = st.padd_a != nullptr;
+            // The pmg bound was relaxed to 3 so the squaring shape could be
+            // seen. Squaring is handled above, so a third reader here is a
+            // genuine outside consumer: absorbing the adder would make its sum
+            // vanish into the DSP and leave that reader undriven.
+            int pn = sum_on_a ? st.padd_a_nusers : st.padd_b_nusers;
+            if (pn > 2) {
+                absorb_stall["pre-adder sum has a reader outside the DSP"]++;
+                log_debug("  %s: pre-adder not fused -- its sum has %d "
+                          "reader(s)\n", log_id(st.mul), pn - 1);
+                p = nullptr;
+            }
+            if (p != nullptr &&
+                !dspv4_presub_operands_ok(
+                    p->type == ID($sub) || p->type == ID($neg),
+                    p->getParam(ID::A_SIGNED).as_bool(),
+                    p->type == ID($neg)
+                        ? p->getParam(ID::A_SIGNED).as_bool()
+                        : p->getParam(ID::B_SIGNED).as_bool())) {
+                absorb_stall["pre-adder subtract on unsigned operands wraps "
+                             "where the DSP signs"]++;
+                log_debug("  %s: pre-adder not fused -- an unsigned subtract "
+                          "wraps, the DSP's is two's complement\n",
+                          log_id(st.mul));
+                p = nullptr;
+            }
+            if (p != nullptr) {
 
-            SigSpec p0 = p->getPort(ID::A), p1 = p->getPort(ID::B);
+            bool pneg = p->type == ID($neg);
+            SigSpec p0 = p->getPort(ID::A);
+            SigSpec p1 = pneg ? SigSpec() : p->getPort(ID::B);
             bool p0_signed = p->getParam(ID::A_SIGNED).as_bool();
-            bool p1_signed = p->getParam(ID::B_SIGNED).as_bool();
+            bool p1_signed = pneg ? p0_signed
+                                  : p->getParam(ID::B_SIGNED).as_bool();
             SigSpec other = sum_on_a ? mb : ma;
             bool other_signed = sum_on_a ? b_signed : a_signed;
 
             // D +/- X needs one bit more than the wider operand. AD wraps rather
             // than saturating, so a sum that does not fit is a silent wrong
             // answer -- this bound is the whole guard.
-            int w_sum = std::max(signed_width(p0), signed_width(p1)) + 1;
+            int w_sum = (pneg ? signed_width(p0)
+                              : std::max(signed_width(p0), signed_width(p1))) + 1;
 
             // $add is commutative, so either operand can take the dedicated D
             // port. The multiplier port the other one shares is 32 bits on the A
@@ -898,6 +1009,12 @@ struct QlDspV4Pass : public Pass {
             bool ds = false, xs = false;
             bool psub = p->type == ID($sub);
             auto orient = [&](int x_port) {
+                if (pneg) {
+                    // Nothing to orient: the single operand goes to the
+                    // multiplier port and D is gated off.
+                    x = p0; xs = p0_signed;
+                    return fits(GetSize(x), xs, x_port);
+                }
                 d = p0; ds = p0_signed; x = p1; xs = p1_signed;
                 // $add is commutative, so either operand may take the dedicated
                 // D port and the orientation is chosen to fit. $sub is NOT:
@@ -925,7 +1042,16 @@ struct QlDspV4Pass : public Pass {
             // synthesising it would mean setting INMODE[3] on a word the
             // spreadsheet never validated. Refused rather than assembled.
             const char *pmode_a = nullptr, *pmode_b = nullptr;
-            if (psub) {
+            if (pneg) {
+                // Unary negate: AD = 0 - A, so D is gated off entirely
+                // (INMODE[2]=0, INMODE[3]=1). The table carries this only for
+                // the bare product -- there is no NEG_*_MULT_*_C -- so any
+                // back-end refuses below rather than being assembled.
+                if (st.add == nullptr) {
+                    pmode_a = "NEG_A_MULT_B";
+                    pmode_b = "NEG_B_MULT_A";
+                }
+            } else if (psub) {
                 // Subtract: bare product only.
                 if (st.add == nullptr) {
                     pmode_a = "PREADD_A_SUB_B";
@@ -961,9 +1087,11 @@ struct QlDspV4Pass : public Pass {
                        orient(DSPV4_A_WIDTH)) {
                 // Pre-adder result on the A path: AD keeps all 32 bits.
                 mode_name = pmode_a;
-                ma = x; a_signed = xs;
+                ma = pneg ? p0 : x; a_signed = pneg ? p0_signed : xs;
                 mb = other; b_signed = other_signed;
-                md = d; d_signed = ds;
+                // A negate has no D term -- INMODE gates it off -- so the port
+                // stays unwired rather than being driven with a stray value.
+                if (!pneg) { md = d; d_signed = ds; }
                 padd_cell = p;
             } else if (w_sum <= DSPV4_AD_B_WIDTH &&
                        fits(GetSize(other), other_signed, DSPV4_A_WIDTH) &&
@@ -972,9 +1100,9 @@ struct QlDspV4Pass : public Pass {
                 // here, which is why this path is tried second and needs the
                 // tighter proof.
                 mode_name = pmode_b;
-                mb = x; b_signed = xs;
+                mb = pneg ? p0 : x; b_signed = pneg ? p0_signed : xs;
                 ma = other; a_signed = other_signed;
-                md = d; d_signed = ds;
+                if (!pneg) { md = d; d_signed = ds; }
                 padd_cell = p;
             } else {
                 absorb_stall["pre-adder sum may exceed the multiplier port"]++;
@@ -983,6 +1111,7 @@ struct QlDspV4Pass : public Pass {
                           "path once the other operand is placed\n",
                           log_id(st.mul), w_sum, DSPV4_AD_A_WIDTH,
                           DSPV4_AD_B_WIDTH);
+            }
             }
         }
 

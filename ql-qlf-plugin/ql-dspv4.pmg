@@ -43,6 +43,8 @@ state <bool> add_is_sub
 state <int> mul_nusers
 state <int> add_nusers
 state <int> mff_nusers
+state <int> padd_a_nusers
+state <int> padd_b_nusers
 
 // The multiply. Everything else hangs off this.
 //
@@ -84,11 +86,19 @@ endmatch
 // the shapes probed -- but items 9, 15 and 18 were all this assumption failing
 // in three different places, and the tolerant form costs nothing.
 match padd_a
-    select padd_a->type.in($add, $sub)
+    // $neg is the unary form: AD = 0 - A, which is NEG_*_MULT_*. It has no
+    // B port, so ql-dspv4.cc reads its single operand rather than two.
+    select padd_a->type.in($add, $sub, $neg)
     index <SigBit> port(padd_a, \Y)[0] === port(mul, \A)[0]
     filter GetSize(port(mul, \A)) >= GetSize(port(padd_a, \Y))
     filter port(mul, \A).extract(0, GetSize(port(padd_a, \Y))) == port(padd_a, \Y)
-    filter nusers(port(padd_a, \Y)) <= 2
+    // Bound 3, not 2, ONLY so the squaring shape can be seen: (m + x) * (m + x)
+    // has one sum feeding BOTH multiplier ports, so nusers is 3 and a bound of
+    // 2 refused it outright, leaving the adder in fabric. ql-dspv4.cc refuses
+    // any other 3-reader case -- the sum must leave on P, and a third reader
+    // would lose its driver.
+    filter nusers(port(padd_a, \Y)) <= 3
+    set padd_a_nusers nusers(port(padd_a, \Y))
     optional
 endmatch
 
@@ -97,11 +107,19 @@ endmatch
 // the shapes with one side null, which do fuse. Refusing rather than silently
 // picking one is what keeps the choice visible in the log.
 match padd_b
-    select padd_b->type.in($add, $sub)
+    // $neg is the unary form: AD = 0 - A, which is NEG_*_MULT_*. It has no
+    // B port, so ql-dspv4.cc reads its single operand rather than two.
+    select padd_b->type.in($add, $sub, $neg)
     index <SigBit> port(padd_b, \Y)[0] === port(mul, \B)[0]
     filter GetSize(port(mul, \B)) >= GetSize(port(padd_b, \Y))
     filter port(mul, \B).extract(0, GetSize(port(padd_b, \Y))) == port(padd_b, \Y)
-    filter nusers(port(padd_b, \Y)) <= 2
+    // Bound 3, not 2, ONLY so the squaring shape can be seen: (m + x) * (m + x)
+    // has one sum feeding BOTH multiplier ports, so nusers is 3 and a bound of
+    // 2 refused it outright, leaving the adder in fabric. ql-dspv4.cc refuses
+    // any other 3-reader case -- the sum must leave on P, and a third reader
+    // would lose its driver.
+    filter nusers(port(padd_b, \Y)) <= 3
+    set padd_b_nusers nusers(port(padd_b, \Y))
     optional
 endmatch
 
