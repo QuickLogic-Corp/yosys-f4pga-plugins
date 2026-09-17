@@ -113,6 +113,12 @@ static const int DSPV4_MAX_CE_SIGNALS = 3;
 // A design that registers C more deeply keeps the surplus in fabric.
 static const int DSPV4_MAX_C_STAGES = 1;
 
+// The pre-adder's D operand has a single register (DREG), like C. Phase 4
+// step 5: without this the D-side register stays in fabric, which is the whole
+// gap against Synplify on the *_regin pre-adder designs -- it absorbs the bank,
+// we left 15-65 flops outside.
+static const int DSPV4_MAX_D_STAGES = 1;
+
 // Extend a signal to a port width, honouring the source cell's signedness.
 // IN-9: operands narrower than the port are extended, not silently truncated.
 static SigSpec dspv4_fit(RTLIL::Module *module, SigSpec sig, int width,
@@ -890,10 +896,16 @@ struct QlDspV4Pass : public Pass {
             // orientation is not free and is chosen rather than assumed.
             SigSpec d, x;
             bool ds = false, xs = false;
+            bool psub = p->type == ID($sub);
             auto orient = [&](int x_port) {
                 d = p0; ds = p0_signed; x = p1; xs = p1_signed;
-                if (!fits(GetSize(x), xs, x_port) ||
-                    !fits(GetSize(d), ds, DSPV4_D_WIDTH)) {
+                // $add is commutative, so either operand may take the dedicated
+                // D port and the orientation is chosen to fit. $sub is NOT:
+                // D - X is ordered, so D is the adder's A and X its B, and a
+                // swap here would silently compute X - D instead. If that
+                // orientation does not fit, the shape is refused.
+                if (!psub && (!fits(GetSize(x), xs, x_port) ||
+                              !fits(GetSize(d), ds, DSPV4_D_WIDTH))) {
                     std::swap(d, x);
                     std::swap(ds, xs);
                 }
@@ -901,17 +913,54 @@ struct QlDspV4Pass : public Pass {
                        fits(GetSize(d), ds, DSPV4_D_WIDTH);
             };
 
-            if (st.add != nullptr) {
-                absorb_stall["pre-adder with a fused adder is not inferred yet "
-                             "(Phase 4 step 2)"]++;
-            } else if (p->type == ID($sub)) {
-                absorb_stall["pre-adder subtract direction is not inferred yet "
-                             "(Phase 4 step 2)"]++;
+            // The pre-adder front combines with the ordinary back-end: the mode
+            // name is (path, direction, back-end). Only the combinations the
+            // mode table actually enumerates are reachable -- CR-3, control
+            // words come from the table, never assembled here.
+            //
+            // The table is asymmetric on purpose: it spells out the subtract
+            // direction only for the bare product (PREADD_*_SUB_*). The +C / +P
+            // forms exist once each, on the add encoding (INMODE[2] set,
+            // INMODE[3] clear). So `(D - A) * B + C` has no control word, and
+            // synthesising it would mean setting INMODE[3] on a word the
+            // spreadsheet never validated. Refused rather than assembled.
+            const char *pmode_a = nullptr, *pmode_b = nullptr;
+            if (psub) {
+                // Subtract: bare product only.
+                if (st.add == nullptr) {
+                    pmode_a = "PREADD_A_SUB_B";
+                    pmode_b = "PREADD_B_SUB_A";
+                }
+            } else if (st.add == nullptr) {
+                pmode_a = "PREADD_A_MULT_B";
+                pmode_b = "PREADD_B_MULT_A";
+            } else if (!strcmp(mode_name, "MULT_ADD_C")) {
+                pmode_a = "PREADD_A_MULT_B_C";
+                pmode_b = "PREADD_B_MULT_A_C";
+            } else if (!strcmp(mode_name, "MULT_ACC")) {
+                pmode_a = "PREADD_A_MACC";
+                pmode_b = "PREADD_B_MACC";
+            } else if (!strcmp(mode_name, "MULT_ACC_C")) {
+                pmode_a = "PREADD_A_MACC_C";
+                pmode_b = "PREADD_B_MACC_C";
+            }
+
+            if (pmode_a == nullptr) {
+                // Reached for a subtract with any back-end, and for the
+                // subtract/reverse-subtract ALU directions on the product --
+                // none of which the table pairs with a pre-adder.
+                absorb_stall[psub ? "pre-adder subtract direction has no control "
+                                    "word with a fused adder"
+                                  : "pre-adder with this ALU direction has no "
+                                    "control word"]++;
+                log_debug("  %s: pre-adder not fused -- no control word for a "
+                          "%s pre-adder feeding %s\n",
+                          log_id(st.mul), psub ? "subtract" : "add", mode_name);
             } else if (w_sum <= DSPV4_AD_A_WIDTH &&
                        fits(GetSize(other), other_signed, DSPV4_B_WIDTH) &&
                        orient(DSPV4_A_WIDTH)) {
-                // (D + A) * B -- the sum keeps all 32 bits of AD.
-                mode_name = "PREADD_A_MULT_B";
+                // Pre-adder result on the A path: AD keeps all 32 bits.
+                mode_name = pmode_a;
                 ma = x; a_signed = xs;
                 mb = other; b_signed = other_signed;
                 md = d; d_signed = ds;
@@ -919,9 +968,10 @@ struct QlDspV4Pass : public Pass {
             } else if (w_sum <= DSPV4_AD_B_WIDTH &&
                        fits(GetSize(other), other_signed, DSPV4_A_WIDTH) &&
                        orient(DSPV4_B_WIDTH)) {
-                // (D + B) * A -- AD is truncated to 18 bits here, which is why
-                // this path is tried second and needs the tighter proof.
-                mode_name = "PREADD_B_MULT_A";
+                // Pre-adder result on the B path: AD is truncated to 18 bits
+                // here, which is why this path is tried second and needs the
+                // tighter proof.
+                mode_name = pmode_b;
                 mb = x; b_signed = xs;
                 ma = other; a_signed = other_signed;
                 md = d; d_signed = ds;
@@ -1028,8 +1078,8 @@ struct QlDspV4Pass : public Pass {
         // to agree on both. Enables are per-port (CEA / CEB / CEC / CEP) and
         // need not agree -- but at most three distinct enable signals can reach
         // the cell, see the eviction loop below.
-        int na = 0, nb = 0, nc = 0;
-        FlopChain ca, cb, cc;
+        int na = 0, nb = 0, nc = 0, nd = 0;
+        FlopChain ca, cb, cc, cd;
         {
             // The M bank shares RSTN with the operand banks, so when an M
             // register is being absorbed it -- not the output flop, whose reset
@@ -1075,9 +1125,13 @@ struct QlDspV4Pass : public Pass {
                     }
                 }
             }
+            if (padd_cell != nullptr)
+                cd = collect_flops(module, md, DSPV4_MAX_D_STAGES, seed_clk,
+                                   seed_rst, seed_rst_inv, seeded, "D", st.mul);
             na = GetSize(ca.stage_flops);
             nb = GetSize(cb.stage_flops);
             nc = GetSize(cc.stage_flops);
+            nd = GetSize(cd.stage_flops);
 
             // Shared CLK and RSTN: a chain that disagrees with another absorbed
             // chain on either cannot go in. Compared as raw signal plus
@@ -1093,6 +1147,14 @@ struct QlDspV4Pass : public Pass {
                 nc = 0;
             if (nc > 0 && nb > 0 && !agrees(cb, cc))
                 nc = 0;
+            // D shares the one CLK and ARSTN with every other bank, so a chain
+            // that disagrees cannot go in -- same rule, same reason as C.
+            if (nd > 0 && na > 0 && !agrees(ca, cd))
+                nd = 0;
+            if (nd > 0 && nb > 0 && !agrees(cb, cd))
+                nd = 0;
+            if (nd > 0 && nc > 0 && !agrees(cc, cd))
+                nd = 0;
 
             // M shares CLK and RSTN with the operand banks, so it has to agree
             // with whichever chains survived. It seeded them, so this only fires
@@ -1199,8 +1261,15 @@ struct QlDspV4Pass : public Pass {
         // unstated register parameter is exactly the kind of silent default
         // BR-6 exists to catch.
         if (padd_cell != nullptr) {
+            // When a D-side register was absorbed the port takes that stage's
+            // D, exactly as A/B/C do -- the DSP's own bank then reproduces the
+            // register the RTL asked for, and the fabric flop goes away.
+            if (nd > 0)
+                md = cd.stage_d[nd - 1];
             cell->setPort(ID(D), dspv4_fit(module, md, DSPV4_D_WIDTH, d_signed));
-            cell->setParam(ID(DREG), RTLIL::Const(0, 1));
+            // Single stage, so a plain flag rather than the (n>=2, n>=1) pair
+            // the two-stage operand ports use.
+            cell->setParam(ID(DREG), RTLIL::Const(nd >= 1 ? 1 : 0, 1));
         }
 
         cell->setPort(ID(P), dspv4_wide_out(module, result, DSPV4_P_WIDTH));
@@ -1259,7 +1328,7 @@ struct QlDspV4Pass : public Pass {
             if (any.arst != SigSpec(State::S1))
                 cell->setPort(ID(RSTN),
                               resolve(module, any.arst, any.arst_inv));
-            absorbed_regs += na + nb + nc;
+            absorbed_regs += na + nb + nc + nd;
         }
 
         // The M register may be the only one absorbed -- no operand chains, no
@@ -1387,6 +1456,7 @@ struct QlDspV4Pass : public Pass {
         claim_stages(ca, na);
         claim_stages(cb, nb);
         claim_stages(cc, nc);
+        claim_stages(cd, nd);
         return true;
     }
 
