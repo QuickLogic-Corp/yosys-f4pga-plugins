@@ -60,6 +60,8 @@ TESTS = \
 	qlf_k6n10f/dspv4_mult_add_evencoef \
 	qlf_k6n10f/dspv4_preadd_a \
 	qlf_k6n10f/dspv4_preadd_addc \
+	qlf_k6n10f/dspv4_preadd_adreg \
+	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \

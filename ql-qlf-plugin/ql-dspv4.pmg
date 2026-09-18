@@ -55,6 +55,46 @@ match mul
     set mul_nusers nusers(port(mul, \Y))
 endmatch
 
+// Optional register between the pre-adder and the multiplier -- the DSP's AD
+// stage (ADREG). Phase 4 step 5, the other half of DREG.
+//
+//     always @(posedge clk) ad <= m + x;
+//     assign p = ad * b;
+//
+// Matched BEFORE padd_* because padd_* has to index through it: with this flop
+// present the multiplier operand is the flop's Q, not the adder's Y, so an
+// index straight onto the adder finds nothing and the pre-adder is not inferred
+// at all -- the addition stays in fabric with no refusal logged, because the
+// pattern was never offered the shape.
+//
+// $dffe / $sdffe are excluded: QL_DSP4_AD_DFFR_32 has no clock enable, the same
+// reason the M bank excludes them.
+match adff_a
+    // $dff only. QL_DSP4_AD_DFFR_32 takes the cell-wide RSTN, which this
+    // path does not wire, so absorbing a resettable flop would drop its
+    // reset silently -- measured as 158/300 wrong vectors before this
+    // restriction. A reset AD register stays in fabric instead.
+    select adff_a->type.in($dff)
+    select param(adff_a, \CLK_POLARITY).as_bool()
+    index <SigBit> port(adff_a, \Q)[0] === port(mul, \A)[0]
+    filter GetSize(port(adff_a, \Q)) >= GetSize(port(mul, \A))
+    filter nusers(port(adff_a, \Q)) <= 2
+    optional
+endmatch
+
+match adff_b
+    // $dff only. QL_DSP4_AD_DFFR_32 takes the cell-wide RSTN, which this
+    // path does not wire, so absorbing a resettable flop would drop its
+    // reset silently -- measured as 158/300 wrong vectors before this
+    // restriction. A reset AD register stays in fabric instead.
+    select adff_b->type.in($dff)
+    select param(adff_b, \CLK_POLARITY).as_bool()
+    index <SigBit> port(adff_b, \Q)[0] === port(mul, \B)[0]
+    filter GetSize(port(adff_b, \Q)) >= GetSize(port(mul, \B))
+    filter nusers(port(adff_b, \Q)) <= 2
+    optional
+endmatch
+
 // Optional pre-adder feeding a multiply operand -- the DSP's own front-end
 // adder, which computes D +/- (A|B) and hands the result to one multiplier port.
 // Phase 4 (aurora2 docs/specs/dspv4-preadder-inference/).
@@ -89,9 +129,9 @@ match padd_a
     // $neg is the unary form: AD = 0 - A, which is NEG_*_MULT_*. It has no
     // B port, so ql-dspv4.cc reads its single operand rather than two.
     select padd_a->type.in($add, $sub, $neg)
-    index <SigBit> port(padd_a, \Y)[0] === port(mul, \A)[0]
-    filter GetSize(port(mul, \A)) >= GetSize(port(padd_a, \Y))
-    filter port(mul, \A).extract(0, GetSize(port(padd_a, \Y))) == port(padd_a, \Y)
+    index <SigBit> port(padd_a, \Y)[0] === (adff_a != nullptr ? port(adff_a, \D)[0] : port(mul, \A)[0])
+    filter GetSize(adff_a != nullptr ? port(adff_a, \D) : port(mul, \A)) >= GetSize(port(padd_a, \Y))
+    filter (adff_a != nullptr ? port(adff_a, \D) : port(mul, \A)).extract(0, GetSize(port(padd_a, \Y))) == port(padd_a, \Y)
     // Bound 3, not 2, ONLY so the squaring shape can be seen: (m + x) * (m + x)
     // has one sum feeding BOTH multiplier ports, so nusers is 3 and a bound of
     // 2 refused it outright, leaving the adder in fabric. ql-dspv4.cc refuses
@@ -110,9 +150,9 @@ match padd_b
     // $neg is the unary form: AD = 0 - A, which is NEG_*_MULT_*. It has no
     // B port, so ql-dspv4.cc reads its single operand rather than two.
     select padd_b->type.in($add, $sub, $neg)
-    index <SigBit> port(padd_b, \Y)[0] === port(mul, \B)[0]
-    filter GetSize(port(mul, \B)) >= GetSize(port(padd_b, \Y))
-    filter port(mul, \B).extract(0, GetSize(port(padd_b, \Y))) == port(padd_b, \Y)
+    index <SigBit> port(padd_b, \Y)[0] === (adff_b != nullptr ? port(adff_b, \D)[0] : port(mul, \B)[0])
+    filter GetSize(adff_b != nullptr ? port(adff_b, \D) : port(mul, \B)) >= GetSize(port(padd_b, \Y))
+    filter (adff_b != nullptr ? port(adff_b, \D) : port(mul, \B)).extract(0, GetSize(port(padd_b, \Y))) == port(padd_b, \Y)
     // Bound 3, not 2, ONLY so the squaring shape can be seen: (m + x) * (m + x)
     // has one sum feeding BOTH multiplier ports, so nusers is 3 and a bound of
     // 2 refused it outright, leaving the adder in fabric. ql-dspv4.cc refuses

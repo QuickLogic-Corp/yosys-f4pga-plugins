@@ -878,6 +878,7 @@ struct QlDspV4Pass : public Pass {
         // +C / +P forms are step 2; they are matched and REFUSED rather than
         // ignored, so the log says why a shape the DSP can do stayed in fabric.
         RTLIL::Cell *padd_cell = nullptr;
+        RTLIL::Cell *adff_cell = nullptr;
         SigSpec md;
         bool d_signed = false;
 
@@ -899,8 +900,7 @@ struct QlDspV4Pass : public Pass {
             // A * A. No pre-adder involved, so nothing to absorb and no adder
             // to save -- the gain is that one multiplier port is left free,
             // which the mode table expresses as AD feeding both.
-            const char *m = st.add == nullptr      ? "SQ_A_ONLY"
-                          : nullptr;
+            const char *m = st.add == nullptr ? "SQ_A_ONLY" : nullptr;
             if (m == nullptr) {
                 absorb_stall["squaring with an ALU term has no control word"]++;
             } else if (fits(GetSize(ma), a_signed, DSPV4_A_WIDTH)) {
@@ -940,6 +940,7 @@ struct QlDspV4Pass : public Pass {
                     (sq_neg || fits(GetSize(p0), p0s, DSPV4_D_WIDTH)) &&
                     (sq_neg || fits(GetSize(p1), p1s, DSPV4_A_WIDTH))) {
                     mode_name = m;
+                    adff_cell = st.adff_a != nullptr ? st.adff_a : st.adff_b;
                     md = p0; d_signed = p0s;
                     ma = p1; a_signed = p1s;
                     mb = p1; b_signed = p1s;
@@ -959,6 +960,7 @@ struct QlDspV4Pass : public Pass {
         } else if (st.padd_a != nullptr || st.padd_b != nullptr) {
             RTLIL::Cell *p = st.padd_a != nullptr ? st.padd_a : st.padd_b;
             bool sum_on_a = st.padd_a != nullptr;
+            RTLIL::Cell *adff = sum_on_a ? st.adff_a : st.adff_b;
             // The pmg bound was relaxed to 3 so the squaring shape could be
             // seen. Squaring is handled above, so a third reader here is a
             // genuine outside consumer: absorbing the adder would make its sum
@@ -1093,6 +1095,7 @@ struct QlDspV4Pass : public Pass {
                 // stays unwired rather than being driven with a stray value.
                 if (!pneg) { md = d; d_signed = ds; }
                 padd_cell = p;
+                adff_cell = adff;
             } else if (w_sum <= DSPV4_AD_B_WIDTH &&
                        fits(GetSize(other), other_signed, DSPV4_A_WIDTH) &&
                        orient(DSPV4_B_WIDTH)) {
@@ -1104,6 +1107,7 @@ struct QlDspV4Pass : public Pass {
                 ma = other; a_signed = other_signed;
                 if (!pneg) { md = d; d_signed = ds; }
                 padd_cell = p;
+                adff_cell = adff;
             } else {
                 absorb_stall["pre-adder sum may exceed the multiplier port"]++;
                 log_debug("  %s: pre-adder not fused -- D +/- X needs %d bits, "
@@ -1399,6 +1403,11 @@ struct QlDspV4Pass : public Pass {
             // Single stage, so a plain flag rather than the (n>=2, n>=1) pair
             // the two-stage operand ports use.
             cell->setParam(ID(DREG), RTLIL::Const(nd >= 1 ? 1 : 0, 1));
+            // ADREG is the pre-adder's OUTPUT register. Single stage, like
+            // DREG, and absorbed only when the flop drives nothing but this
+            // multiply -- the pmg fanout filter enforces that.
+            cell->setParam(ID(ADREG),
+                           RTLIL::Const(adff_cell != nullptr ? 1 : 0, 1));
         }
 
         cell->setPort(ID(P), dspv4_wide_out(module, result, DSPV4_P_WIDTH));
@@ -1529,6 +1538,10 @@ struct QlDspV4Pass : public Pass {
         // up undriven.
         if (padd_cell)
             pm.autoremove(padd_cell);
+        if (adff_cell) {
+            pm.autoremove(adff_cell);
+            absorbed.insert(adff_cell);
+        }
         if (mff_cell) {
             pm.autoremove(mff_cell);
             // Same reason as the output flop below: autoremove is deferred to the
