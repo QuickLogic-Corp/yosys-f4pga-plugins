@@ -1574,7 +1574,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                     // label) is left completely untouched.
                     // ---------------------------------------------------------------
                     run("design -push");                                    // save the real design, start a scratch one
-                    run("read_blif " + blif_file);                          // reload our BLIF: aliases -> identity $lut cells
+                    run("read_blif -wideports " + blif_file);               // reload our BLIF: aliases -> identity $lut cells
                     run("opt_expr");                                        // collapse the identity $luts to connections
                     run("opt_clean -purge");                                // merge toward the output-port names (drops buffers)
                     run(stringf("write_blif %s %s", blif_flags, blif_file.c_str())); // rewrite the buffer-free BLIF (same flags as the first write)
