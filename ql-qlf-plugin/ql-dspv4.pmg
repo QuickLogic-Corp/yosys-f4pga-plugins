@@ -205,6 +205,44 @@ match mff
     optional
 endmatch
 
+// Optional negate on the product -- `p = -(x * x)`. Phase 4, REQ-B3.
+//
+// The ALU computes Z - (X + Y + CIN). With Z = 0 and the multiplier on X:Y,
+// ALUMODE=11 gives P = -M for free, in the cell that already holds the
+// multiply. Without this the negate is a fabric carry chain the width of the
+// product hanging off a DSP that could have done it.
+//
+// The mode is SQ_A_NEG (5, 3, 0, ..., AMULTSEL=BMULTSEL=1), and the SQUARING
+// form is the only one there is: the spreadsheet has no alumode=3 control
+// word with AMULTSEL=BMULTSEL=0, so a negated product of two DIFFERENT
+// operands cannot be expressed. ql-dspv4.cc refuses everything but x * x and
+// lets the matcher offer the shape again without this match, which is how
+// `-(a * b)` still gets its DSP with only the negate left soft.
+//
+// `0 - x*x` does not arrive here. yosys leaves that as a $sub with a constant
+// zero operand, which the `add` match below already takes as MULT_SUB_C -- one
+// cell, at the cost of the C port. Only the unary form survives as $neg.
+//
+// Indexed straight onto the product, deliberately not through `mff`. With no
+// adder the M register is not absorbable (emit() drops mff_cell unless `add`
+// matched, because the product register belongs in P), so absorbing a negate
+// that reads the REGISTERED product while the DSP negates the unregistered one
+// would shift the result by a cycle. When an M register is present this match
+// simply does not fire, and pmgen still offers the enumeration without it.
+//
+// Same containment tolerance as `mff` and `add`: wreduce narrows the multiply
+// and leaves the negate's operand sign-padded above it.
+match mneg
+    select mneg->type.in($neg)
+    index <SigBit> port(mneg, \A)[0] === port(mul, \Y)[0]
+    filter GetSize(port(mneg, \A)) >= GetSize(port(mul, \Y))
+    filter port(mneg, \A).extract(0, GetSize(port(mul, \Y))) == port(mul, \Y)
+    // Absorbing the negate makes the product internal to the DSP, so it must
+    // have exactly one reader -- this cell.
+    filter mul_nusers <= 2
+    optional
+endmatch
+
 // Optional add/sub consuming the product. `choice` covers commutativity; for
 // $sub the side matters and is recorded, because C - A*B has a control word
 // (MULT_SUB_C) while A*B - C does not -- see the classification.
@@ -292,8 +330,10 @@ endmatch
 // cascade_* designs unroutable.
 //
 // D comes from the last cell in the chain: `acc` for the three-input form,
-// otherwise `add`, otherwise the multiply itself. The bare-multiply branch is
-// what lets `p <= a * b` be absorbed.
+// otherwise `add`, otherwise `mneg`, otherwise the multiply itself. The
+// bare-multiply branch is what lets `p <= a * b` be absorbed, and the `mneg`
+// branch is the same thing for `p <= -(x * x)` -- without it the negate is
+// absorbed but its output register is not, and PREG is left on the table.
 //
 // This index line is long on purpose: pmgen parses one statement per line, so
 // wrapping it turns the continuation into an unrecognised statement.
@@ -308,7 +348,7 @@ endmatch
 match ff
     select ff->type.in($dff, $dffe, $sdff, $sdffe)
     select param(ff, \CLK_POLARITY).as_bool()
-    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
+    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : mneg != nullptr ? port(mneg, \Y) : port(mul, \Y))
     // The value this flop registers must have exactly one reader -- this flop.
     // Absorbing it makes the DSP drive Q instead of D, so any other reader of D
     // loses its driver. When `add` or `acc` matched, their own nusers selects

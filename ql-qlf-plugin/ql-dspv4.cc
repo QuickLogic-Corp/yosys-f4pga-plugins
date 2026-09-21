@@ -52,6 +52,18 @@ static const Dspv4Mode &dspv4_mode(const char *name)
               name);
 }
 
+// Does a `w`-bit operand fit a `port`-bit DSP port? An unsigned value needs one
+// bit of headroom, because the DSP's multiplier ports are signed: the high bit
+// is the sign, so an unsigned operand may only occupy port-1 of them.
+//
+// File scope rather than a lambda inside emit(): the SQ_A_NEG decision needs it
+// before the operand block runs, and there were already two byte-identical
+// copies of it.
+static bool dspv4_fits(int w, bool sgn, int port)
+{
+    return w <= (sgn ? port : port - 1);
+}
+
 // The pre-adder subtracts in two's complement and yields a SIGNED result, while
 // an unsigned RTL subtract wraps: for m < x, RTL gives (m - x) mod 2^w and the
 // DSP gives the negative value. They differ on about half of all operand pairs,
@@ -574,9 +586,60 @@ struct QlDspV4Pass : public Pass {
             return false;
         }
 
+        // A negate on the product, absorbed as SQ_A_NEG -- ALUMODE=11 makes the
+        // ALU compute 0 - M. Phase 4, REQ-B3.
+        //
+        // Decided HERE rather than down in the squaring block, because the
+        // negate changes which cell drives P and `out_cell` is settled on the
+        // next line. Setting it there and patching out_cell afterwards is the
+        // shape of the bug that made the first attempt at this leave the output
+        // net with no driver at all: the mode said "negated" while P still came
+        // off the multiply, or the reverse.
+        //
+        // Every condition is checked up front, so this is either a complete
+        // SQ_A_NEG or the match is refused and the matcher offers the same
+        // shape without the negate -- a plain SQ_A_ONLY with the negate soft,
+        // which is exactly the behaviour before this requirement landed.
+        RTLIL::Cell *neg_cell = nullptr;
+        if (st.mneg != nullptr) {
+            SigSpec na = sigmapper(st.mul->getPort(ID::A));
+            SigSpec nb = sigmapper(st.mul->getPort(ID::B));
+            // SQ_A_NEG is opmode 5 / inmode 0 / preaddinsel 0 with AMULTSEL and
+            // BMULTSEL both set: Z is zero, D is gated off, and one value feeds
+            // both multiplier ports. So no ALU term, no pre-adder, and the two
+            // operands must be the same signal.
+            //
+            // The spreadsheet has no alumode=3 word with AMULTSEL=BMULTSEL=0,
+            // so `-(a * b)` for distinct a and b genuinely cannot be expressed
+            // -- it is not an omission here.
+            if (st.add != nullptr || acc_cell != nullptr) {
+                absorb_stall["a negated product with an ALU term has no "
+                             "control word"]++;
+            } else if (st.padd_a != nullptr || st.padd_b != nullptr) {
+                absorb_stall["a negated pre-adder product has no control "
+                             "word"]++;
+            } else if (na != nb) {
+                absorb_stall["only a negated SQUARE has a control word, not a "
+                             "negated product of two operands"]++;
+            } else if (!dspv4_fits(GetSize(st.mul->getPort(ID::A)),
+                             st.mul->getParam(ID::A_SIGNED).as_bool(),
+                             DSPV4_A_WIDTH)) {
+                absorb_stall["negated square is wider than the multiplier "
+                             "port"]++;
+            } else {
+                neg_cell = st.mneg;
+            }
+            if (neg_cell == nullptr) {
+                log_debug("  %s: negate not fused -- no SQ_A_NEG for this "
+                          "shape\n", log_id(st.mul));
+                return false;
+            }
+        }
+
         // Which cell's output this DSP actually produces.
         RTLIL::Cell *out_cell = acc_cell != nullptr ? acc_cell
-                              : st.add != nullptr   ? st.add : st.mul;
+                              : st.add != nullptr   ? st.add
+                              : neg_cell != nullptr ? neg_cell : st.mul;
         SigSpec dsp_result = out_cell->getPort(ID::Y);
 
         // The DSP produces 50 bits of P and nothing above it. A wider result
@@ -816,7 +879,8 @@ struct QlDspV4Pass : public Pass {
         // product, `acc` consumes `add`'s sum, and an absorbed flop consumes
         // whichever of them produced the result. Refusing here degrades the
         // shape by one step instead of pushing the multiply to fabric.
-        if (st.add != nullptr && dspv4_sig_kept(st.mul->getPort(ID::Y))) {
+        if ((st.add != nullptr || neg_cell != nullptr) &&
+            dspv4_sig_kept(st.mul->getPort(ID::Y))) {
             log_debug("  %s: not fused -- the product is marked keep\n",
                       log_id(st.mul));
             return false;
@@ -859,7 +923,6 @@ struct QlDspV4Pass : public Pass {
         bool a_signed = st.mul->getParam(ID::A_SIGNED).as_bool();
         bool b_signed = st.mul->getParam(ID::B_SIGNED).as_bool();
 
-        auto fits = [](int w, bool sgn, int port) { return w <= (sgn ? port : port - 1); };
 
         // ------------------------------------------------------------------
         // Phase 4 -- the pre-adder.
@@ -900,10 +963,18 @@ struct QlDspV4Pass : public Pass {
             // A * A. No pre-adder involved, so nothing to absorb and no adder
             // to save -- the gain is that one multiplier port is left free,
             // which the mode table expresses as AD feeding both.
-            const char *m = st.add == nullptr ? "SQ_A_ONLY" : nullptr;
+            //
+            // With a negate absorbed it is the same shape through ALUMODE=11,
+            // so P comes out as -(A*A). neg_cell is only non-null when every
+            // condition for that was met up at the out_cell decision, including
+            // this same width test -- so the two cannot disagree.
+            const char *m = st.add == nullptr
+                                ? (neg_cell != nullptr ? "SQ_A_NEG"
+                                                       : "SQ_A_ONLY")
+                                : nullptr;
             if (m == nullptr) {
                 absorb_stall["squaring with an ALU term has no control word"]++;
-            } else if (fits(GetSize(ma), a_signed, DSPV4_A_WIDTH)) {
+            } else if (dspv4_fits(GetSize(ma), a_signed, DSPV4_A_WIDTH)) {
                 mode_name = m;
                 mb = ma; b_signed = a_signed;  // same value, both ports
             }
@@ -937,8 +1008,8 @@ struct QlDspV4Pass : public Pass {
                 // Both ports take AD, so the tighter B-path ceiling applies:
                 // the 18-bit port truncates whatever the A path would keep.
                 if (w_sum <= DSPV4_AD_B_WIDTH &&
-                    (sq_neg || fits(GetSize(p0), p0s, DSPV4_D_WIDTH)) &&
-                    (sq_neg || fits(GetSize(p1), p1s, DSPV4_A_WIDTH))) {
+                    (sq_neg || dspv4_fits(GetSize(p0), p0s, DSPV4_D_WIDTH)) &&
+                    (sq_neg || dspv4_fits(GetSize(p1), p1s, DSPV4_A_WIDTH))) {
                     mode_name = m;
                     adff_cell = st.adff_a != nullptr ? st.adff_a : st.adff_b;
                     md = p0; d_signed = p0s;
@@ -1015,7 +1086,7 @@ struct QlDspV4Pass : public Pass {
                     // Nothing to orient: the single operand goes to the
                     // multiplier port and D is gated off.
                     x = p0; xs = p0_signed;
-                    return fits(GetSize(x), xs, x_port);
+                    return dspv4_fits(GetSize(x), xs, x_port);
                 }
                 d = p0; ds = p0_signed; x = p1; xs = p1_signed;
                 // $add is commutative, so either operand may take the dedicated
@@ -1023,13 +1094,13 @@ struct QlDspV4Pass : public Pass {
                 // D - X is ordered, so D is the adder's A and X its B, and a
                 // swap here would silently compute X - D instead. If that
                 // orientation does not fit, the shape is refused.
-                if (!psub && (!fits(GetSize(x), xs, x_port) ||
-                              !fits(GetSize(d), ds, DSPV4_D_WIDTH))) {
+                if (!psub && (!dspv4_fits(GetSize(x), xs, x_port) ||
+                              !dspv4_fits(GetSize(d), ds, DSPV4_D_WIDTH))) {
                     std::swap(d, x);
                     std::swap(ds, xs);
                 }
-                return fits(GetSize(x), xs, x_port) &&
-                       fits(GetSize(d), ds, DSPV4_D_WIDTH);
+                return dspv4_fits(GetSize(x), xs, x_port) &&
+                       dspv4_fits(GetSize(d), ds, DSPV4_D_WIDTH);
             };
 
             // The pre-adder front combines with the ordinary back-end: the mode
@@ -1085,7 +1156,7 @@ struct QlDspV4Pass : public Pass {
                           "%s pre-adder feeding %s\n",
                           log_id(st.mul), psub ? "subtract" : "add", mode_name);
             } else if (w_sum <= DSPV4_AD_A_WIDTH &&
-                       fits(GetSize(other), other_signed, DSPV4_B_WIDTH) &&
+                       dspv4_fits(GetSize(other), other_signed, DSPV4_B_WIDTH) &&
                        orient(DSPV4_A_WIDTH)) {
                 // Pre-adder result on the A path: AD keeps all 32 bits.
                 mode_name = pmode_a;
@@ -1097,7 +1168,7 @@ struct QlDspV4Pass : public Pass {
                 padd_cell = p;
                 adff_cell = adff;
             } else if (w_sum <= DSPV4_AD_B_WIDTH &&
-                       fits(GetSize(other), other_signed, DSPV4_A_WIDTH) &&
+                       dspv4_fits(GetSize(other), other_signed, DSPV4_A_WIDTH) &&
                        orient(DSPV4_B_WIDTH)) {
                 // Pre-adder result on the B path: AD is truncated to 18 bits
                 // here, which is why this path is tried second and needs the
@@ -1119,10 +1190,10 @@ struct QlDspV4Pass : public Pass {
             }
         }
 
-        bool direct = fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) &&
-                      fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
-        bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) &&
-                       fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
+        bool direct = dspv4_fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) &&
+                      dspv4_fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
+        bool swapped = dspv4_fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) &&
+                       dspv4_fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
         if (padd_cell != nullptr) {
             // The pre-adder pinned which operand goes where -- the mode name
             // encodes it. Swapping now would move the sum off the port its mode
@@ -1532,6 +1603,12 @@ struct QlDspV4Pass : public Pass {
         pm.autoremove(st.mul);
         if (st.add)
             pm.autoremove(st.add);
+        // Only when SQ_A_NEG was actually emitted. neg_cell is null for every
+        // shape the mode table cannot express, and there the $neg has to stay:
+        // the DSP produces the un-negated product and something still has to
+        // negate it.
+        if (neg_cell)
+            pm.autoremove(neg_cell);
         // Only the pre-adder we actually folded in. When both sides matched, or
         // the shape was refused above, padd_cell is null and the $add stays --
         // removing a cell whose value the DSP does not compute is how a net ends
@@ -2017,11 +2094,10 @@ struct QlDspV4Pass : public Pass {
             bool o_signed = mul->getParam(op_port == ID::A ? ID::A_SIGNED
                                                            : ID::B_SIGNED)
                                 .as_bool();
-            auto fits = [](int w, bool s, int p) { return w <= (s ? p : p - 1); };
-            if (!((fits(wc, c_signed, DSPV4_A_WIDTH) &&
-                   fits(wo, o_signed, DSPV4_B_WIDTH)) ||
-                  (fits(wc, c_signed, DSPV4_B_WIDTH) &&
-                   fits(wo, o_signed, DSPV4_A_WIDTH)))) {
+            if (!((dspv4_fits(wc, c_signed, DSPV4_A_WIDTH) &&
+                   dspv4_fits(wo, o_signed, DSPV4_B_WIDTH)) ||
+                  (dspv4_fits(wc, c_signed, DSPV4_B_WIDTH) &&
+                   dspv4_fits(wo, o_signed, DSPV4_A_WIDTH)))) {
                 log_debug("  %s: coefficient not widened by %d bit(s) -- %dx%d "
                           "would no longer fit the %dx%d ports, and the multiply "
                           "is better off soft-shifted than soft entirely\n",
