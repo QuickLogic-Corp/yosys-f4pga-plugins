@@ -845,14 +845,15 @@ struct QlDspV4Pass : public Pass {
             SigSpec d, x;
             bool ds = false, xs = false;
             auto orient = [&](int x_port) {
-                d = p0; ds = p0_signed; x = p1; xs = p1_signed;
-                if (!fits(GetSize(x), xs, x_port) ||
-                    !fits(GetSize(d), ds, DSPV4_D_WIDTH)) {
+                d = p0;
+                ds = p0_signed;
+                x = p1;
+                xs = p1_signed;
+                if (!fits(GetSize(x), xs, x_port) || !fits(GetSize(d), ds, DSPV4_D_WIDTH)) {
                     std::swap(d, x);
                     std::swap(ds, xs);
                 }
-                return fits(GetSize(x), xs, x_port) &&
-                       fits(GetSize(d), ds, DSPV4_D_WIDTH);
+                return fits(GetSize(x), xs, x_port) && fits(GetSize(d), ds, DSPV4_D_WIDTH);
             };
 
             if (st.add != nullptr) {
@@ -861,39 +862,38 @@ struct QlDspV4Pass : public Pass {
             } else if (p->type == ID($sub)) {
                 absorb_stall["pre-adder subtract direction is not inferred yet "
                              "(Phase 4 step 2)"]++;
-            } else if (w_sum <= DSPV4_AD_A_WIDTH &&
-                       fits(GetSize(other), other_signed, DSPV4_B_WIDTH) &&
-                       orient(DSPV4_A_WIDTH)) {
+            } else if (w_sum <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && orient(DSPV4_A_WIDTH)) {
                 // (D + A) * B -- the sum keeps all 32 bits of AD.
                 mode_name = "PREADD_A_MULT_B";
-                ma = x; a_signed = xs;
-                mb = other; b_signed = other_signed;
-                md = d; d_signed = ds;
+                ma = x;
+                a_signed = xs;
+                mb = other;
+                b_signed = other_signed;
+                md = d;
+                d_signed = ds;
                 padd_cell = p;
-            } else if (w_sum <= DSPV4_AD_B_WIDTH &&
-                       fits(GetSize(other), other_signed, DSPV4_A_WIDTH) &&
-                       orient(DSPV4_B_WIDTH)) {
+            } else if (w_sum <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && orient(DSPV4_B_WIDTH)) {
                 // (D + B) * A -- AD is truncated to 18 bits here, which is why
                 // this path is tried second and needs the tighter proof.
                 mode_name = "PREADD_B_MULT_A";
-                mb = x; b_signed = xs;
-                ma = other; a_signed = other_signed;
-                md = d; d_signed = ds;
+                mb = x;
+                b_signed = xs;
+                ma = other;
+                a_signed = other_signed;
+                md = d;
+                d_signed = ds;
                 padd_cell = p;
             } else {
                 absorb_stall["pre-adder sum may exceed the multiplier port"]++;
                 log_debug("  %s: pre-adder not fused -- D +/- X needs %d bits, "
                           "which exceeds AD's %d on the A path and %d on the B "
                           "path once the other operand is placed\n",
-                          log_id(st.mul), w_sum, DSPV4_AD_A_WIDTH,
-                          DSPV4_AD_B_WIDTH);
+                          log_id(st.mul), w_sum, DSPV4_AD_A_WIDTH, DSPV4_AD_B_WIDTH);
             }
         }
 
-        bool direct = fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) &&
-                      fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
-        bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) &&
-                       fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
+        bool direct = fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) && fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
+        bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) && fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
         if (padd_cell != nullptr) {
             // The pre-adder pinned which operand goes where -- the mode name
             // encodes it. Swapping now would move the sum off the port its mode
