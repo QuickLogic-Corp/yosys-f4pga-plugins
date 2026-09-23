@@ -1796,7 +1796,7 @@ struct QlDspV4Pass : public Pass {
     // can say which one stalled. Absorption failures used to be entirely silent:
     // the walk just stopped, and the only visible effect was extra flops in
     // fabric -- the same class of invisible QoR loss IN-7 exists to prevent.
-    FlopChain collect_flops(RTLIL::Module *module, SigSpec sig, int max_depth,
+    FlopChain collect_flops(RTLIL::Module *, SigSpec sig, int max_depth,
                             const SigSpec &clk_seed, const SigSpec &rst_seed,
                             bool rst_seed_inv, bool seeded,
                             const char *port = "?", RTLIL::Cell *why_mul = nullptr)
