@@ -62,6 +62,9 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_addc \
 	qlf_k6n10f/dspv4_preadd_adreg \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
+	qlf_k6n10f/dspv4_preadd_a_sub \
+	qlf_k6n10f/dspv4_preadd_a_macc \
+	qlf_k6n10f/dspv4_preadd_order \
 	qlf_k6n10f/dspv4_sq_neg \
 	qlf_k6n10f/dspv4_sq_neg_distinct \
 	qlf_k6n10f/dspv4_xpath \
