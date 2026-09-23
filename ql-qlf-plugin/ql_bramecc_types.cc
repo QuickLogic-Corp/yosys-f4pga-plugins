@@ -111,15 +111,15 @@ struct QlBramEccTypesPass : public Pass {
 				}
 				bool sync_fifo = SYNC_FIFO1_i;
 
-				int RMODE_A1_i = mode_bits.extract(1, 3).as_int();
+				[[maybe_unused]] int RMODE_A1_i = mode_bits.extract(1, 3).as_int();
 				int RMODE_B1_i = mode_bits.extract(4, 3).as_int();
 				int WMODE_A1_i = mode_bits.extract(7, 3).as_int();
-				int WMODE_B1_i = mode_bits.extract(10, 3).as_int();
+				[[maybe_unused]] int WMODE_B1_i = mode_bits.extract(10, 3).as_int();
 
-				int RMODE_A2_i = mode_bits.extract(42, 3).as_int();
+				[[maybe_unused]] int RMODE_A2_i = mode_bits.extract(42, 3).as_int();
 				int RMODE_B2_i = mode_bits.extract(45, 3).as_int();
 				int WMODE_A2_i = mode_bits.extract(48, 3).as_int();
-				int WMODE_B2_i = mode_bits.extract(51, 3).as_int();
+				[[maybe_unused]] int WMODE_B2_i = mode_bits.extract(51, 3).as_int();
 
 				// TODO: should these be a warning or an error?
 				//if (RMODE_A1_i != WMODE_A1_i) {

@@ -988,7 +988,8 @@ struct QlDSPV2TypesPass : public Pass {
 	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing QL_DSPV2_TYPES pass.\n");
-		
+		extra_args(args, 1, design);
+
 		for (RTLIL::Module* module : design->selected_modules()){
 			SigMap sigmap(module);
 			dict<SigBit, State> const_drivers;

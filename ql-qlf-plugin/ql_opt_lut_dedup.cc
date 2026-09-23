@@ -12,6 +12,7 @@ struct OptLutDedupPass : public Pass {
                  RTLIL::Design *design) override
     {
         log_header(design, "Executing OPT_LUT_DEDUP pass.\n");
+        extra_args(args, 1, design);
 
         int total_removed = 0;
 
