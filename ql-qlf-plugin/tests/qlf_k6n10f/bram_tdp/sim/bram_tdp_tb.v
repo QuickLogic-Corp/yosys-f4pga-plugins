@@ -82,12 +82,12 @@ module TB;
 
 	always @ (posedge clk_a)
 	begin
-		if (error_a)
+		if (error_a && rce_a)
 			error_a_cnt <= error_a_cnt + 1'b1;
 	end
 	always @ (posedge clk_b)
 	begin
-		if (error_b)
+		if (error_b && rce_b)
 			error_b_cnt <= error_b_cnt + 1'b1;
 	end
 	// PORT A
