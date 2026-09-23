@@ -19,51 +19,43 @@ set -e
 
 source .github/workflows/common.sh
 
+if [ -z "${YOSYS_VERSION}" ] || [ -z "${YOSYS_PREFIX}" ]; then
+	echo "Missing \${YOSYS_VERSION} or \${YOSYS_PREFIX} env value"
+	exit 1
+fi
+
 ##########################################################################
 
-# Output status information.
 start_section Status
 (
     set +e
     set -x
     git status
-    git branch -v
-    git log -n 5 --graph
     git log --format=oneline -n 20 --graph
 )
 end_section
 
 ##########################################################################
 
-# Update submodules
-start_section Submodules
-(
-    git submodule update --init --recursive
-)
-end_section
-
-##########################################################################
-
-#Install yosys
+# Built from source rather than conda: aurora2 builds these plugins against its
+# yosys-gh submodule, and no conda channel publishes a matching Yosys.
 start_section Install-Yosys
-(
-    echo '================================='
-    echo 'Making env with Yosys and Surelog'
-    echo '================================='
-    make env
-    source env/conda/bin/activate yosys-plugins
-    conda list
-)
+if [ -x "${YOSYS_PREFIX}/bin/yosys-config" ]; then
+    echo "Yosys ${YOSYS_VERSION} restored from cache"
+else
+    git clone --depth 1 --branch "${YOSYS_VERSION}" --recurse-submodules --shallow-submodules \
+        https://github.com/YosysHQ/yosys.git "${RUNNER_TEMP}/yosys-src"
+    make -C "${RUNNER_TEMP}/yosys-src" -j`nproc` CONFIG=gcc PREFIX="${YOSYS_PREFIX}" install
+fi
 end_section
 
 ##########################################################################
 
 start_section Yosys-Version
 (
-    source env/conda/bin/activate yosys-plugins
-    echo $(which yosys)
-    echo $(which yosys-config)
-    echo $(yosys --version)
-    echo $(yosys-config --datdir)
+    export PATH="${YOSYS_PREFIX}/bin:$PATH"
+    which yosys yosys-config
+    yosys --version
+    yosys-config --datdir
 )
 end_section

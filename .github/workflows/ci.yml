@@ -40,6 +40,9 @@ jobs:
         OS: ${{ runner.os }}
         CLANG_FORMAT: clang-format-14
 
+  # Only the plugins aurora2 ships (see yosys-and-plugins/CMakeLists.txt there),
+  # built against the same Yosys it pins. The other plugins in this repo are
+  # inherited from upstream F4PGA and don't build against that Yosys.
   Run-tests:
     runs-on: ubuntu-22.04
 
@@ -47,17 +50,13 @@ jobs:
       fail-fast: false
       matrix:
         plugin:
-          - fasm
-          - xdc
-          - params
-          - sdc
-          - ql-iob
-          - design_introspection
-          - integrateinv
           - ql-qlf
-          - systemverilog
-          - uhdm
-          - dsp-ff
+          - sdc
+
+    env:
+      # Keep in sync with aurora2's yosys-and-plugins/yosys-gh submodule pin.
+      YOSYS_VERSION: v0.55
+      YOSYS_PREFIX: ${{ github.workspace }}/../yosys-install
 
     steps:
 
@@ -65,18 +64,23 @@ jobs:
       with:
         submodules: recursive
 
-    - uses: actions/setup-python@v5
-
     - name: Install
       run: |
         sudo apt-get update
-        sudo apt-get install git g++-9 build-essential bison flex \
+        sudo apt-get install build-essential bison flex \
           libreadline-dev gawk tcl-dev libffi-dev git graphviz xdot \
-          pkg-config libboost-system-dev libboost-python-dev \
-          libboost-filesystem-dev zlib1g-dev cmake
+          pkg-config python3 libboost-system-dev libboost-python-dev \
+          libboost-filesystem-dev zlib1g-dev iverilog
 
     - name: ccache
       uses: hendrikmuhs/ccache-action@v1
+
+    - name: Restore Yosys
+      id: yosys-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.YOSYS_PREFIX }}
+        key: yosys-${{ env.YOSYS_VERSION }}-${{ runner.os }}-ubuntu-22.04
 
     - name: Install Yosys
       run: |
@@ -85,17 +89,24 @@ jobs:
       env:
         OS: ${{ runner.os }}
 
+    # Saved before the plugin install below writes into the same prefix.
+    - name: Save Yosys
+      if: steps.yosys-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.YOSYS_PREFIX }}
+        key: yosys-${{ env.YOSYS_VERSION }}-${{ runner.os }}-ubuntu-22.04
+
     - name: Build and test plugins
       run: |
-        export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
-        source env/conda/bin/activate yosys-plugins
+        export PATH="${YOSYS_PREFIX}/bin:/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
         source .github/workflows/build-and-test.sh
       env:
         OS: ${{ runner.os }}
         PLUGIN_NAME: ${{ matrix.plugin }}
 
-  # Single stable check name for branch protection to require: naming all 11
-  # matrix legs directly breaks protection every time the plugin list changes.
+  # Single stable check name for branch protection to require: naming each
+  # matrix leg directly breaks protection every time the plugin list changes.
   #
   # format-check is deliberately not in `needs` yet: format-check.sh hasn't
   # actually run since it was buried in the always-timed-out Run-tests job
