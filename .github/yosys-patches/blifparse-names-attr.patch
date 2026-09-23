@@ -1,0 +1,24 @@
+diff --git a/frontends/blif/blifparse.cc b/frontends/blif/blifparse.cc
+index f6b8945..010acab 100644
+--- a/frontends/blif/blifparse.cc
++++ b/frontends/blif/blifparse.cc
+@@ -524,6 +524,9 @@ void parse_blif(RTLIL::Design *design, std::istream &f, IdString dff_name, bool
+ 					sopcell->setPort(ID::Y, output_sig);
+ 					sopmode = -1;
+ 					lastcell = sopcell;
++					// Allow .attr on .names cells (like .subckt/.gate/.latch). No
++					// obj_parameters: internal cells reject unknown parameters.
++					obj_attributes = &sopcell->attributes;
+ 				}
+ 				else if (input_sig.size() > lut_input_plane_limit)
+ 				{
+@@ -540,6 +543,9 @@ void parse_blif(RTLIL::Design *design, std::istream &f, IdString dff_name, bool
+ 					lutptr = &cell->parameters.at(ID::LUT);
+ 					lut_default_state = RTLIL::State::Sx;
+ 					lastcell = cell;
++					// Allow .attr on .names cells (like .subckt/.gate/.latch). No
++					// obj_parameters: internal cells reject unknown parameters.
++					obj_attributes = &cell->attributes;
+ 				}
+ 				continue;
+ 			}

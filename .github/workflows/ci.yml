@@ -85,7 +85,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.YOSYS_PREFIX }}
-        key: yosys-${{ env.YOSYS_VERSION }}-${{ runner.os }}-ubuntu-22.04
+        key: yosys-${{ env.YOSYS_VERSION }}-${{ hashFiles('.github/yosys-patches/*.patch') }}-${{ runner.os }}-ubuntu-22.04
 
     - name: Install Yosys
       run: |
@@ -100,7 +100,7 @@ jobs:
       uses: actions/cache/save@v4
       with:
         path: ${{ env.YOSYS_PREFIX }}
-        key: yosys-${{ env.YOSYS_VERSION }}-${{ runner.os }}-ubuntu-22.04
+        key: yosys-${{ env.YOSYS_VERSION }}-${{ hashFiles('.github/yosys-patches/*.patch') }}-${{ runner.os }}-ubuntu-22.04
 
     - name: Build and test plugins
       run: |

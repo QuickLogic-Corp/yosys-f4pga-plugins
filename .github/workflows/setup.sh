@@ -45,6 +45,10 @@ if [ -x "${YOSYS_PREFIX}/bin/yosys-config" ]; then
 else
     git clone --depth 1 --branch "${YOSYS_VERSION}" --recurse-submodules --shallow-submodules \
         https://github.com/YosysHQ/yosys.git "${RUNNER_TEMP}/yosys-src"
+    # aurora2's Yosys hotfixes (yosys-and-plugins/hotfix-*), which the tests depend on.
+    for p in .github/yosys-patches/*.patch; do
+        git -C "${RUNNER_TEMP}/yosys-src" apply --verbose "${PWD}/${p}"
+    done
     make -C "${RUNNER_TEMP}/yosys-src" -j`nproc` CONFIG=gcc PREFIX="${YOSYS_PREFIX}" install
 fi
 end_section
