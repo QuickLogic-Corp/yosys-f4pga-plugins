@@ -29,7 +29,7 @@ design -save read
 # 2.1  Input-side resetless FF promotes to `io_sdffr`, E dropped, R held off.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top resetless_in -ioff
+synth_ql -family qlf_k6n10f -top resetless_in -ioff
 yosys cd resetless_in
 stat
 select -assert-count 1 t:io_sdffr
@@ -46,7 +46,7 @@ assert_port_connected resetless_in io_sdffr D {\pad_in}
 # 2.2  Negedge variant promotes to `io_sdffnr`.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top resetless_in_n -ioff
+synth_ql -family qlf_k6n10f -top resetless_in_n -ioff
 yosys cd resetless_in_n
 stat
 select -assert-count 1 t:io_sdffnr
@@ -61,7 +61,7 @@ assert_all_ports_connected resetless_in_n io_sdffnr R {1'1}
 #      with the top-level output port name moved onto the new wire.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top resetless_out -ioff
+synth_ql -family qlf_k6n10f -top resetless_out -ioff
 yosys cd resetless_out
 stat
 select -assert-count 1 t:io_sdffr
@@ -76,7 +76,7 @@ assert_port_connected resetless_out io_sdffr Q {\q_o}
 # 2.4  Negedge output-side variant promotes to `io_sdffnr`.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top resetless_out_n -ioff
+synth_ql -family qlf_k6n10f -top resetless_out_n -ioff
 yosys cd resetless_out_n
 stat
 select -assert-count 1 t:io_sdffnr
@@ -90,7 +90,7 @@ assert_port_connected resetless_out_n io_sdffnr Q {\q_o}
 # 2.5  Both boundary paths in one module promote independently.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top resetless_both -ioff
+synth_ql -family qlf_k6n10f -top resetless_both -ioff
 yosys cd resetless_both
 stat
 select -assert-count 2 t:io_sdffr
@@ -106,7 +106,7 @@ assert_all_ports_connected resetless_both io_sdffr R {1'1}
 #      qlf_k6n10f targets $_SDFFE_?N?P_, so even a resetless register arrives at
 #      ql_ioff as a sync-reset cell with E and R tied to constant 1.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top resetless_in
+synth_ql -family qlf_k6n10f -top resetless_in
 yosys cd resetless_in
 stat
 select -assert-count 0 t:dff

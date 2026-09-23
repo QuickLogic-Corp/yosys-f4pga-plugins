@@ -1,0 +1,1697 @@
+Warning: delay target has not been set via SDC or scratchpad; assuming 12 MHz clock.
+
+18. Executing SYNTH_QUICKLOGIC pass.
+
+18.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/cells_sim.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/cells_sim.v' to AST representation.
+Generating RTLIL representation for module `\LUT1'.
+Generating RTLIL representation for module `\LUT2'.
+Generating RTLIL representation for module `\LUT3'.
+Generating RTLIL representation for module `\LUT4'.
+Generating RTLIL representation for module `\LUT5'.
+Generating RTLIL representation for module `\LUT6'.
+Generating RTLIL representation for module `\adder_carry'.
+Generating RTLIL representation for module `\lut6'.
+Generating RTLIL representation for module `\dff'.
+Generating RTLIL representation for module `\dffn'.
+Generating RTLIL representation for module `\dffre'.
+Generating RTLIL representation for module `\dffnre'.
+Generating RTLIL representation for module `\sdffre'.
+Generating RTLIL representation for module `\sdffnre'.
+Generating RTLIL representation for module `\io_sdffr'.
+Generating RTLIL representation for module `\io_sdffnr'.
+Generating RTLIL representation for module `\sh_dffre'.
+Generating RTLIL representation for module `\sh_dffnre'.
+Generating RTLIL representation for module `\CARRY8'.
+Generating RTLIL representation for module `\lut6_2'.
+Successfully finished Verilog frontend.
+
+18.2. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/dsp_sim.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/dsp_sim.v' to AST representation.
+Generating RTLIL representation for module `\QL_DSP1'.
+Generating RTLIL representation for module `\QL_DSP2'.
+Generating RTLIL representation for module `\QL_DSP2_MULT'.
+Generating RTLIL representation for module `\QL_DSP2_MULT_REGIN'.
+Generating RTLIL representation for module `\QL_DSP2_MULT_REGOUT'.
+Generating RTLIL representation for module `\QL_DSP2_MULT_REGIN_REGOUT'.
+Generating RTLIL representation for module `\QL_DSP2_MULTADD'.
+Generating RTLIL representation for module `\QL_DSP2_MULTADD_REGIN'.
+Generating RTLIL representation for module `\QL_DSP2_MULTADD_REGOUT'.
+Generating RTLIL representation for module `\QL_DSP2_MULTADD_REGIN_REGOUT'.
+Generating RTLIL representation for module `\QL_DSP2_MULTACC'.
+Generating RTLIL representation for module `\QL_DSP2_MULTACC_REGIN'.
+Generating RTLIL representation for module `\QL_DSP2_MULTACC_REGOUT'.
+Generating RTLIL representation for module `\QL_DSP2_MULTACC_REGIN_REGOUT'.
+Generating RTLIL representation for module `\dsp_t1_20x18x64_cfg_ports'.
+Generating RTLIL representation for module `\dsp_t1_10x9x32_cfg_ports'.
+Generating RTLIL representation for module `\dsp_t1_sim_cfg_ports'.
+Generating RTLIL representation for module `\QL_DSP3'.
+Generating RTLIL representation for module `\QL_DSP3_MULT'.
+Generating RTLIL representation for module `\QL_DSP3_MULT_REGIN'.
+Generating RTLIL representation for module `\QL_DSP3_MULT_REGOUT'.
+Generating RTLIL representation for module `\QL_DSP3_MULT_REGIN_REGOUT'.
+Generating RTLIL representation for module `\QL_DSP3_MULTADD'.
+Generating RTLIL representation for module `\QL_DSP3_MULTADD_REGIN'.
+Generating RTLIL representation for module `\QL_DSP3_MULTADD_REGOUT'.
+Generating RTLIL representation for module `\QL_DSP3_MULTADD_REGIN_REGOUT'.
+Generating RTLIL representation for module `\QL_DSP3_MULTACC'.
+Generating RTLIL representation for module `\QL_DSP3_MULTACC_REGIN'.
+Generating RTLIL representation for module `\QL_DSP3_MULTACC_REGOUT'.
+Generating RTLIL representation for module `\QL_DSP3_MULTACC_REGIN_REGOUT'.
+Generating RTLIL representation for module `\dsp_t1_20x18x64_cfg_params'.
+Generating RTLIL representation for module `\dsp_t1_10x9x32_cfg_params'.
+Generating RTLIL representation for module `\dsp_t1_sim_cfg_params'.
+Successfully finished Verilog frontend.
+
+18.3. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/brams_sim.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/brams_sim.v' to AST representation.
+Warning: Literal has a width of 5 bit, but value requires 6 bit. (/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/brams_sim.v:5347)
+Warning: Literal has a width of 5 bit, but value requires 6 bit. (/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/brams_sim.v:5360)
+Generating RTLIL representation for module `\TDP36K'.
+Generating RTLIL representation for module `\RAM_18K_X2_BLK'.
+Generating RTLIL representation for module `\BRAM2x18_SP'.
+Generating RTLIL representation for module `\RAM_18K_BLK'.
+Generating RTLIL representation for module `\RAM_36K_BLK'.
+Generating RTLIL representation for module `\DPRAM_18K_X2_BLK'.
+Generating RTLIL representation for module `\BRAM2x18_dP'.
+Generating RTLIL representation for module `\DPRAM_18K_BLK'.
+Generating RTLIL representation for module `\DPRAM_36K_BLK'.
+Generating RTLIL representation for module `\BRAM2x18_SFIFO'.
+Generating RTLIL representation for module `\SFIFO_18K_BLK'.
+Generating RTLIL representation for module `\SFIFO_18K_X2_BLK'.
+Generating RTLIL representation for module `\BRAM2x18_AFIFO'.
+Generating RTLIL representation for module `\AFIFO_18K_BLK'.
+Generating RTLIL representation for module `\AFIFO_18K_X2_BLK'.
+Generating RTLIL representation for module `\SFIFO_36K_BLK'.
+Generating RTLIL representation for module `\AFIFO_36K_BLK'.
+Generating RTLIL representation for module `\TDP_RAM36K'.
+Generating RTLIL representation for module `\FIFO36K'.
+Generating RTLIL representation for module `\FIFO18KX2'.
+Successfully finished Verilog frontend.
+
+18.4. Executing HIERARCHY pass (managing design hierarchy).
+
+18.4.1. Analyzing design hierarchy..
+Top module:  \fanout_d
+
+18.4.2. Analyzing design hierarchy..
+Top module:  \fanout_d
+Removing unused module `\rst_lo_expr'.
+Removing unused module `\rst_hi_expr'.
+Removing unused module `\resetless'.
+Removing unused module `\rst_hi_out'.
+Removing unused module `\rst_lo_out'.
+Removing unused module `\rst_hi_n'.
+Removing unused module `\rst_hi'.
+Removing unused module `\rst_lo'.
+Removing unused module `\both_paths'.
+Removing unused module `\not_boundary'.
+Removing unused module `\q_used'.
+Removing unused module `\enabled'.
+Removing unused module `\async_rst_n'.
+Removing unused module `\async_rst'.
+Removed 14 unused modules.
+
+18.5. Executing PROC pass (convert processes to netlists).
+
+18.5.1. Executing PROC_CLEAN pass (remove empty switches from decision trees).
+Cleaned up 0 empty switches.
+
+18.5.2. Executing PROC_RMDEAD pass (remove dead branches from decision trees).
+Marked 1 switch rules as full_case in process $proc$ioff_pol.v:92$12 in module fanout_d.
+Removed a total of 0 dead cases.
+
+18.5.3. Executing PROC_PRUNE pass (remove redundant assignments in processes).
+Removed 1 redundant assignment.
+Promoted 0 assignments to connections.
+
+18.5.4. Executing PROC_INIT pass (extract init attributes).
+
+18.5.5. Executing PROC_ARST pass (detect async resets in processes).
+
+18.5.6. Executing PROC_ROM pass (convert switches to ROMs).
+rejecting switch: rhs not const
+Converted 0 switches.
+
+18.5.7. Executing PROC_MUX pass (convert decision trees to multiplexers).
+Creating decoders for process `\fanout_d.$proc$ioff_pol.v:92$12'.
+     1/1: $0\q[0:0]
+
+18.5.8. Executing PROC_DLATCH pass (convert process syncs to latches).
+
+18.5.9. Executing PROC_DFF pass (convert process syncs to FFs).
+Creating register for signal `\fanout_d.\q' using process `\fanout_d.$proc$ioff_pol.v:92$12'.
+  created $dff cell `$procdff$8390' with positive edge clock.
+
+18.5.10. Executing PROC_MEMWR pass (convert process memory writes to cells).
+
+18.5.11. Executing PROC_CLEAN pass (remove empty switches from decision trees).
+Found and cleaned up 1 empty switch in `\fanout_d.$proc$ioff_pol.v:92$12'.
+Removing empty process `fanout_d.$proc$ioff_pol.v:92$12'.
+Cleaned up 1 empty switch.
+
+18.5.12. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+Optimizing away select inverter for $mux cell `$procmux$8388' in module `fanout_d'.
+
+18.6. Executing FLATTEN pass (flatten design).
+
+18.7. Executing DEMINOUT pass (demote inout ports to input or output).
+
+18.8. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.9. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+  removing unused `$logic_not' cell `$logic_not$ioff_pol.v:93$13'.
+  removing unused non-port wire $xor$ioff_pol.v:89$10_Y.
+  removing unused non-port wire $and$ioff_pol.v:90$11_Y.
+  removing unused non-port wire $logic_not$ioff_pol.v:93$13_Y.
+  removing unused non-port wire $procmux$8389_CMP.
+  removing unused non-port wire $procmux$8388_Y.
+Removed 1 unused cells and 5 unused wires.
+
+18.10. Executing CHECK pass (checking for obvious problems).
+Checking module fanout_d...
+Found and reported 0 problems.
+
+18.11. Executing OPT pass (performing simple optimizations).
+
+18.11.1. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.11.2. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.11.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+Running muxtree optimizer on module \fanout_d..
+  Creating internal representation of mux trees.
+  Evaluating internal representation of mux trees.
+    Root of a mux tree: $procmux$8388 (pure)
+  Analyzing evaluation results.
+Removed 0 multiplexer ports.
+
+18.11.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+  Optimizing cells in module \fanout_d.
+Performed a total of 0 changes.
+
+18.11.5. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.11.6. Executing OPT_DFF pass (perform DFF optimizations).
+
+18.11.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.11.8. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.11.9. Finished OPT passes. (There is nothing left to do.)
+
+18.12. Executing FSM pass (extract and optimize FSM).
+
+18.12.1. Executing FSM_DETECT pass (finding FSMs in design).
+
+18.12.2. Executing FSM_EXTRACT pass (extracting FSM from design).
+
+18.12.3. Executing FSM_OPT pass (simple optimizations of FSMs).
+
+18.12.4. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.12.5. Executing FSM_OPT pass (simple optimizations of FSMs).
+
+18.12.6. Executing FSM_RECODE pass (re-assigning FSM state encoding).
+
+18.12.7. Executing FSM_INFO pass (dumping all available information on FSM cells).
+
+18.12.8. Executing FSM_MAP pass (mapping FSMs to basic logic).
+
+18.13. Executing OPT pass (performing simple optimizations).
+
+18.13.1. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.13.2. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.13.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+Running muxtree optimizer on module \fanout_d..
+  Creating internal representation of mux trees.
+  Evaluating internal representation of mux trees.
+    Root of a mux tree: $procmux$8388 (pure)
+  Analyzing evaluation results.
+Removed 0 multiplexer ports.
+
+18.13.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+  Optimizing cells in module \fanout_d.
+Performed a total of 0 changes.
+
+18.13.5. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.13.6. Executing OPT_DFF pass (perform DFF optimizations).
+Adding SRST signal on $procdff$8390 ($dff) from module fanout_d (D = \pad_in, Q = \q, rval = 1'0).
+
+18.13.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+  removing unused `$mux' cell `$procmux$8388'.
+  removing unused non-port wire $0\q[0:0].
+Removed 1 unused cells and 1 unused wires.
+
+18.13.8. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.13.9. Rerunning OPT passes. (Maybe there is more to do..)
+
+18.13.10. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+Running muxtree optimizer on module \fanout_d..
+  Creating internal representation of mux trees.
+  No muxes found in this module.
+Removed 0 multiplexer ports.
+
+18.13.11. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+  Optimizing cells in module \fanout_d.
+Performed a total of 0 changes.
+
+18.13.12. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.13.13. Executing OPT_DFF pass (perform DFF optimizations).
+
+18.13.14. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.13.15. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.13.16. Finished OPT passes. (There is nothing left to do.)
+
+18.14. Executing WREDUCE pass (reducing word size of cells).
+
+18.15. Executing PEEPOPT pass (run peephole optimizers).
+
+18.16. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.17. Executing SHARE pass (SAT-based resource sharing).
+
+18.18. Executing WREDUCE pass (reducing word size of cells).
+
+18.19. Executing QL_DSP_MACC pass.
+
+18.20. Executing TECHMAP pass (map to technology primitives).
+
+18.20.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/mul2dsp.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/mul2dsp.v' to AST representation.
+Generating RTLIL representation for module `\_80_mul'.
+Generating RTLIL representation for module `\_90_soft_mul'.
+Successfully finished Verilog frontend.
+
+18.20.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    $__mul: _80_mul _90_soft_mul
+    $mul: _80_mul _90_soft_mul
+
+No more expansions possible.
+
+18.21. Executing TECHMAP pass (map to technology primitives).
+
+18.21.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/mul2dsp.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/mul2dsp.v' to AST representation.
+Generating RTLIL representation for module `\_80_mul'.
+Generating RTLIL representation for module `\_90_soft_mul'.
+Successfully finished Verilog frontend.
+
+18.21.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    $__mul: _80_mul _90_soft_mul
+    $mul: _80_mul _90_soft_mul
+
+No more expansions possible.
+
+18.22. Executing TECHMAP pass (map to technology primitives).
+
+18.22.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/dsp_map.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/dsp_map.v' to AST representation.
+Generating RTLIL representation for module `\$__QL_MUL20X18'.
+Generating RTLIL representation for module `\$__QL_MUL10X9'.
+Successfully finished Verilog frontend.
+
+18.22.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    $__QL_MUL20X18: \$__QL_MUL20X18
+    $__QL_MUL10X9: \$__QL_MUL10X9
+
+No more expansions possible.
+
+18.23. Executing QL_DSP_SIMD pass.
+
+18.24. Executing TECHMAP pass (map to technology primitives).
+
+18.24.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/dsp_final_map.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/dsp_final_map.v' to AST representation.
+Generating RTLIL representation for module `\dsp_t1_20x18x64_cfg_ports'.
+Generating RTLIL representation for module `\dsp_t1_10x9x32_cfg_ports'.
+Generating RTLIL representation for module `\dsp_t1_20x18x64_cfg_params'.
+Generating RTLIL representation for module `\dsp_t1_10x9x32_cfg_params'.
+Generating RTLIL representation for module `\DSP38'.
+Generating RTLIL representation for module `\DSPV2IPG'.
+Successfully finished Verilog frontend.
+
+18.24.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    dsp_t1_20x18x64_cfg_ports: dsp_t1_20x18x64_cfg_ports
+    dsp_t1_10x9x32_cfg_ports: dsp_t1_10x9x32_cfg_ports
+    dsp_t1_20x18x64_cfg_params: dsp_t1_20x18x64_cfg_params
+    dsp_t1_10x9x32_cfg_params: dsp_t1_10x9x32_cfg_params
+    DSP38: DSP38
+    DSPV2IPG: DSPV2IPG
+
+No more expansions possible.
+
+18.25. Executing QL_DSP_IO_REGS pass.
+
+18.26. Executing TECHMAP pass (map to technology primitives).
+
+18.26.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/cmp2lut.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/cmp2lut.v' to AST representation.
+Generating RTLIL representation for module `\_90_lut_cmp_'.
+Successfully finished Verilog frontend.
+
+18.26.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    $ge: _90_lut_cmp_
+    $gt: _90_lut_cmp_
+    $le: _90_lut_cmp_
+    $lt: _90_lut_cmp_
+
+No more expansions possible.
+
+18.27. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.28. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.29. Executing ALUMACC pass (create $alu and $macc cells).
+Extracting $alu and $macc cells in module fanout_d:
+  created 0 $alu and 0 $macc cells.
+
+18.30. Executing PMUXTREE pass.
+
+18.31. Executing OPT pass (performing simple optimizations).
+
+18.31.1. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.31.2. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.31.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+Running muxtree optimizer on module \fanout_d..
+  Creating internal representation of mux trees.
+  No muxes found in this module.
+Removed 0 multiplexer ports.
+
+18.31.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+  Optimizing cells in module \fanout_d.
+Performed a total of 0 changes.
+
+18.31.5. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.31.6. Executing OPT_DFF pass (perform DFF optimizations).
+
+18.31.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.31.8. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.31.9. Finished OPT passes. (There is nothing left to do.)
+
+18.32. Executing MEMORY pass.
+
+18.32.1. Executing OPT_MEM pass (optimize memories).
+Performed a total of 0 transformations.
+
+18.32.2. Executing OPT_MEM_PRIORITY pass (removing unnecessary memory write priority relations).
+Performed a total of 0 transformations.
+
+18.32.3. Executing OPT_MEM_FEEDBACK pass (finding memory read-to-write feedback paths).
+
+18.32.4. Executing MEMORY_BMUX2ROM pass (converting muxes to ROMs).
+
+18.32.5. Executing MEMORY_DFF pass (merging $dff cells to $memrd).
+
+18.32.6. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.32.7. Executing MEMORY_SHARE pass (consolidating $memrd/$memwr cells).
+
+18.32.8. Executing OPT_MEM_WIDEN pass (optimize memories where all ports are wide).
+Performed a total of 0 transformations.
+
+18.32.9. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.32.10. Executing MEMORY_COLLECT pass (generating $mem cells).
+
+18.33. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.34. Executing MEMORY_LIBMAP pass (mapping memories to cells).
+
+18.35. Executing QL_TDPBRAM_MERGE pass.
+
+18.36. Executing TECHMAP pass (map to technology primitives).
+
+18.36.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/libmap_brams_map_tdp.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/libmap_brams_map_tdp.v' to AST representation.
+Generating RTLIL representation for module `\$__QLF_TDP36K'.
+Generating RTLIL representation for module `\$__QLF_TDP36K_MERGED'.
+Successfully finished Verilog frontend.
+
+18.36.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    $__QLF_TDP36K: \$__QLF_TDP36K
+    $__QLF_TDP36K_MERGED: \$__QLF_TDP36K_MERGED
+
+No more expansions possible.
+
+18.37. Executing TECHMAP pass (map to technology primitives).
+
+18.37.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/brams_map.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/brams_map.v' to AST representation.
+Warning: Literal has a width of 5 bit, but value requires 6 bit. (/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/brams_map.v:3450)
+Warning: Literal has a width of 5 bit, but value requires 6 bit. (/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/brams_map.v:3463)
+Generating RTLIL representation for module `\RAM_36K_BLK'.
+Generating RTLIL representation for module `\RAM_18K_BLK'.
+Generating RTLIL representation for module `\RAM_18K_X2_BLK'.
+Generating RTLIL representation for module `\DPRAM_36K_BLK'.
+Generating RTLIL representation for module `\DPRAM_18K_BLK'.
+Generating RTLIL representation for module `\DPRAM_18K_X2_BLK'.
+Generating RTLIL representation for module `\SFIFO_36K_BLK'.
+Generating RTLIL representation for module `\AFIFO_36K_BLK'.
+Generating RTLIL representation for module `\SFIFO_18K_BLK'.
+Generating RTLIL representation for module `\SFIFO_18K_X2_BLK'.
+Generating RTLIL representation for module `\AFIFO_18K_BLK'.
+Generating RTLIL representation for module `\AFIFO_18K_X2_BLK'.
+Generating RTLIL representation for module `\TDP_RAM36K'.
+Generating RTLIL representation for module `\FIFO36K'.
+Generating RTLIL representation for module `\FIFO18KX2'.
+Successfully finished Verilog frontend.
+
+18.37.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    RAM_36K_BLK: RAM_36K_BLK
+    RAM_18K_BLK: RAM_18K_BLK
+    RAM_18K_X2_BLK: RAM_18K_X2_BLK
+    DPRAM_36K_BLK: DPRAM_36K_BLK
+    DPRAM_18K_BLK: DPRAM_18K_BLK
+    DPRAM_18K_X2_BLK: DPRAM_18K_X2_BLK
+    SFIFO_36K_BLK: SFIFO_36K_BLK
+    AFIFO_36K_BLK: AFIFO_36K_BLK
+    SFIFO_18K_BLK: SFIFO_18K_BLK
+    SFIFO_18K_X2_BLK: SFIFO_18K_X2_BLK
+    AFIFO_18K_BLK: AFIFO_18K_BLK
+    AFIFO_18K_X2_BLK: AFIFO_18K_X2_BLK
+    TDP_RAM36K: TDP_RAM36K
+    FIFO36K: FIFO36K
+    FIFO18KX2: FIFO18KX2
+
+No more expansions possible.
+
+18.38. Executing TECHMAP pass (map to technology primitives).
+
+18.38.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/brams_final_map.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/brams_final_map.v' to AST representation.
+Generating RTLIL representation for module `\BRAM2x18_SP'.
+Generating RTLIL representation for module `\BRAM2x18_dP'.
+Generating RTLIL representation for module `\BRAM2x18_SFIFO'.
+Generating RTLIL representation for module `\BRAM2x18_AFIFO'.
+Successfully finished Verilog frontend.
+
+18.38.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    BRAM2x18_SP: BRAM2x18_SP
+    BRAM2x18_dP: BRAM2x18_dP
+    BRAM2x18_SFIFO: BRAM2x18_SFIFO
+    BRAM2x18_AFIFO: BRAM2x18_AFIFO
+
+No more expansions possible.
+
+18.39. Executing OPT pass (performing simple optimizations).
+
+18.39.1. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.39.2. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.39.3. Executing OPT_DFF pass (perform DFF optimizations).
+
+18.39.4. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.39.5. Finished fast OPT passes.
+
+18.40. Executing MEMORY_MAP pass (converting memories to logic and flip-flops).
+
+18.41. Executing OPT pass (performing simple optimizations).
+
+18.41.1. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.41.2. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.41.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+Running muxtree optimizer on module \fanout_d..
+  Creating internal representation of mux trees.
+  No muxes found in this module.
+Removed 0 multiplexer ports.
+
+18.41.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+  Optimizing cells in module \fanout_d.
+Performed a total of 0 changes.
+
+18.41.5. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.41.6. Executing OPT_DFF pass (perform DFF optimizations).
+
+18.41.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.41.8. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.41.9. Finished OPT passes. (There is nothing left to do.)
+
+18.42. Executing TECHMAP pass (map to technology primitives).
+
+18.42.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/techmap.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/techmap.v' to AST representation.
+Generating RTLIL representation for module `\_90_simplemap_bool_ops'.
+Generating RTLIL representation for module `\_90_simplemap_reduce_ops'.
+Generating RTLIL representation for module `\_90_simplemap_logic_ops'.
+Generating RTLIL representation for module `\_90_simplemap_compare_ops'.
+Generating RTLIL representation for module `\_90_simplemap_various'.
+Generating RTLIL representation for module `\_90_simplemap_registers'.
+Generating RTLIL representation for module `\_90_shift_ops_shr_shl_sshl_sshr'.
+Generating RTLIL representation for module `\_90_shift_shiftx'.
+Generating RTLIL representation for module `\_90_fa'.
+Generating RTLIL representation for module `\_90_lcu_brent_kung'.
+Generating RTLIL representation for module `\_90_alu'.
+Generating RTLIL representation for module `\_90_macc'.
+Generating RTLIL representation for module `\_90_alumacc'.
+Generating RTLIL representation for module `\$__div_mod_u'.
+Generating RTLIL representation for module `\$__div_mod_trunc'.
+Generating RTLIL representation for module `\_90_div'.
+Generating RTLIL representation for module `\_90_mod'.
+Generating RTLIL representation for module `\$__div_mod_floor'.
+Generating RTLIL representation for module `\_90_divfloor'.
+Generating RTLIL representation for module `\_90_modfloor'.
+Generating RTLIL representation for module `\_90_pow'.
+Generating RTLIL representation for module `\_90_pmux'.
+Generating RTLIL representation for module `\_90_demux'.
+Generating RTLIL representation for module `\_90_lut'.
+Successfully finished Verilog frontend.
+
+18.42.2. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/arith_map.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/arith_map.v' to AST representation.
+Generating RTLIL representation for module `\_80_quicklogic_alu'.
+Generating RTLIL representation for module `\CARRY8'.
+Successfully finished Verilog frontend.
+
+18.42.3. Continuing TECHMAP pass.
+Cell type mappings to use:
+    $xnor: _90_simplemap_bool_ops
+    $xor: _90_simplemap_bool_ops
+    $or: _90_simplemap_bool_ops
+    $and: _90_simplemap_bool_ops
+    $not: _90_simplemap_bool_ops
+    $reduce_bool: _90_simplemap_reduce_ops
+    $reduce_xnor: _90_simplemap_reduce_ops
+    $reduce_xor: _90_simplemap_reduce_ops
+    $reduce_or: _90_simplemap_reduce_ops
+    $reduce_and: _90_simplemap_reduce_ops
+    $logic_or: _90_simplemap_logic_ops
+    $logic_and: _90_simplemap_logic_ops
+    $logic_not: _90_simplemap_logic_ops
+    $nex: _90_simplemap_compare_ops
+    $ne: _90_simplemap_compare_ops
+    $eqx: _90_simplemap_compare_ops
+    $eq: _90_simplemap_compare_ops
+    $bweqx: _90_simplemap_various
+    $bwmux: _90_simplemap_various
+    $bmux: _90_simplemap_various
+    $tribuf: _90_simplemap_various
+    $mux: _90_simplemap_various
+    $concat: _90_simplemap_various
+    $slice: _90_simplemap_various
+    $pos: _90_simplemap_various
+    $buf: _90_simplemap_various
+    $dlatchsr: _90_simplemap_registers
+    $adlatch: _90_simplemap_registers
+    $dlatch: _90_simplemap_registers
+    $dffsre: _90_simplemap_registers
+    $dffsr: _90_simplemap_registers
+    $sdffce: _90_simplemap_registers
+    $sdffe: _90_simplemap_registers
+    $sdff: _90_simplemap_registers
+    $aldffe: _90_simplemap_registers
+    $aldff: _90_simplemap_registers
+    $adffe: _90_simplemap_registers
+    $adff: _90_simplemap_registers
+    $dffe: _90_simplemap_registers
+    $dff: _90_simplemap_registers
+    $ff: _90_simplemap_registers
+    $sr: _90_simplemap_registers
+    $sshr: _90_shift_ops_shr_shl_sshl_sshr
+    $sshl: _90_shift_ops_shr_shl_sshl_sshr
+    $shl: _90_shift_ops_shr_shl_sshl_sshr
+    $shr: _90_shift_ops_shr_shl_sshl_sshr
+    $shiftx: _90_shift_shiftx
+    $shift: _90_shift_shiftx
+    $fa: _90_fa
+    $lcu: _90_lcu_brent_kung
+    $macc_v2: _90_macc
+    $macc: _90_macc
+    $mul: _90_alumacc
+    $neg: _90_alumacc
+    $sub: _90_alumacc
+    $add: _90_alumacc
+    $gt: _90_alumacc
+    $ge: _90_alumacc
+    $le: _90_alumacc
+    $lt: _90_alumacc
+    $__div_mod_u: \$__div_mod_u
+    $__div_mod_trunc: \$__div_mod_trunc
+    $div: _90_div
+    $mod: _90_mod
+    $__div_mod_floor: \$__div_mod_floor
+    $divfloor: _90_divfloor
+    $modfloor: _90_modfloor
+    $pow: _90_pow
+    $pmux: _90_pmux
+    $demux: _90_demux
+    $sop: _90_lut
+    $lut: _90_lut
+    $alu: _80_quicklogic_alu _90_alu
+    CARRY8: CARRY8
+
+Using extmapper simplemap for cells of type $xor.
+Mapping fanout_d.$xor$ioff_pol.v:89$10 ($xor) with simplemap.
+Using extmapper simplemap for cells of type $and.
+Mapping fanout_d.$and$ioff_pol.v:90$11 ($and) with simplemap.
+Using extmapper simplemap for cells of type $sdff.
+Mapping fanout_d.$auto$ff.cc:266:slice$8391 ($sdff) with simplemap.
+No more expansions possible.
+
+18.43. Executing OPT pass (performing simple optimizations).
+
+18.43.1. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.43.2. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.43.3. Executing OPT_DFF pass (perform DFF optimizations).
+
+18.43.4. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.43.5. Finished fast OPT passes.
+
+18.44. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.45. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.46. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.47. Executing OPT pass (performing simple optimizations).
+
+18.47.1. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.47.2. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.47.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+Running muxtree optimizer on module \fanout_d..
+  Creating internal representation of mux trees.
+  No muxes found in this module.
+Removed 0 multiplexer ports.
+
+18.47.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+  Optimizing cells in module \fanout_d.
+Performed a total of 0 changes.
+
+18.47.5. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.47.6. Executing OPT_DFF pass (perform DFF optimizations).
+
+18.47.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.47.8. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.47.9. Finished OPT passes. (There is nothing left to do.)
+
+18.48. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.49. Executing SHREGMAP pass (map shift registers).
+Converted 0 dff cells into 0 shift registers.
+
+18.50. Executing DFFLEGALIZE pass (convert FFs to types supported by the target).
+
+18.51. Executing TECHMAP pass (map to technology primitives).
+
+18.51.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/techmap.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/techmap.v' to AST representation.
+Generating RTLIL representation for module `\_90_simplemap_bool_ops'.
+Generating RTLIL representation for module `\_90_simplemap_reduce_ops'.
+Generating RTLIL representation for module `\_90_simplemap_logic_ops'.
+Generating RTLIL representation for module `\_90_simplemap_compare_ops'.
+Generating RTLIL representation for module `\_90_simplemap_various'.
+Generating RTLIL representation for module `\_90_simplemap_registers'.
+Generating RTLIL representation for module `\_90_shift_ops_shr_shl_sshl_sshr'.
+Generating RTLIL representation for module `\_90_shift_shiftx'.
+Generating RTLIL representation for module `\_90_fa'.
+Generating RTLIL representation for module `\_90_lcu_brent_kung'.
+Generating RTLIL representation for module `\_90_alu'.
+Generating RTLIL representation for module `\_90_macc'.
+Generating RTLIL representation for module `\_90_alumacc'.
+Generating RTLIL representation for module `\$__div_mod_u'.
+Generating RTLIL representation for module `\$__div_mod_trunc'.
+Generating RTLIL representation for module `\_90_div'.
+Generating RTLIL representation for module `\_90_mod'.
+Generating RTLIL representation for module `\$__div_mod_floor'.
+Generating RTLIL representation for module `\_90_divfloor'.
+Generating RTLIL representation for module `\_90_modfloor'.
+Generating RTLIL representation for module `\_90_pow'.
+Generating RTLIL representation for module `\_90_pmux'.
+Generating RTLIL representation for module `\_90_demux'.
+Generating RTLIL representation for module `\_90_lut'.
+Successfully finished Verilog frontend.
+
+18.51.2. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v' to AST representation.
+Generating RTLIL representation for module `\$_DFF_PN0_'.
+Generating RTLIL representation for module `\$_DFF_PN1_'.
+Warning: reg '\D_int' is assigned in a continuous assignment at /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:34.9-34.19.
+Generating RTLIL representation for module `\$_DFF_NN0_'.
+Generating RTLIL representation for module `\$_DFF_NN1_'.
+Warning: reg '\D_int' is assigned in a continuous assignment at /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:59.9-59.19.
+Generating RTLIL representation for module `\$_SDFF_PN0_'.
+Generating RTLIL representation for module `\$_SDFF_PN1_'.
+Warning: reg '\D_int' is assigned in a continuous assignment at /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:84.9-84.19.
+Generating RTLIL representation for module `\$_SDFF_NN0_'.
+Generating RTLIL representation for module `\$_SDFF_NN1_'.
+Warning: reg '\D_int' is assigned in a continuous assignment at /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:108.9-108.19.
+Generating RTLIL representation for module `\$_DFFE_PN0P_'.
+Generating RTLIL representation for module `\$_DFFE_PN1P_'.
+Warning: reg '\D_int' is assigned in a continuous assignment at /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:136.9-136.19.
+Generating RTLIL representation for module `\$_DFFE_NN0P_'.
+Generating RTLIL representation for module `\$_DFFE_NN1P_'.
+Warning: reg '\D_int' is assigned in a continuous assignment at /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:163.9-163.19.
+Generating RTLIL representation for module `\$_SDFFE_PN0P_'.
+Generating RTLIL representation for module `\$_SDFFE_PN1P_'.
+Warning: reg '\D_int' is assigned in a continuous assignment at /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:191.9-191.19.
+Generating RTLIL representation for module `\$_SDFFE_NN0P_'.
+Generating RTLIL representation for module `\$_SDFFE_NN1P_'.
+Warning: reg '\D_int' is assigned in a continuous assignment at /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:217.9-217.19.
+Generating RTLIL representation for module `\$__SHREG_DFF_P_'.
+Generating RTLIL representation for module `\$__SHREG_DFF_N_'.
+Successfully finished Verilog frontend.
+
+18.51.3. Continuing TECHMAP pass.
+Cell type mappings to use:
+    $xnor: _90_simplemap_bool_ops
+    $xor: _90_simplemap_bool_ops
+    $or: _90_simplemap_bool_ops
+    $and: _90_simplemap_bool_ops
+    $not: _90_simplemap_bool_ops
+    $reduce_bool: _90_simplemap_reduce_ops
+    $reduce_xnor: _90_simplemap_reduce_ops
+    $reduce_xor: _90_simplemap_reduce_ops
+    $reduce_or: _90_simplemap_reduce_ops
+    $reduce_and: _90_simplemap_reduce_ops
+    $logic_or: _90_simplemap_logic_ops
+    $logic_and: _90_simplemap_logic_ops
+    $logic_not: _90_simplemap_logic_ops
+    $nex: _90_simplemap_compare_ops
+    $ne: _90_simplemap_compare_ops
+    $eqx: _90_simplemap_compare_ops
+    $eq: _90_simplemap_compare_ops
+    $bweqx: _90_simplemap_various
+    $bwmux: _90_simplemap_various
+    $bmux: _90_simplemap_various
+    $tribuf: _90_simplemap_various
+    $mux: _90_simplemap_various
+    $concat: _90_simplemap_various
+    $slice: _90_simplemap_various
+    $pos: _90_simplemap_various
+    $buf: _90_simplemap_various
+    $dlatchsr: _90_simplemap_registers
+    $adlatch: _90_simplemap_registers
+    $dlatch: _90_simplemap_registers
+    $dffsre: _90_simplemap_registers
+    $dffsr: _90_simplemap_registers
+    $sdffce: _90_simplemap_registers
+    $sdffe: _90_simplemap_registers
+    $sdff: _90_simplemap_registers
+    $aldffe: _90_simplemap_registers
+    $aldff: _90_simplemap_registers
+    $adffe: _90_simplemap_registers
+    $adff: _90_simplemap_registers
+    $dffe: _90_simplemap_registers
+    $dff: _90_simplemap_registers
+    $ff: _90_simplemap_registers
+    $sr: _90_simplemap_registers
+    $sshr: _90_shift_ops_shr_shl_sshl_sshr
+    $sshl: _90_shift_ops_shr_shl_sshl_sshr
+    $shl: _90_shift_ops_shr_shl_sshl_sshr
+    $shr: _90_shift_ops_shr_shl_sshl_sshr
+    $shiftx: _90_shift_shiftx
+    $shift: _90_shift_shiftx
+    $fa: _90_fa
+    $lcu: _90_lcu_brent_kung
+    $alu: _90_alu
+    $macc_v2: _90_macc
+    $macc: _90_macc
+    $mul: _90_alumacc
+    $neg: _90_alumacc
+    $sub: _90_alumacc
+    $add: _90_alumacc
+    $gt: _90_alumacc
+    $ge: _90_alumacc
+    $le: _90_alumacc
+    $lt: _90_alumacc
+    $__div_mod_u: \$__div_mod_u
+    $__div_mod_trunc: \$__div_mod_trunc
+    $div: _90_div
+    $mod: _90_mod
+    $__div_mod_floor: \$__div_mod_floor
+    $divfloor: _90_divfloor
+    $modfloor: _90_modfloor
+    $pow: _90_pow
+    $pmux: _90_pmux
+    $demux: _90_demux
+    $sop: _90_lut
+    $lut: _90_lut
+    $_DFF_PN0_: \$_DFF_PN0_
+    $_DFF_PN1_: \$_DFF_PN1_
+    $_DFF_NN0_: \$_DFF_NN0_
+    $_DFF_NN1_: \$_DFF_NN1_
+    $_SDFF_PN0_: \$_SDFF_PN0_
+    $_SDFF_PN1_: \$_SDFF_PN1_
+    $_SDFF_NN0_: \$_SDFF_NN0_
+    $_SDFF_NN1_: \$_SDFF_NN1_
+    $_DFFE_PN0P_: \$_DFFE_PN0P_
+    $_DFFE_PN1P_: \$_DFFE_PN1P_
+    $_DFFE_NN0P_: \$_DFFE_NN0P_
+    $_DFFE_NN1P_: \$_DFFE_NN1P_
+    $_SDFFE_PN0P_: \$_SDFFE_PN0P_
+    $_SDFFE_PN1P_: \$_SDFFE_PN1P_
+    $_SDFFE_NN0P_: \$_SDFFE_NN0P_
+    $_SDFFE_NN1P_: \$_SDFFE_NN1P_
+    $__SHREG_DFF_P_: \$__SHREG_DFF_P_
+    $__SHREG_DFF_N_: \$__SHREG_DFF_N_
+
+Using template \$_SDFFE_PN0P_ for cells of type $_SDFFE_PN0P_.
+Mapping fanout_d.$auto$ff.cc:266:slice$8714 ($_SDFFE_PN0P_) using \$_SDFFE_PN0P_.
+No more expansions possible.
+
+18.52. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.53. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+  removing unused non-port wire $techmap8808$auto$ff.cc:266:slice$8714.Q.
+  removing unused non-port wire $techmap8808$auto$ff.cc:266:slice$8714.E.
+  removing unused non-port wire $techmap8808$auto$ff.cc:266:slice$8714.R.
+  removing unused non-port wire $techmap8808$auto$ff.cc:266:slice$8714.C.
+  removing unused non-port wire $techmap8808$auto$ff.cc:266:slice$8714.D.
+Removed 0 unused cells and 5 unused wires.
+
+18.54. Executing OPT pass (performing simple optimizations).
+
+18.54.1. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.54.2. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.54.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+Running muxtree optimizer on module \fanout_d..
+  Creating internal representation of mux trees.
+  No muxes found in this module.
+Removed 0 multiplexer ports.
+
+18.54.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+  Optimizing cells in module \fanout_d.
+Performed a total of 0 changes.
+
+18.54.5. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.54.6. Executing OPT_DFF pass (perform DFF optimizations).
+
+18.54.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.54.8. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.54.9. Finished OPT passes. (There is nothing left to do.)
+
+18.55. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/pp3/abc9_model.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/pp3/abc9_model.v' to AST representation.
+Generating RTLIL representation for module `$__PP3_DFFEPC_SYNCONLY'.
+Successfully finished Verilog frontend.
+
+18.56. Executing ABC9 pass.
+
+18.56.1. Executing ABC9_OPS pass (helper functions for ABC9).
+
+18.56.2. Executing ABC9_OPS pass (helper functions for ABC9).
+
+18.56.3. Executing SCC pass (detecting logic loops).
+Found 0 SCCs in module fanout_d.
+Found 0 SCCs.
+
+18.56.4. Executing ABC9_OPS pass (helper functions for ABC9).
+
+18.56.5. Executing TECHMAP pass (map to technology primitives).
+
+18.56.5.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/techmap.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/techmap.v' to AST representation.
+Generating RTLIL representation for module `\_90_simplemap_bool_ops'.
+Generating RTLIL representation for module `\_90_simplemap_reduce_ops'.
+Generating RTLIL representation for module `\_90_simplemap_logic_ops'.
+Generating RTLIL representation for module `\_90_simplemap_compare_ops'.
+Generating RTLIL representation for module `\_90_simplemap_various'.
+Generating RTLIL representation for module `\_90_simplemap_registers'.
+Generating RTLIL representation for module `\_90_shift_ops_shr_shl_sshl_sshr'.
+Generating RTLIL representation for module `\_90_shift_shiftx'.
+Generating RTLIL representation for module `\_90_fa'.
+Generating RTLIL representation for module `\_90_lcu_brent_kung'.
+Generating RTLIL representation for module `\_90_alu'.
+Generating RTLIL representation for module `\_90_macc'.
+Generating RTLIL representation for module `\_90_alumacc'.
+Generating RTLIL representation for module `\$__div_mod_u'.
+Generating RTLIL representation for module `\$__div_mod_trunc'.
+Generating RTLIL representation for module `\_90_div'.
+Generating RTLIL representation for module `\_90_mod'.
+Generating RTLIL representation for module `\$__div_mod_floor'.
+Generating RTLIL representation for module `\_90_divfloor'.
+Generating RTLIL representation for module `\_90_modfloor'.
+Generating RTLIL representation for module `\_90_pow'.
+Generating RTLIL representation for module `\_90_pmux'.
+Generating RTLIL representation for module `\_90_demux'.
+Generating RTLIL representation for module `\_90_lut'.
+Successfully finished Verilog frontend.
+
+18.56.5.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    sh_dffre: sh_dffre
+    sh_dffnre: sh_dffnre
+    sdffre: sdffre
+    sdffnre: sdffnre
+    lut6_2: lut6_2
+    lut6: lut6
+    io_sdffr: io_sdffr
+    io_sdffnr: io_sdffnr
+    fanout_d: fanout_d
+    dsp_t1_sim_cfg_ports: dsp_t1_sim_cfg_ports
+    dsp_t1_sim_cfg_params: dsp_t1_sim_cfg_params
+    dsp_t1_20x18x64_cfg_ports: dsp_t1_20x18x64_cfg_ports
+    dsp_t1_20x18x64_cfg_params: dsp_t1_20x18x64_cfg_params
+    dsp_t1_10x9x32_cfg_ports: dsp_t1_10x9x32_cfg_ports
+    dsp_t1_10x9x32_cfg_params: dsp_t1_10x9x32_cfg_params
+    dffre: dffre
+    dffnre: dffnre
+    dffn: dffn
+    dff: dff
+    adder_carry: adder_carry
+    TDP_RAM36K: TDP_RAM36K
+    TDP36K: TDP36K
+    SFIFO_36K_BLK: SFIFO_36K_BLK
+    SFIFO_18K_X2_BLK: SFIFO_18K_X2_BLK
+    SFIFO_18K_BLK: SFIFO_18K_BLK
+    RAM_36K_BLK: RAM_36K_BLK
+    RAM_18K_X2_BLK: RAM_18K_X2_BLK
+    RAM_18K_BLK: RAM_18K_BLK
+    QL_DSP3_MULT_REGOUT: QL_DSP3_MULT_REGOUT
+    QL_DSP3_MULT_REGIN_REGOUT: QL_DSP3_MULT_REGIN_REGOUT
+    QL_DSP3_MULT_REGIN: QL_DSP3_MULT_REGIN
+    QL_DSP3_MULTADD_REGOUT: QL_DSP3_MULTADD_REGOUT
+    QL_DSP3_MULTADD_REGIN_REGOUT: QL_DSP3_MULTADD_REGIN_REGOUT
+    QL_DSP3_MULTADD_REGIN: QL_DSP3_MULTADD_REGIN
+    QL_DSP3_MULTADD: QL_DSP3_MULTADD
+    QL_DSP3_MULTACC_REGOUT: QL_DSP3_MULTACC_REGOUT
+    QL_DSP3_MULTACC_REGIN_REGOUT: QL_DSP3_MULTACC_REGIN_REGOUT
+    QL_DSP3_MULTACC_REGIN: QL_DSP3_MULTACC_REGIN
+    QL_DSP3_MULTACC: QL_DSP3_MULTACC
+    QL_DSP3_MULT: QL_DSP3_MULT
+    QL_DSP3: QL_DSP3
+    QL_DSP2_MULT_REGOUT: QL_DSP2_MULT_REGOUT
+    QL_DSP2_MULT_REGIN_REGOUT: QL_DSP2_MULT_REGIN_REGOUT
+    QL_DSP2_MULT_REGIN: QL_DSP2_MULT_REGIN
+    QL_DSP2_MULTADD_REGOUT: QL_DSP2_MULTADD_REGOUT
+    QL_DSP2_MULTADD_REGIN_REGOUT: QL_DSP2_MULTADD_REGIN_REGOUT
+    QL_DSP2_MULTADD_REGIN: QL_DSP2_MULTADD_REGIN
+    QL_DSP2_MULTADD: QL_DSP2_MULTADD
+    QL_DSP2_MULTACC_REGOUT: QL_DSP2_MULTACC_REGOUT
+    QL_DSP2_MULTACC_REGIN_REGOUT: QL_DSP2_MULTACC_REGIN_REGOUT
+    QL_DSP2_MULTACC_REGIN: QL_DSP2_MULTACC_REGIN
+    QL_DSP2_MULTACC: QL_DSP2_MULTACC
+    QL_DSP2_MULT: QL_DSP2_MULT
+    QL_DSP2: QL_DSP2
+    QL_DSP1: QL_DSP1
+    LUT6: LUT6
+    LUT5: LUT5
+    LUT4: LUT4
+    LUT3: LUT3
+    LUT2: LUT2
+    LUT1: LUT1
+    FIFO36K: FIFO36K
+    FIFO18KX2: FIFO18KX2
+    DPRAM_36K_BLK: DPRAM_36K_BLK
+    DPRAM_18K_X2_BLK: DPRAM_18K_X2_BLK
+    DPRAM_18K_BLK: DPRAM_18K_BLK
+    CARRY8: CARRY8
+    BRAM2x18_dP: BRAM2x18_dP
+    BRAM2x18_SP: BRAM2x18_SP
+    BRAM2x18_SFIFO: BRAM2x18_SFIFO
+    BRAM2x18_AFIFO: BRAM2x18_AFIFO
+    AFIFO_36K_BLK: AFIFO_36K_BLK
+    AFIFO_18K_X2_BLK: AFIFO_18K_X2_BLK
+    AFIFO_18K_BLK: AFIFO_18K_BLK
+    $__PP3_DFFEPC_SYNCONLY: $__PP3_DFFEPC_SYNCONLY
+    $xnor: _90_simplemap_bool_ops
+    $xor: _90_simplemap_bool_ops
+    $or: _90_simplemap_bool_ops
+    $and: _90_simplemap_bool_ops
+    $not: _90_simplemap_bool_ops
+    $reduce_bool: _90_simplemap_reduce_ops
+    $reduce_xnor: _90_simplemap_reduce_ops
+    $reduce_xor: _90_simplemap_reduce_ops
+    $reduce_or: _90_simplemap_reduce_ops
+    $reduce_and: _90_simplemap_reduce_ops
+    $logic_or: _90_simplemap_logic_ops
+    $logic_and: _90_simplemap_logic_ops
+    $logic_not: _90_simplemap_logic_ops
+    $nex: _90_simplemap_compare_ops
+    $ne: _90_simplemap_compare_ops
+    $eqx: _90_simplemap_compare_ops
+    $eq: _90_simplemap_compare_ops
+    $bweqx: _90_simplemap_various
+    $bwmux: _90_simplemap_various
+    $bmux: _90_simplemap_various
+    $tribuf: _90_simplemap_various
+    $mux: _90_simplemap_various
+    $concat: _90_simplemap_various
+    $slice: _90_simplemap_various
+    $pos: _90_simplemap_various
+    $buf: _90_simplemap_various
+    $dlatchsr: _90_simplemap_registers
+    $adlatch: _90_simplemap_registers
+    $dlatch: _90_simplemap_registers
+    $dffsre: _90_simplemap_registers
+    $dffsr: _90_simplemap_registers
+    $sdffce: _90_simplemap_registers
+    $sdffe: _90_simplemap_registers
+    $sdff: _90_simplemap_registers
+    $aldffe: _90_simplemap_registers
+    $aldff: _90_simplemap_registers
+    $adffe: _90_simplemap_registers
+    $adff: _90_simplemap_registers
+    $dffe: _90_simplemap_registers
+    $dff: _90_simplemap_registers
+    $ff: _90_simplemap_registers
+    $sr: _90_simplemap_registers
+    $sshr: _90_shift_ops_shr_shl_sshl_sshr
+    $sshl: _90_shift_ops_shr_shl_sshl_sshr
+    $shl: _90_shift_ops_shr_shl_sshl_sshr
+    $shr: _90_shift_ops_shr_shl_sshl_sshr
+    $shiftx: _90_shift_shiftx
+    $shift: _90_shift_shiftx
+    $fa: _90_fa
+    $lcu: _90_lcu_brent_kung
+    $alu: _90_alu
+    $macc_v2: _90_macc
+    $macc: _90_macc
+    $mul: _90_alumacc
+    $neg: _90_alumacc
+    $sub: _90_alumacc
+    $add: _90_alumacc
+    $gt: _90_alumacc
+    $ge: _90_alumacc
+    $le: _90_alumacc
+    $lt: _90_alumacc
+    $__div_mod_u: \$__div_mod_u
+    $__div_mod_trunc: \$__div_mod_trunc
+    $div: _90_div
+    $mod: _90_mod
+    $__div_mod_floor: \$__div_mod_floor
+    $divfloor: _90_divfloor
+    $modfloor: _90_modfloor
+    $pow: _90_pow
+    $pmux: _90_pmux
+    $demux: _90_demux
+    $sop: _90_lut
+    $lut: _90_lut
+
+No more expansions possible.
+
+18.56.6. Executing OPT pass (performing simple optimizations).
+
+18.56.6.1. Executing OPT_EXPR pass (perform const folding).
+
+18.56.6.2. Executing OPT_MERGE pass (detect identical cells).
+Removed a total of 0 cells.
+
+18.56.6.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+Removed 0 multiplexer ports.
+
+18.56.6.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+Performed a total of 0 changes.
+
+18.56.6.5. Executing OPT_MERGE pass (detect identical cells).
+Removed a total of 0 cells.
+
+18.56.6.6. Executing OPT_DFF pass (perform DFF optimizations).
+
+18.56.6.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+
+18.56.6.8. Executing OPT_EXPR pass (perform const folding).
+
+18.56.6.9. Finished OPT passes. (There is nothing left to do.)
+
+18.56.7. Executing TECHMAP pass (map to technology primitives).
+
+18.56.7.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/abc9_map.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/abc9_map.v' to AST representation.
+Successfully finished Verilog frontend.
+
+18.56.7.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+
+No more expansions possible.
+
+18.56.8. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/abc9_model.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/abc9_model.v' to AST representation.
+Generating RTLIL representation for module `$__ABC9_DELAY'.
+Generating RTLIL representation for module `$__ABC9_SCC_BREAKER'.
+Generating RTLIL representation for module `$__DFF_N__$abc9_flop'.
+Generating RTLIL representation for module `$__DFF_P__$abc9_flop'.
+Successfully finished Verilog frontend.
+
+18.56.9. Executing ABC9_OPS pass (helper functions for ABC9).
+
+18.56.10. Executing ABC9_OPS pass (helper functions for ABC9).
+
+18.56.11. Executing ABC9_OPS pass (helper functions for ABC9).
+
+18.56.12. Executing TECHMAP pass (map to technology primitives).
+
+18.56.12.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/techmap.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/techmap.v' to AST representation.
+Generating RTLIL representation for module `\_90_simplemap_bool_ops'.
+Generating RTLIL representation for module `\_90_simplemap_reduce_ops'.
+Generating RTLIL representation for module `\_90_simplemap_logic_ops'.
+Generating RTLIL representation for module `\_90_simplemap_compare_ops'.
+Generating RTLIL representation for module `\_90_simplemap_various'.
+Generating RTLIL representation for module `\_90_simplemap_registers'.
+Generating RTLIL representation for module `\_90_shift_ops_shr_shl_sshl_sshr'.
+Generating RTLIL representation for module `\_90_shift_shiftx'.
+Generating RTLIL representation for module `\_90_fa'.
+Generating RTLIL representation for module `\_90_lcu_brent_kung'.
+Generating RTLIL representation for module `\_90_alu'.
+Generating RTLIL representation for module `\_90_macc'.
+Generating RTLIL representation for module `\_90_alumacc'.
+Generating RTLIL representation for module `\$__div_mod_u'.
+Generating RTLIL representation for module `\$__div_mod_trunc'.
+Generating RTLIL representation for module `\_90_div'.
+Generating RTLIL representation for module `\_90_mod'.
+Generating RTLIL representation for module `\$__div_mod_floor'.
+Generating RTLIL representation for module `\_90_divfloor'.
+Generating RTLIL representation for module `\_90_modfloor'.
+Generating RTLIL representation for module `\_90_pow'.
+Generating RTLIL representation for module `\_90_pmux'.
+Generating RTLIL representation for module `\_90_demux'.
+Generating RTLIL representation for module `\_90_lut'.
+Successfully finished Verilog frontend.
+
+18.56.12.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    sh_dffre: sh_dffre
+    sh_dffnre: sh_dffnre
+    sdffre: sdffre
+    sdffnre: sdffnre
+    lut6_2: lut6_2
+    lut6: lut6
+    io_sdffr: io_sdffr
+    io_sdffnr: io_sdffnr
+    fanout_d: fanout_d
+    dsp_t1_sim_cfg_ports: dsp_t1_sim_cfg_ports
+    dsp_t1_sim_cfg_params: dsp_t1_sim_cfg_params
+    dsp_t1_20x18x64_cfg_ports: dsp_t1_20x18x64_cfg_ports
+    dsp_t1_20x18x64_cfg_params: dsp_t1_20x18x64_cfg_params
+    dsp_t1_10x9x32_cfg_ports: dsp_t1_10x9x32_cfg_ports
+    dsp_t1_10x9x32_cfg_params: dsp_t1_10x9x32_cfg_params
+    dffre: dffre
+    dffnre: dffnre
+    dffn: dffn
+    dff: dff
+    adder_carry: adder_carry
+    TDP_RAM36K: TDP_RAM36K
+    TDP36K: TDP36K
+    SFIFO_36K_BLK: SFIFO_36K_BLK
+    SFIFO_18K_X2_BLK: SFIFO_18K_X2_BLK
+    SFIFO_18K_BLK: SFIFO_18K_BLK
+    RAM_36K_BLK: RAM_36K_BLK
+    RAM_18K_X2_BLK: RAM_18K_X2_BLK
+    RAM_18K_BLK: RAM_18K_BLK
+    QL_DSP3_MULT_REGOUT: QL_DSP3_MULT_REGOUT
+    QL_DSP3_MULT_REGIN_REGOUT: QL_DSP3_MULT_REGIN_REGOUT
+    QL_DSP3_MULT_REGIN: QL_DSP3_MULT_REGIN
+    QL_DSP3_MULTADD_REGOUT: QL_DSP3_MULTADD_REGOUT
+    QL_DSP3_MULTADD_REGIN_REGOUT: QL_DSP3_MULTADD_REGIN_REGOUT
+    QL_DSP3_MULTADD_REGIN: QL_DSP3_MULTADD_REGIN
+    QL_DSP3_MULTADD: QL_DSP3_MULTADD
+    QL_DSP3_MULTACC_REGOUT: QL_DSP3_MULTACC_REGOUT
+    QL_DSP3_MULTACC_REGIN_REGOUT: QL_DSP3_MULTACC_REGIN_REGOUT
+    QL_DSP3_MULTACC_REGIN: QL_DSP3_MULTACC_REGIN
+    QL_DSP3_MULTACC: QL_DSP3_MULTACC
+    QL_DSP3_MULT: QL_DSP3_MULT
+    QL_DSP3: QL_DSP3
+    QL_DSP2_MULT_REGOUT: QL_DSP2_MULT_REGOUT
+    QL_DSP2_MULT_REGIN_REGOUT: QL_DSP2_MULT_REGIN_REGOUT
+    QL_DSP2_MULT_REGIN: QL_DSP2_MULT_REGIN
+    QL_DSP2_MULTADD_REGOUT: QL_DSP2_MULTADD_REGOUT
+    QL_DSP2_MULTADD_REGIN_REGOUT: QL_DSP2_MULTADD_REGIN_REGOUT
+    QL_DSP2_MULTADD_REGIN: QL_DSP2_MULTADD_REGIN
+    QL_DSP2_MULTADD: QL_DSP2_MULTADD
+    QL_DSP2_MULTACC_REGOUT: QL_DSP2_MULTACC_REGOUT
+    QL_DSP2_MULTACC_REGIN_REGOUT: QL_DSP2_MULTACC_REGIN_REGOUT
+    QL_DSP2_MULTACC_REGIN: QL_DSP2_MULTACC_REGIN
+    QL_DSP2_MULTACC: QL_DSP2_MULTACC
+    QL_DSP2_MULT: QL_DSP2_MULT
+    QL_DSP2: QL_DSP2
+    QL_DSP1: QL_DSP1
+    LUT6: LUT6
+    LUT5: LUT5
+    LUT4: LUT4
+    LUT3: LUT3
+    LUT2: LUT2
+    LUT1: LUT1
+    FIFO36K: FIFO36K
+    FIFO18KX2: FIFO18KX2
+    DPRAM_36K_BLK: DPRAM_36K_BLK
+    DPRAM_18K_X2_BLK: DPRAM_18K_X2_BLK
+    DPRAM_18K_BLK: DPRAM_18K_BLK
+    CARRY8: CARRY8
+    BRAM2x18_dP: BRAM2x18_dP
+    BRAM2x18_SP: BRAM2x18_SP
+    BRAM2x18_SFIFO: BRAM2x18_SFIFO
+    BRAM2x18_AFIFO: BRAM2x18_AFIFO
+    AFIFO_36K_BLK: AFIFO_36K_BLK
+    AFIFO_18K_X2_BLK: AFIFO_18K_X2_BLK
+    AFIFO_18K_BLK: AFIFO_18K_BLK
+    $__PP3_DFFEPC_SYNCONLY: $__PP3_DFFEPC_SYNCONLY
+    $__ABC9_DELAY: $__ABC9_DELAY
+    $__ABC9_SCC_BREAKER: $__ABC9_SCC_BREAKER
+    $__DFF_N__$abc9_flop: $__DFF_N__$abc9_flop
+    $__DFF_P__$abc9_flop: $__DFF_P__$abc9_flop
+    $paramod$__ABC9_DELAY\DELAY=32'00000000000000000000000000111000: $paramod$__ABC9_DELAY\DELAY=32'00000000000000000000000000111000
+    $xnor: _90_simplemap_bool_ops
+    $xor: _90_simplemap_bool_ops
+    $or: _90_simplemap_bool_ops
+    $and: _90_simplemap_bool_ops
+    $not: _90_simplemap_bool_ops
+    $reduce_bool: _90_simplemap_reduce_ops
+    $reduce_xnor: _90_simplemap_reduce_ops
+    $reduce_xor: _90_simplemap_reduce_ops
+    $reduce_or: _90_simplemap_reduce_ops
+    $reduce_and: _90_simplemap_reduce_ops
+    $logic_or: _90_simplemap_logic_ops
+    $logic_and: _90_simplemap_logic_ops
+    $logic_not: _90_simplemap_logic_ops
+    $nex: _90_simplemap_compare_ops
+    $ne: _90_simplemap_compare_ops
+    $eqx: _90_simplemap_compare_ops
+    $eq: _90_simplemap_compare_ops
+    $bweqx: _90_simplemap_various
+    $bwmux: _90_simplemap_various
+    $bmux: _90_simplemap_various
+    $tribuf: _90_simplemap_various
+    $mux: _90_simplemap_various
+    $concat: _90_simplemap_various
+    $slice: _90_simplemap_various
+    $pos: _90_simplemap_various
+    $buf: _90_simplemap_various
+    $dlatchsr: _90_simplemap_registers
+    $adlatch: _90_simplemap_registers
+    $dlatch: _90_simplemap_registers
+    $dffsre: _90_simplemap_registers
+    $dffsr: _90_simplemap_registers
+    $sdffce: _90_simplemap_registers
+    $sdffe: _90_simplemap_registers
+    $sdff: _90_simplemap_registers
+    $aldffe: _90_simplemap_registers
+    $aldff: _90_simplemap_registers
+    $adffe: _90_simplemap_registers
+    $adff: _90_simplemap_registers
+    $dffe: _90_simplemap_registers
+    $dff: _90_simplemap_registers
+    $ff: _90_simplemap_registers
+    $sr: _90_simplemap_registers
+    $sshr: _90_shift_ops_shr_shl_sshl_sshr
+    $sshl: _90_shift_ops_shr_shl_sshl_sshr
+    $shl: _90_shift_ops_shr_shl_sshl_sshr
+    $shr: _90_shift_ops_shr_shl_sshl_sshr
+    $shiftx: _90_shift_shiftx
+    $shift: _90_shift_shiftx
+    $fa: _90_fa
+    $lcu: _90_lcu_brent_kung
+    $alu: _90_alu
+    $macc_v2: _90_macc
+    $macc: _90_macc
+    $mul: _90_alumacc
+    $neg: _90_alumacc
+    $sub: _90_alumacc
+    $add: _90_alumacc
+    $gt: _90_alumacc
+    $ge: _90_alumacc
+    $le: _90_alumacc
+    $lt: _90_alumacc
+    $__div_mod_u: \$__div_mod_u
+    $__div_mod_trunc: \$__div_mod_trunc
+    $div: _90_div
+    $mod: _90_mod
+    $__div_mod_floor: \$__div_mod_floor
+    $divfloor: _90_divfloor
+    $modfloor: _90_modfloor
+    $pow: _90_pow
+    $pmux: _90_pmux
+    $demux: _90_demux
+    $sop: _90_lut
+    $lut: _90_lut
+
+No more expansions possible.
+
+18.56.13. Executing OPT pass (performing simple optimizations).
+
+18.56.13.1. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.56.13.2. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.56.13.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+Running muxtree optimizer on module \fanout_d..
+  Creating internal representation of mux trees.
+  No muxes found in this module.
+Removed 0 multiplexer ports.
+
+18.56.13.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+  Optimizing cells in module \fanout_d.
+Performed a total of 0 changes.
+
+18.56.13.5. Executing OPT_MERGE pass (detect identical cells).
+Finding identical cells in module `\fanout_d'.
+Removed a total of 0 cells.
+
+18.56.13.6. Executing OPT_DFF pass (perform DFF optimizations).
+
+18.56.13.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.56.13.8. Executing OPT_EXPR pass (perform const folding).
+Optimizing module fanout_d.
+
+18.56.13.9. Finished OPT passes. (There is nothing left to do.)
+
+18.56.14. Executing AIGMAP pass (map logic to AIG).
+
+18.56.15. Executing AIGMAP pass (map logic to AIG).
+Module fanout_d: replaced 1 cells with 7 new cells, skipped 3 cells.
+  replaced 1 cell types:
+       1 $_XOR_
+  not replaced 3 cell types:
+       1 $_AND_
+       1 sdffre
+       1 $paramod$__ABC9_DELAY\DELAY=32'00000000000000000000000000111000
+
+18.56.15.1. Executing ABC9_OPS pass (helper functions for ABC9).
+
+18.56.15.2. Executing ABC9_OPS pass (helper functions for ABC9).
+
+18.56.15.3. Executing XAIGER backend.
+ciNum = 6
+coNum = 4
+piNum = 5
+poNum = 3
+boxNum = 1
+flopNum = 0
+ciNum = 0
+coNum = 1
+piNum = 0
+poNum = 1
+boxNum = 0
+Extracted 4 AND gates and 16 wires from module `fanout_d' to a netlist network with 5 inputs and 3 outputs.
+
+18.56.15.4. Executing ABC9_EXE pass (technology mapping using ABC9).
+
+18.56.15.5. Executing ABC9.
+Running ABC command: "<yosys-exe-dir>/yosys-abc" -s -f <abc-temp-dir>/abc.script 2>&1
+ABC: ABC command line: "source <abc-temp-dir>/abc.script".
+ABC: 
+ABC: + read_lut <abc-temp-dir>/input.lut 
+ABC: + read_box <abc-temp-dir>/input.box 
+ABC: + &read <abc-temp-dir>/input.xaig 
+ABC: + &ps 
+ABC: <abc-temp-dir>/input : i/o =      5/      3  and =       4  lev =    2 (0.75)  mem = 0.00 MB  box = 1  bb = 1
+ABC: + &scorr 
+ABC: Warning: The network is combinational.
+ABC: + &sweep 
+ABC: + &dc2 
+ABC: + &dch -f 
+ABC: + &ps 
+ABC: <abc-temp-dir>/input : i/o =      5/      3  and =       7  lev =    2 (0.75)  mem = 0.00 MB  ch =    1  box = 1  bb = 1
+ABC: cst =       0  cls =      1  lit =       1  unused =      11  proof =     0
+ABC: + &if -W 1000 -v 
+ABC: K = 6. Memory (bytes): Truth =    0. Cut =   60. Obj =  144. Set =  636. CutMin = no
+ABC: Node =       7.  Ch =     1.  Total mem =    0.00 MB. Peak cut mem =    0.00 MB.
+ABC: P:  Del = 1354.00.  Ar =       4.0.  Edge =        4.  Cut =       13.  T =     0.00 sec
+ABC: P:  Del = 1354.00.  Ar =       4.0.  Edge =        4.  Cut =       13.  T =     0.00 sec
+ABC: P:  Del = 1354.00.  Ar =       4.0.  Edge =        4.  Cut =       13.  T =     0.00 sec
+ABC: F:  Del = 1354.00.  Ar =       4.0.  Edge =        4.  Cut =       13.  T =     0.00 sec
+ABC: A:  Del = 1354.00.  Ar =       4.0.  Edge =        4.  Cut =       13.  T =     0.00 sec
+ABC: A:  Del = 1354.00.  Ar =       4.0.  Edge =        4.  Cut =       13.  T =     0.00 sec
+ABC: Total time =     0.00 sec
+ABC: + &write -n <abc-temp-dir>/output.aig 
+ABC: + &mfs 
+ABC: The network is not changed by "&mfs".
+ABC: + &ps -l 
+ABC: <abc-temp-dir>/input : i/o =      5/      3  and =       4  lev =    2 (0.75)  mem = 0.00 MB  box = 1  bb = 1
+ABC: Mapping (K=2)  :  lut =      2  edge =       4  lev =    1 (0.50)  levB =    1  mem = 0.00 MB
+ABC: LUT = 2 : 2=2 100.0 %  Ave = 2.00
+ABC: + &write -n <abc-temp-dir>/output.aig 
+ABC: + time 
+ABC: elapse: 0.01 seconds, total: 0.01 seconds
+
+18.56.15.6. Executing AIGER frontend.
+M=10 I=6 L=0 O=4 A=4
+ignoring 'a'
+ignoring 'i'
+ignoring 'o'
+ciNum = 6
+coNum = 4
+piNum = 5
+poNum = 3
+boxNum = 1
+m: dataSize=40 lutNum=2 lutSize=2
+flopNum = 0
+n: '/tmp/yosys-abc-K7nfBh/input'
+Renaming input $i1 -> q
+Renaming input $i2 -> clk
+Renaming input $i3 -> rst_n
+Renaming input $i4 -> pad_in
+Renaming input $i5 -> other
+Renaming output $o1 -> $auto$abc9_ops.cc:683:prep_delays$8891
+Renaming output $o2 -> q_o
+Renaming output $o3 -> d_copy
+Finding unused cells or wires in module \fanout_d$abc9..
+  removing unused `$_AND_' cell `$and$aiger8984$8'.
+  removing unused `$_AND_' cell `$and$aiger8984$7'.
+  removing unused `$_NOT_' cell `$not$aiger8984$8'.
+  removing unused `$_NOT_' cell `$not$aiger8984$1'.
+  removing unused `$_NOT_' cell `$not$aiger8984$5'.
+  removing unused `$_NOT_' cell `$not$aiger8984$7'.
+  removing unused non-port wire $aiger8984$7b.
+  removing unused non-port wire $aiger8984$1.
+  removing unused non-port wire $aiger8984$2.
+  removing unused non-port wire $aiger8984$3.
+  removing unused non-port wire $aiger8984$4.
+  removing unused non-port wire $aiger8984$5.
+  removing unused non-port wire $i6.
+  removing unused non-port wire $aiger8984$6.
+  removing unused non-port wire $o0.
+  removing unused non-port wire $aiger8984$9.
+  removing unused non-port wire $aiger8984$10.
+  removing unused non-port wire $aiger8984$7.
+  removing unused non-port wire $aiger8984$5b.
+  removing unused non-port wire $aiger8984$1b.
+  removing unused non-port wire $aiger8984$8.
+  removing unused non-port wire $aiger8984$8b.
+Removed 6 unused cells and 16 unused wires.
+
+18.56.15.7. Executing ABC9_OPS pass (helper functions for ABC9).
+ABC RESULTS:              $lut cells:        2
+ABC RESULTS:           input signals:        5
+ABC RESULTS:          output signals:        3
+Removing temp directory.
+
+18.56.16. Executing TECHMAP pass (map to technology primitives).
+
+18.56.16.1. Executing Verilog-2005 frontend: /localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/abc9_unmap.v
+Parsing Verilog input from `/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/abc9_unmap.v' to AST representation.
+Generating RTLIL representation for module `\$__DFF_x__$abc9_flop'.
+Generating RTLIL representation for module `\$__ABC9_SCC_BREAKER'.
+Successfully finished Verilog frontend.
+
+18.56.16.2. Continuing TECHMAP pass.
+Cell type mappings to use:
+    $__DFF_P__$abc9_flop: \$__DFF_x__$abc9_flop
+    $__DFF_N__$abc9_flop: \$__DFF_x__$abc9_flop
+    $__ABC9_SCC_BREAKER: \$__ABC9_SCC_BREAKER
+
+No more expansions possible.
+Finding unused cells or wires in module \fanout_d..
+  removing unused non-port wire $auto$abc9_ops.cc:683:prep_delays$8891.
+  removing unused non-port wire $auto$aigmap.cc:131:execute$8970.
+  removing unused non-port wire $auto$aigmap.cc:131:execute$8972.
+  removing unused non-port wire $auto$aigmap.cc:122:execute$8974.
+  removing unused non-port wire $auto$aigmap.cc:131:execute$8976.
+  removing unused non-port wire $auto$aigmap.cc:122:execute$8978.
+  removing unused non-port wire $auto$aigmap.cc:131:execute$8980.
+  removing unused non-port wire $auto$aigmap.cc:122:execute$8982.
+  removing unused non-port wire $abc$8985$auto$abc9_ops.cc:683:prep_delays$8891.
+  removing unused non-port wire $abc$8985$clk.
+  removing unused non-port wire $abc$8985$d_copy.
+  removing unused non-port wire $abc$8985$other.
+  removing unused non-port wire $abc$8985$pad_in.
+  removing unused non-port wire $abc$8985$q.
+  removing unused non-port wire $abc$8985$q_o.
+  removing unused non-port wire $abc$8985$rst_n.
+Removed 0 unused cells and 16 unused wires.
+
+18.57. Executing OPT_LUT pass (optimize LUTs).
+Discovering LUTs.
+Found $lut\WIDTH=2 cell fanout_d.$abc$8985$lut\d_copy.
+  Cell implements a 2-LUT.
+Found $lut\WIDTH=2 cell fanout_d.$abc$8985$lut\q_o.
+  Cell implements a 2-LUT.
+Number of LUTs:        2
+  2-LUT                2
+
+Eliminating LUTs.
+Number of LUTs:        2
+  2-LUT                2
+
+Combining LUTs.
+Number of LUTs:        2
+  2-LUT                2
+
+Eliminated 0 LUTs.
+Combined 0 LUTs.
+
+18.58. Executing QL_IOFF pass.
+Checking cell $auto$ff.cc:266:slice$8714.
+Cell $auto$ff.cc:266:slice$8714 is potentially eligible for promotion to input IOFF.
+not promoting $auto$ff.cc:266:slice$8714: D has other consumers
+ql_ioff summary:
+  promoted: dff=0 dffn=0 io_sdffr=0 io_sdffnr=0   (total 0)
+  declined: E used=0, async reset=0, D has other consumers=1
+
+18.59. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.60. Executing AUTONAME pass.
+Rename cell $auto$ff.cc:266:slice$8714 in fanout_d to q_sdffre_Q.
+Rename cell $abc$8985$lut\q_o in fanout_d to q_o_$lut_Y.
+Rename cell $abc$8985$lut\d_copy in fanout_d to d_copy_$lut_Y.
+Renamed 3 objects in module fanout_d (2 iterations).
+
+18.61. Executing HIERARCHY pass (managing design hierarchy).
+Attribute `top' found on module `fanout_d'. Setting top module to fanout_d.
+
+18.61.1. Analyzing design hierarchy..
+Top module:  \fanout_d
+
+18.61.2. Analyzing design hierarchy..
+Top module:  \fanout_d
+Removed 0 unused modules.
+
+18.62. Printing statistics.
+
+=== fanout_d ===
+
+   Number of wires:                  7
+   Number of wire bits:              7
+   Number of public wires:           7
+   Number of public wire bits:       7
+   Number of ports:                  6
+   Number of port bits:              6
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                  3
+     $lut                            2
+     sdffre                          1
+
+18.63. Executing CHECK pass (checking for obvious problems).
+Checking module fanout_d...
+Found and reported 0 problems.
+
+18.64. Executing OPT_CLEAN pass (remove unused cells and wires).
+Finding unused cells or wires in module \fanout_d..
+
+18.65. Executing CHECK pass (checking for obvious problems).
+Checking module fanout_d...
+Found and reported 0 problems.
+Warning: Ignoring blackbox module adder_carry.
+Warning: Ignoring blackbox module lut6.
+Warning: Ignoring blackbox module lut6_2.
+Found clock wire: clk (via clkbuf_sink on cell q_sdffre_Q port C)

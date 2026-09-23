@@ -1,0 +1,38 @@
+
+autoidx 14340
+
+attribute \top 1
+attribute \src "ioff_pol.v:228.1-238.10"
+module \resetless
+
+  attribute \src "ioff_pol.v:229.17-229.20"
+  wire input 1 \clk
+
+  attribute \src "ioff_pol.v:231.17-231.22"
+  wire input 3 \other
+
+  attribute \src "ioff_pol.v:230.17-230.23"
+  wire input 2 \pad_in
+
+  attribute \src "ioff_pol.v:234.9-234.10"
+  wire \q
+
+  attribute \src "ioff_pol.v:232.17-232.20"
+  wire output 4 \q_o
+
+  attribute \module_not_derived 1
+  attribute \src "ioff_pol.v:237.5-237.39|/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:178.12-178.65"
+  cell \io_sdffr \q_io_sdffr_Q
+    connect \C \clk
+    connect \D \pad_in
+    connect \Q \q
+    connect \R 1'1
+  end
+
+  cell $lut \q_o_$lut_Y
+    parameter \LUT 4'0110
+    parameter \WIDTH 2
+    connect \A { \q \other }
+    connect \Y \q_o
+  end
+end

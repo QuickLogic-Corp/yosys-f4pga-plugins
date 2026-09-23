@@ -1,0 +1,51 @@
+
+autoidx 2675
+
+attribute \top 1
+attribute \src "sdffr_inst.v:46.1-65.10"
+module \direct_sdffnr
+
+  attribute \src "sdffr_inst.v:47.17-47.20"
+  wire input 1 \clk
+
+  attribute \src "sdffr_inst.v:49.17-49.18"
+  wire input 3 \d
+
+  attribute \src "sdffr_inst.v:53.10-53.15"
+  wire \d_int
+
+  attribute \src "sdffr_inst.v:50.17-50.22"
+  wire input 4 \other
+
+  attribute \src "sdffr_inst.v:54.10-54.11"
+  wire \q
+
+  attribute \src "sdffr_inst.v:51.17-51.20"
+  wire output 5 \q_o
+
+  attribute \src "sdffr_inst.v:48.17-48.22"
+  wire input 2 \rst_n
+
+  cell $lut \d_int_$lut_Y
+    parameter \LUT 4'0110
+    parameter \WIDTH 2
+    connect \A { \d \other }
+    connect \Y \d_int
+  end
+
+  attribute \module_not_derived 1
+  attribute \src "sdffr_inst.v:59.15-64.6"
+  cell \io_sdffnr \ff
+    connect \C \clk
+    connect \D \d_int
+    connect \Q \q
+    connect \R \rst_n
+  end
+
+  cell $lut \q_o_$lut_Y
+    parameter \LUT 4'1000
+    parameter \WIDTH 2
+    connect \A { \q \other }
+    connect \Y \q_o
+  end
+end

@@ -1,0 +1,64 @@
+
+autoidx 4508
+
+attribute \top 1
+attribute \src "ioff_rst.v:84.1-103.10"
+module \both_sdffr
+
+  attribute \src "ioff_rst.v:89.17-89.18"
+  wire input 5 \a
+
+  wire \a_$lut_A_Y
+
+  attribute \src "ioff_rst.v:85.17-85.20"
+  wire input 1 \clk
+
+  attribute \src "ioff_rst.v:88.17-88.22"
+  wire input 4 \other
+
+  attribute \src "ioff_rst.v:87.17-87.23"
+  wire input 3 \pad_in
+
+  attribute \src "ioff_rst.v:90.17-90.20"
+  wire output 6 \q_i
+
+  attribute \src "ioff_rst.v:91.17-91.22"
+  wire output 7 \q_out
+
+  attribute \src "ioff_rst.v:93.9-93.11"
+  wire \qi
+
+  attribute \src "ioff_rst.v:86.17-86.22"
+  wire input 2 \rst_n
+
+  cell $lut \a_$lut_A
+    parameter \LUT 4'0110
+    parameter \WIDTH 2
+    connect \A { \other \a }
+    connect \Y \a_$lut_A_Y
+  end
+
+  cell $lut \q_i_$lut_Y
+    parameter \LUT 4'0110
+    parameter \WIDTH 2
+    connect \A { \qi \other }
+    connect \Y \q_i
+  end
+
+  attribute \keep 1
+  cell \io_sdffr \q_out_io_sdffr_Q
+    connect \C \clk
+    connect \D \a_$lut_A_Y
+    connect \Q \q_out
+    connect \R \rst_n
+  end
+
+  attribute \module_not_derived 1
+  attribute \src "ioff_rst.v:96.5-98.34|/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:178.12-178.65"
+  cell \io_sdffr \qi_io_sdffr_Q
+    connect \C \clk
+    connect \D \pad_in
+    connect \Q \qi
+    connect \R \rst_n
+  end
+end

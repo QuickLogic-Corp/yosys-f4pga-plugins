@@ -1,0 +1,50 @@
+
+autoidx 11678
+
+attribute \top 1
+attribute \src "ioff_pol.v:184.1-197.10"
+module \rst_hi_n
+
+  attribute \src "ioff_pol.v:185.17-185.20"
+  wire input 1 \clk
+
+  attribute \src "ioff_pol.v:188.17-188.22"
+  wire input 4 \other
+
+  attribute \src "ioff_pol.v:187.17-187.23"
+  wire input 3 \pad_in
+
+  attribute \src "ioff_pol.v:191.9-191.10"
+  wire \q
+
+  wire \q_io_sdffnr_Q_R
+
+  attribute \src "ioff_pol.v:189.17-189.20"
+  wire output 5 \q_o
+
+  attribute \src "ioff_pol.v:186.17-186.20"
+  wire input 2 \rst
+
+  attribute \module_not_derived 1
+  attribute \src "ioff_pol.v:194.5-196.30|/localproj/lsharma/opt/yosys-v0.55/bin/../share/yosys/quicklogic/qlf_k6n10f/ffs_map.v:204.13-204.66"
+  cell \io_sdffnr \q_io_sdffnr_Q
+    connect \C \clk
+    connect \D \pad_in
+    connect \Q \q
+    connect \R \q_io_sdffnr_Q_R
+  end
+
+  cell $lut \q_o_$lut_Y
+    parameter \LUT 4'0110
+    parameter \WIDTH 2
+    connect \A { \q \other }
+    connect \Y \q_o
+  end
+
+  cell $lut \rst_$lut_A
+    parameter \LUT 2'01
+    parameter \WIDTH 1
+    connect \A \rst
+    connect \Y \q_io_sdffnr_Q_R
+  end
+end

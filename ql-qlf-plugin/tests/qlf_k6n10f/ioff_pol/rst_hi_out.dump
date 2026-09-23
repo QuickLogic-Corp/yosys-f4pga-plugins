@@ -1,0 +1,48 @@
+
+autoidx 13448
+
+attribute \top 1
+attribute \src "ioff_pol.v:214.1-224.10"
+module \rst_hi_out
+
+  attribute \src "ioff_pol.v:217.17-217.18"
+  wire input 3 \a
+
+  attribute \src "ioff_pol.v:218.17-218.18"
+  wire input 4 \b
+
+  attribute \src "ioff_pol.v:215.17-215.20"
+  wire input 1 \clk
+
+  attribute \src "ioff_pol.v:219.17-219.20"
+  wire output 5 \q_o
+
+  wire \q_o_io_sdffr_Q_D
+
+  wire \q_o_io_sdffr_Q_R
+
+  attribute \src "ioff_pol.v:216.17-216.20"
+  wire input 2 \rst
+
+  cell $lut \b_$lut_A
+    parameter \LUT 4'1000
+    parameter \WIDTH 2
+    connect \A { \a \b }
+    connect \Y \q_o_io_sdffr_Q_D
+  end
+
+  attribute \keep 1
+  cell \io_sdffr \q_o_io_sdffr_Q
+    connect \C \clk
+    connect \D \q_o_io_sdffr_Q_D
+    connect \Q \q_o
+    connect \R \q_o_io_sdffr_Q_R
+  end
+
+  cell $lut \rst_$lut_A
+    parameter \LUT 2'01
+    parameter \WIDTH 1
+    connect \A \rst
+    connect \Y \q_o_io_sdffr_Q_R
+  end
+end

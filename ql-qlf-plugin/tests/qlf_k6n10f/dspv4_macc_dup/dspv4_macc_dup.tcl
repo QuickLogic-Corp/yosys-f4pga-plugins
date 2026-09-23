@@ -6,13 +6,13 @@
 # and a connectivity walk from each output back to the bank -- p1 and p2 must
 # BOTH still be fed by it.
 #
-# NF-4: the pass is synth_quicklogic upstream and synth_ql in an aurora2 build,
+# NF-4: the pass is synth_ql upstream and synth_ql in an aurora2 build,
 # so the name is discovered rather than hardcoded.
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
 
-set PASS_NAME synth_quicklogic
+set PASS_NAME synth_ql
 if { [info commands synth_ql] != {} } { set PASS_NAME synth_ql }
 
 set LIB [file normalize [file join [file dirname [info script]] .. .. ..]]

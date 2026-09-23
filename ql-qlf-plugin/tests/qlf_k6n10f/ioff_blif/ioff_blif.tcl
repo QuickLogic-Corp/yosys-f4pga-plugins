@@ -39,7 +39,7 @@ design -save read
 # -----------------------------------------------------------------------------
 set blif_r [test_output_path "ioff_sdffr.blif"]
 design -load read
-synth_quicklogic -family qlf_k6n10f -top blif_sdffr -ioff -blif $blif_r
+synth_ql -family qlf_k6n10f -top blif_sdffr -ioff -blif $blif_r
 
 set line [blif_subckt $blif_r io_sdffr]
 if {$line eq ""} {
@@ -71,7 +71,7 @@ assert_log_lacks ioff_sdffr [blif_text $blif_r] ".subckt sdffre"
 #      sdffre gets none would be the surprise.
 set blif_base [test_output_path "ioff_base.blif"]
 design -load read
-synth_quicklogic -family qlf_k6n10f -top blif_sdffr -blif $blif_base
+synth_ql -family qlf_k6n10f -top blif_sdffr -blif $blif_base
 assert_log_has  ioff_base [blif_text $blif_base] ".subckt sdffre"
 assert_log_lacks ioff_base [blif_text $blif_base] ".model sdffre"
 assert_log_lacks ioff_sdffr [blif_text $blif_r] ".model io_sdffr"
@@ -81,7 +81,7 @@ assert_log_lacks ioff_sdffr [blif_text $blif_r] ".model io_sdffr"
 # -----------------------------------------------------------------------------
 set blif_n [test_output_path "ioff_sdffnr.blif"]
 design -load read
-synth_quicklogic -family qlf_k6n10f -top blif_sdffnr -ioff -blif $blif_n
+synth_ql -family qlf_k6n10f -top blif_sdffnr -ioff -blif $blif_n
 
 set line_n [blif_subckt $blif_n io_sdffnr]
 if {$line_n eq ""} {

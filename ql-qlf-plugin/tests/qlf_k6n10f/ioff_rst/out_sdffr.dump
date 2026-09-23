@@ -1,0 +1,39 @@
+
+autoidx 2702
+
+attribute \top 1
+attribute \src "ioff_rst.v:58.1-68.10"
+module \out_sdffr
+
+  attribute \src "ioff_rst.v:61.17-61.18"
+  wire input 3 \a
+
+  attribute \src "ioff_rst.v:62.17-62.18"
+  wire input 4 \b
+
+  attribute \src "ioff_rst.v:59.17-59.20"
+  wire input 1 \clk
+
+  attribute \src "ioff_rst.v:63.17-63.20"
+  wire output 5 \q_o
+
+  wire \q_o_io_sdffr_Q_D
+
+  attribute \src "ioff_rst.v:60.17-60.22"
+  wire input 2 \rst_n
+
+  cell $lut \b_$lut_A
+    parameter \LUT 4'1000
+    parameter \WIDTH 2
+    connect \A { \a \b }
+    connect \Y \q_o_io_sdffr_Q_D
+  end
+
+  attribute \keep 1
+  cell \io_sdffr \q_o_io_sdffr_Q
+    connect \C \clk
+    connect \D \q_o_io_sdffr_Q_D
+    connect \Q \q_o
+    connect \R \rst_n
+  end
+end

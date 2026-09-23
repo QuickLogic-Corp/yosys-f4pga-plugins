@@ -7,10 +7,10 @@ proc check_equiv {top use_cfg_params} {
     design -save preopt
 
     if {${use_cfg_params} == 1} {
-        synth_quicklogic -family qlf_k6n10f -top ${top} -use_dsp_cfg_params
+        synth_ql -family qlf_k6n10f -top ${top} -use_dsp_cfg_params
     } else {
         stat
-        synth_quicklogic -family qlf_k6n10f -top ${top}
+        synth_ql -family qlf_k6n10f -top ${top}
     }
 
     design -stash postopt
