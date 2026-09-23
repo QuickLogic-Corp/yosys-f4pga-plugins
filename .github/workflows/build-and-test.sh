@@ -33,11 +33,6 @@ if [ "$PLUGIN_NAME" == "ql-qlf" ]; then
     export EXTRA_FLAGS=-DPASS_NAME=synth_ql
 fi
 
-if [ "$PLUGIN_NAME" == "xdc" ] || [ "$PLUGIN_NAME" == "sdc" ]; then 
-    make design_introspection.so -j`nproc`
-	make install_design_introspection -j`nproc`
-fi 
-
 export CXXFLAGS=-Werror
 make ${PLUGIN_NAME}.so -j`nproc`
 unset CXXFLAGS
