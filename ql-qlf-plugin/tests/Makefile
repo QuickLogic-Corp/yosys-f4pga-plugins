@@ -72,7 +72,8 @@ TESTS = \
 	qlf_k6n10f/rel_ip_blif_unquoted \
 	qlf_k6n10f/rel_ip_blif_badstub \
 	qlf_k6n10f/rel_ip_blif_noprim \
-	qlf_k6n10f/synth_options
+	qlf_k6n10f/synth_options \
+	qlf_k6n10f/latches_k6n10f
 #	qlf_k6n10_bram \
 
 SIM_TESTS = \

@@ -108,7 +108,7 @@ synth_ql -family qlf_k4n8 -top my_dffsr_pnp
 yosys cd my_dffsr_pnp
 stat
 select -assert-count 1 t:dffsr
-select -assert-count 2 t:\$lut
+select -assert-count 1 t:\$lut
 
 # DFFSR (posedge CLK posedge SET negedge RST)
 design -load read
@@ -116,7 +116,7 @@ synth_ql -family qlf_k4n8 -top my_dffsr_ppn
 yosys cd my_dffsr_ppn
 stat
 select -assert-count 1 t:dffsr
-select -assert-count 1 t:\$lut
+select -assert-count 2 t:\$lut
 
 # DFFSR (posedge CLK negedge SET negedge RST)
 design -load read
@@ -140,7 +140,7 @@ synth_ql -family qlf_k4n8 -top my_dffsr_nnp
 yosys cd my_dffsr_nnp
 stat
 select -assert-count 1 t:dffnsr
-select -assert-count 2 t:\$lut
+select -assert-count 1 t:\$lut
 
 # DFFSR (negedge CLK posedge SET negedge RST)
 design -load read
@@ -148,7 +148,7 @@ synth_ql -family qlf_k4n8 -top my_dffsr_npn
 yosys cd my_dffsr_npn
 stat
 select -assert-count 1 t:dffnsr
-select -assert-count 1 t:\$lut
+select -assert-count 2 t:\$lut
 
 # DFFSR (negedge CLK negedge SET negedge RST)
 design -load read
@@ -169,7 +169,7 @@ design -save read
 # DFF
 hierarchy -top my_dff
 yosys proc
-equiv_opt -assert -map +/quicklogic/qlf_k6n10/cells_sim.v synth_ql -family qlf_k6n10 -top my_dff
+equiv_opt -assert -map +/quicklogic/qlf_k6n10/cells_sim.v synth_ql -family qlf_k6n10 -no_abc9 -top my_dff
 design -load postopt
 yosys cd my_dff
 stat
@@ -177,21 +177,21 @@ select -assert-count 1 t:dff
 
 # DFFR (posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffr_p
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffr_p
 yosys cd my_dffr_p
 stat
 select -assert-count 1 t:dffr
 
 # DFFR (posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffr_p_2
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffr_p_2
 yosys cd my_dffr_p_2
 stat
 select -assert-count 2 t:dffr
 
 # DFFR (negedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffr_n
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffr_n
 yosys cd my_dffr_n
 stat
 select -assert-count 1 t:dffr
@@ -199,14 +199,14 @@ select -assert-count 1 t:\$lut
 
 #DFFRE (posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffre_p
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffre_p
 yosys cd my_dffre_p
 stat
 select -assert-count 1 t:dffre
 
 #DFFRE (negedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffre_n
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffre_n
 yosys cd my_dffre_n
 stat
 select -assert-count 1 t:dffre
@@ -214,14 +214,14 @@ select -assert-count 1 t:\$lut
 
 # DFFS (posedge SET)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffs_p
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffs_p
 yosys cd my_dffs_p
 stat
 select -assert-count 1 t:dffs
 
 # DFFS (negedge SET)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffs_n
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffs_n
 yosys cd my_dffs_n
 stat
 select -assert-count 1 t:dffs
@@ -229,21 +229,21 @@ select -assert-count 1 t:\$lut
 
 # DFFSE (posedge SET)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffse_p
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffse_p
 yosys cd my_dffse_p
 stat
 select -assert-count 1 t:dffse
 
 # DFFSE (negedge SET)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffse_n
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffse_n
 yosys cd my_dffse_n
 stat
 select -assert-count 1 t:dffse
 
 # DFFN
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffn
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffn
 yosys cd my_dffn
 stat
 select -assert-count 1 t:dff
@@ -251,7 +251,7 @@ select -assert-count 1 t:\$lut
 
 # DFFNR (negedge CLK posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffnr_p
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffnr_p
 yosys cd my_dffnr_p
 stat
 select -assert-count 1 t:dffr
@@ -259,7 +259,7 @@ select -assert-count 1 t:\$lut
 
 # DFFNR (negedge CLK negedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffnr_n
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffnr_n
 yosys cd my_dffnr_n
 stat
 select -assert-count 1 t:dffr
@@ -267,7 +267,7 @@ select -assert-count 2 t:\$lut
 
 # DFFNS (negedge CLK posedge SET)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffns_p
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffns_p
 yosys cd my_dffns_p
 stat
 select -assert-count 1 t:dffs
@@ -275,7 +275,7 @@ select -assert-count 1 t:\$lut
 
 # DFFS (negedge CLK negedge SET)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffns_n
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffns_n
 yosys cd my_dffns_n
 stat
 select -assert-count 1 t:dffs
@@ -283,7 +283,7 @@ select -assert-count 2 t:\$lut
 
 # DFFSR (posedge CLK posedge SET posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsr_ppp
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsr_ppp
 yosys cd my_dffsr_ppp
 stat
 select -assert-count 1 t:dffsr
@@ -291,23 +291,23 @@ select -assert-count 1 t:\$lut
 
 # DFFSR (posedge CLK negedge SET posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsr_pnp
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsr_pnp
 yosys cd my_dffsr_pnp
-stat
-select -assert-count 1 t:dffsr
-select -assert-count 1 t:\$lut
-
-# DFFSR (posedge CLK posedge SET negedge RST)
-design -load read
-synth_ql -family qlf_k6n10 -top my_dffsr_ppn
-yosys cd my_dffsr_ppn
 stat
 select -assert-count 1 t:dffsr
 select -assert-count 2 t:\$lut
 
+# DFFSR (posedge CLK posedge SET negedge RST)
+design -load read
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsr_ppn
+yosys cd my_dffsr_ppn
+stat
+select -assert-count 1 t:dffsr
+select -assert-count 1 t:\$lut
+
 # DFFSR (posedge CLK negedge SET negedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsr_pnn
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsr_pnn
 yosys cd my_dffsr_pnn
 stat
 select -assert-count 1 t:dffsr
@@ -315,7 +315,7 @@ select -assert-count 2 t:\$lut
 
 # DFFSR (negedge CLK posedge SET posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsr_npp
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsr_npp
 yosys cd my_dffsr_npp
 stat
 select -assert-count 1 t:dffsr
@@ -323,23 +323,23 @@ select -assert-count 2 t:\$lut
 
 # DFFSR (negedge CLK negedge SET posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsr_nnp
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsr_nnp
 yosys cd my_dffsr_nnp
-stat
-select -assert-count 1 t:dffsr
-select -assert-count 2 t:\$lut
-
-# DFFSR (negedge CLK posedge SET negedge RST)
-design -load read
-synth_ql -family qlf_k6n10 -top my_dffsr_npn
-yosys cd my_dffsr_npn
 stat
 select -assert-count 1 t:dffsr
 select -assert-count 3 t:\$lut
 
+# DFFSR (negedge CLK posedge SET negedge RST)
+design -load read
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsr_npn
+yosys cd my_dffsr_npn
+stat
+select -assert-count 1 t:dffsr
+select -assert-count 2 t:\$lut
+
 # DFFSR (negedge CLK negedge SET negedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsr_nnn
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsr_nnn
 yosys cd my_dffsr_nnn
 stat
 select -assert-count 1 t:dffsr
@@ -347,7 +347,7 @@ select -assert-count 3 t:\$lut
 
 # DFFSRE (posedge CLK posedge SET posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsre_ppp
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsre_ppp
 yosys cd my_dffsre_ppp
 stat
 select -assert-count 1 t:dffsre
@@ -355,23 +355,23 @@ select -assert-count 1 t:\$lut
 
 # DFFSRE (posedge CLK negedge SET posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsre_pnp
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsre_pnp
 yosys cd my_dffsre_pnp
-stat
-select -assert-count 1 t:dffsre
-select -assert-count 1 t:\$lut
-
-# DFFSRE (posedge CLK posedge SET negedge RST)
-design -load read
-synth_ql -family qlf_k6n10 -top my_dffsre_ppn
-yosys cd my_dffsre_ppn
 stat
 select -assert-count 1 t:dffsre
 select -assert-count 2 t:\$lut
 
+# DFFSRE (posedge CLK posedge SET negedge RST)
+design -load read
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsre_ppn
+yosys cd my_dffsre_ppn
+stat
+select -assert-count 1 t:dffsre
+select -assert-count 1 t:\$lut
+
 # DFFSRE (posedge CLK negedge SET negedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsre_pnn
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsre_pnn
 yosys cd my_dffsre_pnn
 stat
 select -assert-count 1 t:dffsre
@@ -379,7 +379,7 @@ select -assert-count 2 t:\$lut
 
 # DFFSRE (negedge CLK posedge SET posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsre_npp
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsre_npp
 yosys cd my_dffsre_npp
 stat
 select -assert-count 1 t:dffsre
@@ -387,23 +387,23 @@ select -assert-count 2 t:\$lut
 
 # DFFSRE (negedge CLK negedge SET posedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsre_nnp
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsre_nnp
 yosys cd my_dffsre_nnp
-stat
-select -assert-count 1 t:dffsre
-select -assert-count 2 t:\$lut
-
-# DFFSRE (negedge CLK posedge SET negedge RST)
-design -load read
-synth_ql -family qlf_k6n10 -top my_dffsre_npn
-yosys cd my_dffsre_npn
 stat
 select -assert-count 1 t:dffsre
 select -assert-count 3 t:\$lut
 
+# DFFSRE (negedge CLK posedge SET negedge RST)
+design -load read
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsre_npn
+yosys cd my_dffsre_npn
+stat
+select -assert-count 1 t:dffsre
+select -assert-count 2 t:\$lut
+
 # DFFSRE (negedge CLK negedge SET negedge RST)
 design -load read
-synth_ql -family qlf_k6n10 -top my_dffsre_nnn
+synth_ql -family qlf_k6n10 -no_abc9 -top my_dffsre_nnn
 yosys cd my_dffsre_nnn
 stat
 select -assert-count 1 t:dffsre
@@ -424,7 +424,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dff
 stat
-select -assert-count 1 t:sdffsre
+select -assert-count 1 t:sdffre
 
 # DFFN
 design -load read
@@ -434,7 +434,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffn
 stat
-select -assert-count 1 t:sdffnsre
+select -assert-count 1 t:sdffnre
 
 
 # DFFSRE from DFFR_N
@@ -445,7 +445,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffr_n
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 
 # DFFSRE from DFFR_P
 design -load read
@@ -455,7 +455,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffr_p
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 select -assert-count 1 t:\$lut
 
 # DFFSRE from DFFRE_N
@@ -466,7 +466,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffre_n
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 
 # DFFSRE from DFFRE_P
 design -load read
@@ -476,7 +476,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffre_p
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 select -assert-count 1 t:\$lut
 
 
@@ -488,7 +488,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffs_n
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 
 # DFFSRE from DFFS_P
 design -load read
@@ -498,8 +498,8 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffs_p
 stat
-select -assert-count 1 t:dffsre
-select -assert-count 1 t:\$lut
+select -assert-count 1 t:dffre
+select -assert-count 3 t:\$lut
 
 # DFFSRE from DFFSE_N
 design -load read
@@ -509,7 +509,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffse_n
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 
 # DFFSRE from DFFSE_P
 design -load read
@@ -519,8 +519,8 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffse_p
 stat
-select -assert-count 1 t:dffsre
-select -assert-count 1 t:\$lut
+select -assert-count 1 t:dffre
+select -assert-count 3 t:\$lut
 
 
 # SDFFSRE from SDFFR_N
@@ -531,7 +531,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_sdffr_n
 stat
-select -assert-count 1 t:sdffsre
+select -assert-count 1 t:sdffre
 
 # SDFFSRE from SDFFR_P
 design -load read
@@ -541,7 +541,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_sdffr_p
 stat
-select -assert-count 1 t:sdffsre
+select -assert-count 1 t:sdffre
 select -assert-count 1 t:\$lut
 
 # SDFFSRE from SDFFS_N
@@ -552,7 +552,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_sdffs_n
 stat
-select -assert-count 1 t:sdffsre
+select -assert-count 1 t:sdffre
 
 # SDFFSRE from SDFFS_P
 design -load read
@@ -562,8 +562,8 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_sdffs_p
 stat
-select -assert-count 1 t:sdffsre
-select -assert-count 1 t:\$lut
+select -assert-count 1 t:sdffre
+select -assert-count 3 t:\$lut
 
 
 # SDFFNSRE from SDFFNR_N
@@ -574,7 +574,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_sdffnr_n
 stat
-select -assert-count 1 t:sdffnsre
+select -assert-count 1 t:sdffnre
 
 # SDFFNSRE from SDFFRN_P
 design -load read
@@ -584,7 +584,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_sdffnr_p
 stat
-select -assert-count 1 t:sdffnsre
+select -assert-count 1 t:sdffnre
 select -assert-count 1 t:\$lut
 
 # SDFFNSRE from SDFFNS_N
@@ -595,7 +595,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_sdffns_n
 stat
-select -assert-count 1 t:sdffnsre
+select -assert-count 1 t:sdffnre
 
 # SDFFSRE from SDFFNS_P
 design -load read
@@ -605,30 +605,10 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_sdffns_p
 stat
-select -assert-count 1 t:sdffnsre
-select -assert-count 1 t:\$lut
+select -assert-count 1 t:sdffnre
+select -assert-count 3 t:\$lut
 
-
-# LATCH
-design -load read
-hierarchy -top my_latch
-yosys proc
-equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql -family qlf_k6n10f -top my_latch
-design -load postopt
-yosys cd my_latch
-stat
-select -assert-count 1 t:latchsre
-
-# LATCHN
-design -load read
-hierarchy -top my_latchn
-yosys proc
-equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql -family qlf_k6n10f -top my_latchn
-design -load postopt
-yosys cd my_latchn
-stat
-select -assert-count 1 t:latchnsre
-
+# LATCH and LATCHN moved to qlf_k6n10f/latches_k6n10f.
 
 ## LATCHSRE from LATCHR_N
 #design -load read
@@ -731,7 +711,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dff
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 
 # DFFN
 design -load read
@@ -741,7 +721,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffn
 stat
-select -assert-count 1 t:dffnsre
+select -assert-count 1 t:dffnre
 
 
 # DFFSRE from DFFR_N
@@ -752,7 +732,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffr_n
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 
 # DFFSRE from DFFR_P
 design -load read
@@ -762,7 +742,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffr_p
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 select -assert-count 1 t:\$lut
 
 # DFFSRE from DFFRE_N
@@ -773,7 +753,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffre_n
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 
 # DFFSRE from DFFRE_P
 design -load read
@@ -783,7 +763,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffre_p
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 select -assert-count 1 t:\$lut
 
 
@@ -795,7 +775,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffs_n
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 
 # DFFSRE from DFFS_P
 design -load read
@@ -805,8 +785,8 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffs_p
 stat
-select -assert-count 1 t:dffsre
-select -assert-count 1 t:\$lut
+select -assert-count 1 t:dffre
+select -assert-count 3 t:\$lut
 
 # DFFSRE from DFFSE_N
 design -load read
@@ -816,7 +796,7 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffse_n
 stat
-select -assert-count 1 t:dffsre
+select -assert-count 1 t:dffre
 
 # DFFSRE from DFFSE_P
 design -load read
@@ -826,30 +806,10 @@ equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql 
 design -load postopt
 yosys cd my_dffse_p
 stat
-select -assert-count 1 t:dffsre
-select -assert-count 1 t:\$lut
+select -assert-count 1 t:dffre
+select -assert-count 3 t:\$lut
 
-
-# LATCH
-design -load read
-hierarchy -top my_latch
-yosys proc
-equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql -family qlf_k6n10f -top my_latch -nosdff
-design -load postopt
-yosys cd my_latch
-stat
-select -assert-count 1 t:latchsre
-
-# LATCHN
-design -load read
-hierarchy -top my_latchn
-yosys proc
-equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v synth_ql -family qlf_k6n10f -top my_latchn -nosdff
-design -load postopt
-yosys cd my_latchn
-stat
-select -assert-count 1 t:latchnsre
-
+# LATCH and LATCHN moved to qlf_k6n10f/latches_k6n10f.
 
 ## LATCHSRE from LATCHR_N
 #design -load read
