@@ -1407,9 +1407,9 @@ static void simplify_sv(AST::AstNode *current_node, AST::AstNode *parent_node)
             log_assert(low_high_bound->children[1]->type == AST::AST_CONSTANT);
             const int low = low_high_bound->children[0]->integer;
             const int high = low_high_bound->children[1]->integer;
-            const int range = low_high_bound->children[1]->range_valid
-                                ? low_high_bound->children[1]->range_left
-                                : low_high_bound->children[0]->range_valid ? low_high_bound->children[0]->range_left : 32;
+            const int range = low_high_bound->children[1]->range_valid   ? low_high_bound->children[1]->range_left
+                              : low_high_bound->children[0]->range_valid ? low_high_bound->children[0]->range_left
+                                                                         : 32;
             delete low_high_bound;
             // According to standard:
             // If the bound to the left of the colon is greater than the

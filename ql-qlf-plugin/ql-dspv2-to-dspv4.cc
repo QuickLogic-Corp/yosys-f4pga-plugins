@@ -49,30 +49,30 @@ PRIVATE_NAMESPACE_BEGIN
 
 // MODE_BITS[79:0] field decode (see ql_dspv2_types.cc:1009-1077 / dspv2_sim.v).
 struct V2Config {
-    int coeff0;      // [31:0]
-    int acc_fir;     // [37:32]
-    int round;       // [40:38]
-    int zc_shift;    // [45:41]
-    int zreg_shift;  // [50:46]
-    int shift_reg;   // [56:51]
-    bool saturate;   // [57]
-    bool subtract;   // [58]
-    bool pre_add;    // [59]
-    bool a_sel;      // [60]
-    bool a_reg;      // [61]
-    bool a1_reg;     // [62]
-    bool a2_reg;     // [63]
-    bool b_sel;      // [64]
-    bool b_reg;      // [65]
-    bool b1_reg;     // [66]
-    bool b2_reg;     // [67]
-    bool c_reg;      // [68]
-    bool bc_reg;     // [69]
-    bool m_reg;      // [70]
-    bool zcin_reg;   // [71] (a.k.a. ZCIN_SEL)
-    bool acout_sel;  // [72]
-    bool bcout_sel;  // [73]
-    bool frac_mode;  // [79]
+    int coeff0;     // [31:0]
+    int acc_fir;    // [37:32]
+    int round;      // [40:38]
+    int zc_shift;   // [45:41]
+    int zreg_shift; // [50:46]
+    int shift_reg;  // [56:51]
+    bool saturate;  // [57]
+    bool subtract;  // [58]
+    bool pre_add;   // [59]
+    bool a_sel;     // [60]
+    bool a_reg;     // [61]
+    bool a1_reg;    // [62]
+    bool a2_reg;    // [63]
+    bool b_sel;     // [64]
+    bool b_reg;     // [65]
+    bool b1_reg;    // [66]
+    bool b2_reg;    // [67]
+    bool c_reg;     // [68]
+    bool bc_reg;    // [69]
+    bool m_reg;     // [70]
+    bool zcin_reg;  // [71] (a.k.a. ZCIN_SEL)
+    bool acout_sel; // [72]
+    bool bcout_sel; // [73]
+    bool frac_mode; // [79]
     // Not from MODE_BITS: output register, encoded in output_select[2]
     // (output_select >= 4). Set from the port in execute().
     bool out_reg = false;
@@ -87,15 +87,24 @@ enum class V2Mode { MULT, MULTACC, MULTACC_NEG, MULTADD, MULTADD_NEG, PREADDER_M
 static const char *mode_name(V2Mode m)
 {
     switch (m) {
-    case V2Mode::MULT: return "MULT";
-    case V2Mode::MULTACC: return "MULTACC";
-    case V2Mode::MULTACC_NEG: return "MULTACC_NEG";
-    case V2Mode::MULTADD: return "MULTADD";
-    case V2Mode::MULTADD_NEG: return "MULTADD_NEG";
-    case V2Mode::PREADDER_MULT: return "PREADDER_MULT";
-    case V2Mode::PREADDER_MULTADD: return "PREADDER_MULTADD";
-    case V2Mode::CONCAT_CASCADE: return "CONCAT_CASCADE";
-    default: return "UNKNOWN";
+    case V2Mode::MULT:
+        return "MULT";
+    case V2Mode::MULTACC:
+        return "MULTACC";
+    case V2Mode::MULTACC_NEG:
+        return "MULTACC_NEG";
+    case V2Mode::MULTADD:
+        return "MULTADD";
+    case V2Mode::MULTADD_NEG:
+        return "MULTADD_NEG";
+    case V2Mode::PREADDER_MULT:
+        return "PREADDER_MULT";
+    case V2Mode::PREADDER_MULTADD:
+        return "PREADDER_MULTADD";
+    case V2Mode::CONCAT_CASCADE:
+        return "CONCAT_CASCADE";
+    default:
+        return "UNKNOWN";
     }
 }
 
@@ -306,8 +315,7 @@ struct QlDspV2ToV4Pass : public Pass {
     // clone a feeder with fresh, private outputs.
     static const pool<RTLIL::IdString> &dsp4_output_ports()
     {
-        static const pool<RTLIL::IdString> ports = {ID(P),     ID(ACOUT),    ID(BCOUT), ID(PCOUT),
-                                                    ID(CCOUT), ID(SIGNCOUT), ID(COUT)};
+        static const pool<RTLIL::IdString> ports = {ID(P), ID(ACOUT), ID(BCOUT), ID(PCOUT), ID(CCOUT), ID(SIGNCOUT), ID(COUT)};
         return ports;
     }
 
@@ -335,7 +343,7 @@ struct QlDspV2ToV4Pass : public Pass {
         if (GetSize(om) < 7)
             return RTLIL::IdString();
         int zsel = om.extract(4, 3).as_int(); // OPMODE[6:4]
-        if (zsel == 1)                         // 001 = PCIN
+        if (zsel == 1)                        // 001 = PCIN
             return ID(PCIN);
         return RTLIL::IdString();
     }
@@ -382,8 +390,7 @@ struct QlDspV2ToV4Pass : public Pass {
         // round/shift/saturate fields are set. Enabling USE_RSS there made V4
         // shift a result V2 leaves alone.
         bool rss_selected = (c.osel != 0) && (c.osel != 4);
-        bool rss_active = rss_selected &&
-                          ((c.round != 0) || (c.shift_reg != 0) || c.saturate);
+        bool rss_active = rss_selected && ((c.round != 0) || (c.shift_reg != 0) || c.saturate);
         dsp->setParam(ID(USE_RSS), c1(rss_active));
         dsp->setParam(ID(ROUND), c3(c.round));
         dsp->setParam(ID(SHIFT), c6(c.shift_reg));
@@ -557,8 +564,8 @@ struct QlDspV2ToV4Pass : public Pass {
         case V2Mode::PREADDER_MULT:
             opmode = 0b000000101;
             inmode = c.subtract ? 0b01100 : 0b00100; // INMODE[3]=pre-adder sub
-            bmultsel = true;                          // BMULTSEL = AD
-            preaddinsel = true;                       // PREADDINSEL = B path
+            bmultsel = true;                         // BMULTSEL = AD
+            preaddinsel = true;                      // PREADDINSEL = B path
             break;
         case V2Mode::PREADDER_MULTADD:
             opmode = 0b000010101; // Z = PCIN
@@ -595,8 +602,8 @@ struct QlDspV2ToV4Pass : public Pass {
         if (accumulate && c.out_reg)
             add_output_dffre(module, dsp, src);
 
-        log("  %s: %s -> QL_DSP4 %s (OPMODE=%s ALUMODE=%s INMODE=%s%s)\n", log_id(src->name), mode_name(mode),
-            log_id(dsp->name), c9(opmode).as_string().c_str(), c2(alumode).as_string().c_str(), c5(inmode).as_string().c_str(),
+        log("  %s: %s -> QL_DSP4 %s (OPMODE=%s ALUMODE=%s INMODE=%s%s)\n", log_id(src->name), mode_name(mode), log_id(dsp->name),
+            c9(opmode).as_string().c_str(), c2(alumode).as_string().c_str(), c5(inmode).as_string().c_str(),
             (accumulate && c.out_reg) ? " +out_dffre" : "");
 
         // NOTE: src is NOT removed here -- removal is deferred to the end of
@@ -645,8 +652,7 @@ struct QlDspV2ToV4Pass : public Pass {
         return concat_in + concat_out + cons_zcin;
     }
 
-    void emit_fused(RTLIL::Module *module, RTLIL::Cell *concat, RTLIL::Cell *consumer, V2Mode consumer_mode, const V2Config &cc,
-                    const V2Config &dc)
+    void emit_fused(RTLIL::Module *module, RTLIL::Cell *concat, RTLIL::Cell *consumer, V2Mode consumer_mode, const V2Config &cc, const V2Config &dc)
     {
         int k_in, k_out, k_zcin;
         int k = fusion_k(cc, dc, k_in, k_out, k_zcin);
@@ -712,8 +718,8 @@ struct QlDspV2ToV4Pass : public Pass {
         set_reg_params(dsp, dc, /*accumulate=*/false, /*creg=*/k);
         set_rss_params(dsp, dc);
 
-        log("  fused CONCAT_CASCADE %s + %s %s -> QL_DSP4 %s (C={A1,B1}, k=%d, CREG=%d)\n", log_id(concat->name),
-            mode_name(consumer_mode), log_id(consumer->name), log_id(dsp->name), k, k);
+        log("  fused CONCAT_CASCADE %s + %s %s -> QL_DSP4 %s (C={A1,B1}, k=%d, CREG=%d)\n", log_id(concat->name), mode_name(consumer_mode),
+            log_id(consumer->name), log_id(dsp->name), k, k);
 
         // Removal deferred (see emit_per_cell note) -- concat/consumer are removed
         // at the end of execute() to avoid freeing cells while pointers are live.

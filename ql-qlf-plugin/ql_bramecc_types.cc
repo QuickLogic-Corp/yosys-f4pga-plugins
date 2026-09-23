@@ -27,147 +27,143 @@ PRIVATE_NAMESPACE_BEGIN
 
 // ============================================================================
 
-
 struct QlBramEccTypesPass : public Pass {
-	
-	QlBramEccTypesPass() : Pass("ql_bramecc_types", "Change TDP_ECC36K type to subtypes") {}
 
-	void help() override
-	{
-		//   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
-		log("\n");
-		log("    ql_bramecc_types [selection]\n");
-		log("\n");
-		log("    This pass changes the type of TDP_ECC36K cells to different types based on the\n");
-		log("    configuration of the cell.\n");
-		log("\n");
-	}
-	
-    bool replace_existing_pass() const override
+    QlBramEccTypesPass() : Pass("ql_bramecc_types", "Change TDP_ECC36K type to subtypes") {}
+
+    void help() override
     {
-        return true;
+        //   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
+        log("\n");
+        log("    ql_bramecc_types [selection]\n");
+        log("\n");
+        log("    This pass changes the type of TDP_ECC36K cells to different types based on the\n");
+        log("    configuration of the cell.\n");
+        log("\n");
     }
 
-	int width_for_mode(int mode){
-		// 1: mode = 3'b101;
-		// 2: mode = 3'b110;
-		// 4: mode = 3'b100;
-		// 8,9: mode = 3'b001;
-		// 16, 18: mode = 3'b010;
-		// 32, 36: mode = 3'b011;
-		switch (mode)
-		{
-		case 0:
-			return 1800;
-		case 1:
-			return 9;
-		case 2:
-			return 18;
-		case 3:
-			return 36;
-		case 4:
-			return 4;
-		case 5:
-			return 1;
-		case 6:
-			return 2;
-		case 7:
-			return 3600;
-		default:
-			log_error("Invalid mode: %x", mode);
-		}
-	}
+    bool replace_existing_pass() const override { return true; }
 
-	void execute(std::vector<std::string> args, RTLIL::Design *design) override
-	{
-		log_header(design, "Executing QL_BRAMECC_TYPES pass.\n");
+    int width_for_mode(int mode)
+    {
+        // 1: mode = 3'b101;
+        // 2: mode = 3'b110;
+        // 4: mode = 3'b100;
+        // 8,9: mode = 3'b001;
+        // 16, 18: mode = 3'b010;
+        // 32, 36: mode = 3'b011;
+        switch (mode) {
+        case 0:
+            return 1800;
+        case 1:
+            return 9;
+        case 2:
+            return 18;
+        case 3:
+            return 36;
+        case 4:
+            return 4;
+        case 5:
+            return 1;
+        case 6:
+            return 2;
+        case 7:
+            return 3600;
+        default:
+            log_error("Invalid mode: %x", mode);
+        }
+    }
 
-		size_t argidx = 1;
-		extra_args(args, argidx, design);
+    void execute(std::vector<std::string> args, RTLIL::Design *design) override
+    {
+        log_header(design, "Executing QL_BRAMECC_TYPES pass.\n");
 
-		for (RTLIL::Module* module : design->selected_modules())
-			for (RTLIL::Cell* cell: module->selected_cells())
-			{
-				if (cell->type != ID(TDP_ECC36K) || !cell->hasParam(ID(MODE_BITS)))
-					continue;
-				
-				RTLIL::Const mode_bits = cell->getParam(ID(MODE_BITS));
+        size_t argidx = 1;
+        extra_args(args, argidx, design);
 
-				bool split = mode_bits.extract(80).as_bool();
+        for (RTLIL::Module *module : design->selected_modules())
+            for (RTLIL::Cell *cell : module->selected_cells()) {
+                if (cell->type != ID(TDP_ECC36K) || !cell->hasParam(ID(MODE_BITS)))
+                    continue;
 
-				bool FMODE1_i = mode_bits.extract(13).as_bool();
-				bool FMODE2_i = mode_bits.extract(54).as_bool();
-				if (FMODE1_i != FMODE2_i) {
-					log_debug("Can't change type of mixed use TDP_ECC36K block: FMODE1_i = %s, FMODE2_i = %s\n", FMODE1_i ? "true" : "false", FMODE2_i ? "true" : "false");
-					continue;
-				}
-				bool is_fifo = FMODE1_i;
+                RTLIL::Const mode_bits = cell->getParam(ID(MODE_BITS));
 
-				bool SYNC_FIFO1_i = mode_bits.extract(0).as_bool();
-				bool SYNC_FIFO2_i = mode_bits.extract(41).as_bool();
-				if (SYNC_FIFO1_i != SYNC_FIFO2_i) {
-					log_debug("Can't change type of mixed use TDP_ECC36K block: SYNC_FIFO1_i = %s, SYNC_FIFO2_i = %s\n", SYNC_FIFO1_i ? "true" : "false", SYNC_FIFO2_i ? "true" : "false");
-					continue;
-				}
-				bool sync_fifo = SYNC_FIFO1_i;
+                bool split = mode_bits.extract(80).as_bool();
 
-				[[maybe_unused]] int RMODE_A1_i = mode_bits.extract(1, 3).as_int();
-				int RMODE_B1_i = mode_bits.extract(4, 3).as_int();
-				int WMODE_A1_i = mode_bits.extract(7, 3).as_int();
-				[[maybe_unused]] int WMODE_B1_i = mode_bits.extract(10, 3).as_int();
+                bool FMODE1_i = mode_bits.extract(13).as_bool();
+                bool FMODE2_i = mode_bits.extract(54).as_bool();
+                if (FMODE1_i != FMODE2_i) {
+                    log_debug("Can't change type of mixed use TDP_ECC36K block: FMODE1_i = %s, FMODE2_i = %s\n", FMODE1_i ? "true" : "false",
+                              FMODE2_i ? "true" : "false");
+                    continue;
+                }
+                bool is_fifo = FMODE1_i;
 
-				[[maybe_unused]] int RMODE_A2_i = mode_bits.extract(42, 3).as_int();
-				int RMODE_B2_i = mode_bits.extract(45, 3).as_int();
-				int WMODE_A2_i = mode_bits.extract(48, 3).as_int();
-				[[maybe_unused]] int WMODE_B2_i = mode_bits.extract(51, 3).as_int();
+                bool SYNC_FIFO1_i = mode_bits.extract(0).as_bool();
+                bool SYNC_FIFO2_i = mode_bits.extract(41).as_bool();
+                if (SYNC_FIFO1_i != SYNC_FIFO2_i) {
+                    log_debug("Can't change type of mixed use TDP_ECC36K block: SYNC_FIFO1_i = %s, SYNC_FIFO2_i = %s\n",
+                              SYNC_FIFO1_i ? "true" : "false", SYNC_FIFO2_i ? "true" : "false");
+                    continue;
+                }
+                bool sync_fifo = SYNC_FIFO1_i;
 
-				// TODO: should these be a warning or an error?
-				//if (RMODE_A1_i != WMODE_A1_i) {
-				//	log_warning("Can't change type of misconfigured TDP_ECC36K block: Port A1 configured with read width = %d different from write width = %d\n", width_for_mode(RMODE_A1_i), width_for_mode(WMODE_A1_i));
-				//	continue;
-				//}
-				//if (RMODE_B1_i != WMODE_B1_i) {
-				//	log_warning("Can't change type of misconfigured TDP_ECC36K block: Port B1 configured with read width = %d different from write width = %d\n", width_for_mode(RMODE_B1_i), width_for_mode(WMODE_B1_i));
-				//	continue;
-				//}
-				//if (RMODE_A2_i != WMODE_A2_i) {
-				//	log_warning("Can't change type of misconfigured TDP_ECC36K block: Port A2 configured with read width = %d different from write width = %d\n", width_for_mode(RMODE_A2_i), width_for_mode(WMODE_A2_i));
-				//	continue;
-				//}
-				//if (RMODE_B2_i != WMODE_B2_i) {
-				//	log_warning("Can't change type of misconfigured TDP_ECC36K block: Port B2 configured with read width = %d different from write width = %d\n", width_for_mode(RMODE_B2_i), width_for_mode(WMODE_B2_i));
-				//	continue;
-				//}
+                [[maybe_unused]] int RMODE_A1_i = mode_bits.extract(1, 3).as_int();
+                int RMODE_B1_i = mode_bits.extract(4, 3).as_int();
+                int WMODE_A1_i = mode_bits.extract(7, 3).as_int();
+                [[maybe_unused]] int WMODE_B1_i = mode_bits.extract(10, 3).as_int();
 
-				// TODO: For nonsplit blocks, should RMODE_A1_i == RMODE_A2_i etc be checked/enforced?
+                [[maybe_unused]] int RMODE_A2_i = mode_bits.extract(42, 3).as_int();
+                int RMODE_B2_i = mode_bits.extract(45, 3).as_int();
+                int WMODE_A2_i = mode_bits.extract(48, 3).as_int();
+                [[maybe_unused]] int WMODE_B2_i = mode_bits.extract(51, 3).as_int();
 
-				std::string type = "TDP_ECC36K";
-				if (is_fifo) {
-					type += "_FIFO_";
-					if (sync_fifo)
-						type += "SYNC_";
-					else
-						type += "ASYNC_";
-				} else 
-					type += "_BRAM_";
+                // TODO: should these be a warning or an error?
+                // if (RMODE_A1_i != WMODE_A1_i) {
+                //	log_warning("Can't change type of misconfigured TDP_ECC36K block: Port A1 configured with read width = %d different from write
+                // width = %d\n", width_for_mode(RMODE_A1_i), width_for_mode(WMODE_A1_i)); 	continue;
+                //}
+                // if (RMODE_B1_i != WMODE_B1_i) {
+                //	log_warning("Can't change type of misconfigured TDP_ECC36K block: Port B1 configured with read width = %d different from write
+                // width = %d\n", width_for_mode(RMODE_B1_i), width_for_mode(WMODE_B1_i)); 	continue;
+                //}
+                // if (RMODE_A2_i != WMODE_A2_i) {
+                //	log_warning("Can't change type of misconfigured TDP_ECC36K block: Port A2 configured with read width = %d different from write
+                // width = %d\n", width_for_mode(RMODE_A2_i), width_for_mode(WMODE_A2_i)); 	continue;
+                //}
+                // if (RMODE_B2_i != WMODE_B2_i) {
+                //	log_warning("Can't change type of misconfigured TDP_ECC36K block: Port B2 configured with read width = %d different from write
+                // width = %d\n", width_for_mode(RMODE_B2_i), width_for_mode(WMODE_B2_i)); 	continue;
+                //}
 
-				if (split) {
-					type += stringf("A1_X%d_", width_for_mode(WMODE_A1_i));
-					type += stringf("B1_X%d_", width_for_mode(RMODE_B1_i));
-					type += stringf("A2_X%d_", width_for_mode(WMODE_A2_i));
-					type += stringf("B2_X%d_", width_for_mode(RMODE_B2_i));
-					type += "split";
-				} else {
-					type += stringf("A_X%d_", width_for_mode(WMODE_A1_i));
-					type += stringf("B_X%d_", width_for_mode(RMODE_B1_i));
-					type += "nonsplit";
-				}
+                // TODO: For nonsplit blocks, should RMODE_A1_i == RMODE_A2_i etc be checked/enforced?
 
-				cell->type = RTLIL::escape_id(type);
-				log_debug("Changed type of memory cell %s to %s\n", log_id(cell->name), log_id(cell->type));
-			}
-	}
+                std::string type = "TDP_ECC36K";
+                if (is_fifo) {
+                    type += "_FIFO_";
+                    if (sync_fifo)
+                        type += "SYNC_";
+                    else
+                        type += "ASYNC_";
+                } else
+                    type += "_BRAM_";
 
+                if (split) {
+                    type += stringf("A1_X%d_", width_for_mode(WMODE_A1_i));
+                    type += stringf("B1_X%d_", width_for_mode(RMODE_B1_i));
+                    type += stringf("A2_X%d_", width_for_mode(WMODE_A2_i));
+                    type += stringf("B2_X%d_", width_for_mode(RMODE_B2_i));
+                    type += "split";
+                } else {
+                    type += stringf("A_X%d_", width_for_mode(WMODE_A1_i));
+                    type += stringf("B_X%d_", width_for_mode(RMODE_B1_i));
+                    type += "nonsplit";
+                }
+
+                cell->type = RTLIL::escape_id(type);
+                log_debug("Changed type of memory cell %s to %s\n", log_id(cell->name), log_id(cell->type));
+            }
+    }
 
 } QlTDPBramMergePass;
 

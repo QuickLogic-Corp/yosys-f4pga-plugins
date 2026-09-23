@@ -79,7 +79,6 @@ static void dspv4_apply_mode(RTLIL::Cell *cell, const Dspv4Mode &m)
         cell->setPort(ID(CIN), RTLIL::State::S1);
 }
 
-
 // Port widths on QL_DSP4. A is the 32-bit multiplier operand, B the 18-bit one.
 static const int DSPV4_A_WIDTH = 32;
 static const int DSPV4_B_WIDTH = 18;
@@ -104,8 +103,7 @@ static const int DSPV4_MAX_C_STAGES = 1;
 
 // Extend a signal to a port width, honouring the source cell's signedness.
 // IN-9: operands narrower than the port are extended, not silently truncated.
-static SigSpec dspv4_fit(RTLIL::Module *module, SigSpec sig, int width,
-                         bool is_signed)
+static SigSpec dspv4_fit(RTLIL::Module *module, SigSpec sig, int width, bool is_signed)
 {
     if (GetSize(sig) > width)
         return sig.extract(0, width);
@@ -147,7 +145,7 @@ static SigSpec dspv4_strip_extension(SigSpec sig, bool &is_signed)
     // copy is kept and the operand stays signed.
     SigBit top = sig[n - 1];
     if (top.wire == nullptr)
-        return sig;                 // constant one-fill: not an extension
+        return sig; // constant one-fill: not an extension
     int i = n - 2;
     while (i >= 0 && sig[i] == top)
         i--;
@@ -246,10 +244,7 @@ struct QlDspV4Pass : public Pass {
         log("\n");
     }
 
-    bool replace_existing_pass() const override
-    {
-        return true;
-    }
+    bool replace_existing_pass() const override { return true; }
 
     // absorbed_regs belongs here too: the flow calls this pass twice (once at
     // native width, once on the pieces mul2dsp split out), and Pass::clear_flags
@@ -344,15 +339,18 @@ struct QlDspV4Pass : public Pass {
                         if (wire->port_output)
                             for (auto bit : sm(wire))
                                 live[bit]++;
-                    for (auto it = shared_claimed.begin();
-                         it != shared_claimed.end();) {
+                    for (auto it = shared_claimed.begin(); it != shared_claimed.end();) {
                         RTLIL::Cell *ff = *it;
                         bool read = false;
                         for (auto bit : sm(ff->getPort(ID::Q)))
                             if (live.count(bit) && live.at(bit) > 0) {
-                                read = true; break;
+                                read = true;
+                                break;
                             }
-                        if (read) { ++it; continue; }
+                        if (read) {
+                            ++it;
+                            continue;
+                        }
                         it = shared_claimed.erase(it);
                         module->remove(ff);
                         dropped++;
@@ -360,7 +358,8 @@ struct QlDspV4Pass : public Pass {
                     }
                 }
                 log_debug("  copied %d shared operand flop(s); %d became userless "
-                          "and were dropped\n", copied, dropped);
+                          "and were dropped\n",
+                          copied, dropped);
                 shared_replicated += copied;
                 shared_dropped += dropped;
             }
@@ -380,8 +379,7 @@ struct QlDspV4Pass : public Pass {
             for (auto cell : module->cells())
                 if (cell->type == ID($mul)) {
                     left_soft++;
-                    log_debug("  %s.%s: left soft\n", log_id(module),
-                              log_id(cell));
+                    log_debug("  %s.%s: left soft\n", log_id(module), log_id(cell));
                 }
         }
         log("ql_dspv4: inferred %d QL_DSP4 cell(s), %d operand register "
@@ -403,10 +401,12 @@ struct QlDspV4Pass : public Pass {
                 shared_replicated, shared_dropped);
         if (acc_merged)
             log("ql_dspv4: %d duplicate accumulator loop(s) merged into a register "
-                "with the same clock, reset and next state.\n", acc_merged);
+                "with the same clock, reset and next state.\n",
+                acc_merged);
         if (coef_refolded)
             log("ql_dspv4: %d constant coefficient(s) widened to put the product "
-                "back in the low bits of the adder's operand.\n", coef_refolded);
+                "back in the low bits of the adder's operand.\n",
+                coef_refolded);
         if (absorb_end_none || absorb_end_exhausted)
             log("ql_dspv4: operand-register walks that ended with nothing left to "
                 "take (not stalls): %d with no register on the operand, %d having "
@@ -434,8 +434,7 @@ struct QlDspV4Pass : public Pass {
                 // operand muxes: out - a*b is P - A*B, the subtract;
                 // a*b - out is A*B - P, the reverse-subtract, which
                 // dspv4_apply_mode ties CIN high for.
-                return st.add_mul_port == ID(B) ? "MULT_ACC_SUB"
-                                                : "MULT_ACC_RSUB";
+                return st.add_mul_port == ID(B) ? "MULT_ACC_SUB" : "MULT_ACC_RSUB";
             }
             // Two adders: the first took C, the second the feedback, so the DSP
             // computes A*B + P + C in one cell.
@@ -479,7 +478,8 @@ struct QlDspV4Pass : public Pass {
         for (auto claimed : {st.mff, st.ff, st.ff2})
             if (claimed != nullptr && absorbed.count(claimed)) {
                 log_debug("  %s: not fused -- flop %s is already absorbed by "
-                          "another DSP\n", log_id(st.mul), log_id(claimed));
+                          "another DSP\n",
+                          log_id(st.mul), log_id(claimed));
                 return false;
             }
 
@@ -487,8 +487,7 @@ struct QlDspV4Pass : public Pass {
         // round as the adder's other operand. Otherwise it is an ordinary
         // pipeline register on the result, which the DSP's P register can hold
         // just as well -- same register, different mode.
-        bool feedback = st.ff != nullptr && st.add != nullptr &&
-                        st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
+        bool feedback = st.ff != nullptr && st.add != nullptr && st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
 
         const char *mode_name = classify(pm, feedback, why);
 
@@ -525,8 +524,7 @@ struct QlDspV4Pass : public Pass {
         }
 
         // Which cell's output this DSP actually produces.
-        RTLIL::Cell *out_cell = acc_cell != nullptr ? acc_cell
-                              : st.add != nullptr   ? st.add : st.mul;
+        RTLIL::Cell *out_cell = acc_cell != nullptr ? acc_cell : st.add != nullptr ? st.add : st.mul;
         SigSpec dsp_result = out_cell->getPort(ID::Y);
 
         // The DSP produces 50 bits of P and nothing above it. A wider result
@@ -564,9 +562,7 @@ struct QlDspV4Pass : public Pass {
         // Testing D against the result rather than special-casing that shape
         // keeps the rule true for every combination of the optional matches.
         //
-        RTLIL::Cell *ff_cell =
-            (st.ff != nullptr && st.ff->getPort(ID::D) == dsp_result) ? st.ff
-                                                                     : nullptr;
+        RTLIL::Cell *ff_cell = (st.ff != nullptr && st.ff->getPort(ID::D) == dsp_result) ? st.ff : nullptr;
 
         // Second output register stage: `mul -> reg -> reg` with no adder. The
         // DSP has two register positions between the multiplier and P, so both
@@ -576,9 +572,7 @@ struct QlDspV4Pass : public Pass {
         //
         // Only without an adder: with one, both stages sit downstream of the ALU
         // and M is upstream of it, so only P is reachable.
-        RTLIL::Cell *ff2_cell =
-            (st.add == nullptr && acc_cell == nullptr && ff_cell != nullptr &&
-             st.ff2 != nullptr) ? st.ff2 : nullptr;
+        RTLIL::Cell *ff2_cell = (st.add == nullptr && acc_cell == nullptr && ff_cell != nullptr && st.ff2 != nullptr) ? st.ff2 : nullptr;
         // Report a further output register we could not take. The DSP has two
         // register positions between the multiplier and P -- M and P -- and none
         // after P, so a second stage behind an absorbed output register can never
@@ -632,10 +626,10 @@ struct QlDspV4Pass : public Pass {
         // The M register's Q vanishes inside the DSP in the two-stage shape, so
         // a `keep` on it has to refuse the absorption the same way `keep` on the
         // DSP result does below.
-        if (ff2_cell != nullptr && mff_cell != nullptr &&
-            dspv4_sig_kept(mff_cell->getPort(ID::Q))) {
+        if (ff2_cell != nullptr && mff_cell != nullptr && dspv4_sig_kept(mff_cell->getPort(ID::Q))) {
             log_debug("  %s: not fused -- the first output register's value is "
-                      "marked keep\n", log_id(st.mul));
+                      "marked keep\n",
+                      log_id(st.mul));
             return false;
         }
 
@@ -659,11 +653,8 @@ struct QlDspV4Pass : public Pass {
                 log_debug("  %s: product register %s (%s) not offered as an M "
                           "stage -- D is %d bits of a %d-bit product, "
                           "CLK_POLARITY=%d, product has %d user(s)\n",
-                          log_id(st.mul), log_id(c), log_id(c->type),
-                          GetSize(d), GetSize(muly),
-                          c->hasParam(ID(CLK_POLARITY))
-                              ? c->getParam(ID(CLK_POLARITY)).as_bool() : -1,
-                          st.mul_nusers);
+                          log_id(st.mul), log_id(c), log_id(c->type), GetSize(d), GetSize(muly),
+                          c->hasParam(ID(CLK_POLARITY)) ? c->getParam(ID(CLK_POLARITY)).as_bool() : -1, st.mul_nusers);
             }
         }
         // If the M register cannot go in, the whole fusion has to be refused --
@@ -680,15 +671,12 @@ struct QlDspV4Pass : public Pass {
                 why = "keep/init attribute";
 
             // The bank is DFFR: synchronous, active-low, resetting to zero.
-            else if (mff_cell->hasPort(ID(SRST)) &&
-                     !mff_cell->getParam(ID(SRST_VALUE)).is_fully_zero())
+            else if (mff_cell->hasPort(ID(SRST)) && !mff_cell->getParam(ID(SRST_VALUE)).is_fully_zero())
                 why = "resets to a non-zero value";
 
             // M and P are separate banks but share one CLK pin. Their resets
             // need not agree (M takes RSTN, P takes ACCRSTN); their clocks must.
-            else if (ff_cell != nullptr &&
-                     sigmapper(mff_cell->getPort(ID(CLK))) !=
-                         sigmapper(ff_cell->getPort(ID(CLK))))
+            else if (ff_cell != nullptr && sigmapper(mff_cell->getPort(ID(CLK))) != sigmapper(ff_cell->getPort(ID(CLK))))
                 why = "clock differs from the output register's";
 
             // D may be WIDER than the product. wreduce narrows the multiply when
@@ -704,8 +692,7 @@ struct QlDspV4Pass : public Pass {
             else {
                 SigSpec d = sigmapper(mff_cell->getPort(ID::D));
                 SigSpec y = sigmapper(st.mul->getPort(ID::Y));
-                bool sgn = st.mul->getParam(ID::A_SIGNED).as_bool() &&
-                           st.mul->getParam(ID::B_SIGNED).as_bool();
+                bool sgn = st.mul->getParam(ID::A_SIGNED).as_bool() && st.mul->getParam(ID::B_SIGNED).as_bool();
                 SigBit pad = sgn ? y[GetSize(y) - 1] : SigBit(State::S0);
                 for (int i = GetSize(y); i < GetSize(d); i++)
                     if (d[i] != pad) {
@@ -732,11 +719,8 @@ struct QlDspV4Pass : public Pass {
         // 64 bits and sign-extends, so the padding is what it would add itself.
         if (st.add != nullptr) {
             SigSpec op = sigmapper(st.add->getPort(st.add_mul_port));
-            SigSpec src = sigmapper(st.mff != nullptr && mff_cell != nullptr
-                                        ? mff_cell->getPort(ID::Q)
-                                        : st.mul->getPort(ID::Y));
-            bool sgn = st.mul->getParam(ID::A_SIGNED).as_bool() &&
-                       st.mul->getParam(ID::B_SIGNED).as_bool();
+            SigSpec src = sigmapper(st.mff != nullptr && mff_cell != nullptr ? mff_cell->getPort(ID::Q) : st.mul->getPort(ID::Y));
+            bool sgn = st.mul->getParam(ID::A_SIGNED).as_bool() && st.mul->getParam(ID::B_SIGNED).as_bool();
             SigBit pad = sgn ? src[GetSize(src) - 1] : SigBit(State::S0);
             for (int i = GetSize(src); i < GetSize(op); i++)
                 if (op[i] != pad) {
@@ -752,7 +736,8 @@ struct QlDspV4Pass : public Pass {
         // the matches stand; refusing beats emitting a combinational loop.
         if (feedback && ff_cell == nullptr) {
             log_debug("  %s: not fused -- accumulator flop does not register "
-                      "the DSP result\n", log_id(st.mul));
+                      "the DSP result\n",
+                      log_id(st.mul));
             return false;
         }
 
@@ -767,30 +752,27 @@ struct QlDspV4Pass : public Pass {
         // whichever of them produced the result. Refusing here degrades the
         // shape by one step instead of pushing the multiply to fabric.
         if (st.add != nullptr && dspv4_sig_kept(st.mul->getPort(ID::Y))) {
-            log_debug("  %s: not fused -- the product is marked keep\n",
-                      log_id(st.mul));
+            log_debug("  %s: not fused -- the product is marked keep\n", log_id(st.mul));
             return false;
         }
         if (acc_cell != nullptr && dspv4_sig_kept(st.add->getPort(ID::Y))) {
-            log_debug("  %s: not fused -- the first sum is marked keep\n",
-                      log_id(st.mul));
+            log_debug("  %s: not fused -- the first sum is marked keep\n", log_id(st.mul));
             return false;
         }
         if (ff_cell != nullptr && dspv4_sig_kept(dsp_result)) {
-            log_debug("  %s: not fused -- the registered value is marked keep\n",
-                      log_id(st.mul));
+            log_debug("  %s: not fused -- the registered value is marked keep\n", log_id(st.mul));
             return false;
         }
         for (auto c : {st.add, acc_cell})
             if (c != nullptr && c->get_bool_attribute(ID::keep)) {
-                log_debug("  %s: not fused -- %s is marked keep\n",
-                          log_id(st.mul), log_id(c));
+                log_debug("  %s: not fused -- %s is marked keep\n", log_id(st.mul), log_id(c));
                 return false;
             }
         if (ff_cell != nullptr && dspv4_flop_attrs_block(ff_cell)) {
             log_debug("  %s: not fused -- the output flop carries keep or a "
                       "non-zero init, which the DSP's P register cannot "
-                      "express\n", log_id(st.mul));
+                      "express\n",
+                      log_id(st.mul));
             return false;
         }
 
@@ -810,10 +792,8 @@ struct QlDspV4Pass : public Pass {
         bool b_signed = st.mul->getParam(ID::B_SIGNED).as_bool();
 
         auto fits = [](int w, bool sgn, int port) { return w <= (sgn ? port : port - 1); };
-        bool direct = fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) &&
-                      fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
-        bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) &&
-                       fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
+        bool direct = fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) && fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
+        bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) && fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
         if (!direct && !swapped) {
             // Only mention the spare bit when it is actually what bit: saying
             // it for a signed x signed multiply sends the reader looking for a
@@ -821,14 +801,11 @@ struct QlDspV4Pass : public Pass {
             bool unsigned_operand = !a_signed || !b_signed;
             log_debug("  %s: left soft -- %dx%d (%s x %s) does not fit the "
                       "%dx%d ports%s\n",
-                      log_id(st.mul), GetSize(ma), GetSize(mb),
-                      a_signed ? "signed" : "unsigned",
-                      b_signed ? "signed" : "unsigned",
-                      DSPV4_A_WIDTH, DSPV4_B_WIDTH,
-                      unsigned_operand
-                          ? "; the multiplier is signed, so an unsigned operand "
-                            "needs a spare bit"
-                          : "");
+                      log_id(st.mul), GetSize(ma), GetSize(mb), a_signed ? "signed" : "unsigned", b_signed ? "signed" : "unsigned", DSPV4_A_WIDTH,
+                      DSPV4_B_WIDTH,
+                      unsigned_operand ? "; the multiplier is signed, so an unsigned operand "
+                                         "needs a spare bit"
+                                       : "");
             return false;
         }
         if (!direct || (swapped && GetSize(mb) > GetSize(ma))) {
@@ -853,15 +830,13 @@ struct QlDspV4Pass : public Pass {
         // Determined here rather than at the point of use because C's register
         // chain takes part in the absorption decision below.
         bool acc = feedback;
-        RTLIL::Cell *c_cell = acc_cell != nullptr ? acc_cell
-                            : (st.add != nullptr && !acc) ? st.add : nullptr;
+        RTLIL::Cell *c_cell = acc_cell != nullptr ? acc_cell : (st.add != nullptr && !acc) ? st.add : nullptr;
         IdString c_port = acc_cell != nullptr ? st.acc_ba : st.add_ba;
         SigSpec mc;
         bool c_signed = false;
         if (c_cell != nullptr) {
             mc = c_cell->getPort(c_port);
-            c_signed = c_cell->getParam(
-                c_port == ID::A ? ID::A_SIGNED : ID::B_SIGNED).as_bool();
+            c_signed = c_cell->getParam(c_port == ID::A ? ID::A_SIGNED : ID::B_SIGNED).as_bool();
             // A C operand wider than the port would be truncated by dspv4_fit,
             // which is a wrong answer rather than a missed optimisation. Refuse
             // the shape instead; the matcher then offers the bare multiply, so
@@ -911,17 +886,13 @@ struct QlDspV4Pass : public Pass {
                 seed_clk = seed_ff->getPort(ID(CLK));
                 if (seed_ff->hasPort(ID(SRST))) {
                     seed_rst = seed_ff->getPort(ID(SRST));
-                    seed_rst_inv =
-                        seed_ff->getParam(ID(SRST_POLARITY)).as_bool();
+                    seed_rst_inv = seed_ff->getParam(ID(SRST_POLARITY)).as_bool();
                 }
             }
-            ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed_clk,
-                               seed_rst, seed_rst_inv, seeded, "A", st.mul);
-            cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed_clk,
-                               seed_rst, seed_rst_inv, seeded, "B", st.mul);
+            ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "A", st.mul);
+            cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "B", st.mul);
             if (c_cell != nullptr) {
-                cc = collect_flops(module, mc, DSPV4_MAX_C_STAGES, seed_clk,
-                                   seed_rst, seed_rst_inv, seeded, "C", st.mul);
+                cc = collect_flops(module, mc, DSPV4_MAX_C_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "C", st.mul);
                 // A flop on the C path whose D is this shape's OWN result is
                 // the accumulator feedback, not an independent C operand.
                 // pmgen offers the match without the output flop too, and on
@@ -951,8 +922,7 @@ struct QlDspV4Pass : public Pass {
             // polarity, never as resolved inverter outputs -- comparing those
             // is what once made every active-high reset absorb nothing.
             auto agrees = [&](const FlopChain &x, const FlopChain &y) {
-                return same(x.clk, y.clk) && same(x.arst, y.arst) &&
-                       x.arst_inv == y.arst_inv;
+                return same(x.clk, y.clk) && same(x.arst, y.arst) && x.arst_inv == y.arst_inv;
             };
             if (na > 0 && nb > 0 && !agrees(ca, cb))
                 nb = 0;
@@ -974,8 +944,7 @@ struct QlDspV4Pass : public Pass {
                     m_rst = mff_cell->getPort(ID(SRST));
                     m_rst_inv = mff_cell->getParam(ID(SRST_POLARITY)).as_bool();
                 }
-                if (!same(any.clk, mff_cell->getPort(ID(CLK))) ||
-                    !same(any.arst, m_rst) || any.arst_inv != m_rst_inv) {
+                if (!same(any.clk, mff_cell->getPort(ID(CLK))) || !same(any.arst, m_rst) || any.arst_inv != m_rst_inv) {
                     log_debug("  %s: M register not absorbed -- clock or reset "
                               "differs from the operand chains'\n",
                               log_id(st.mul));
@@ -1003,7 +972,7 @@ struct QlDspV4Pass : public Pass {
                 std::vector<SigSpec> seen;
                 auto note = [&](const SigSpec &sig) {
                     if (sig.is_fully_const())
-                        return;             // a tied enable needs no signal
+                        return; // a tied enable needs no signal
                     for (auto &t : seen)
                         if (t == sig)
                             return;
@@ -1021,11 +990,15 @@ struct QlDspV4Pass : public Pass {
             };
             // Narrowest first: B (18), A (32), C (50). P (50) is not a
             // candidate.
-            struct Evictee { int *n; const char *name; int width; };
+            struct Evictee {
+                int *n;
+                const char *name;
+                int width;
+            };
             const Evictee order[] = {
-                {&nb, "B", DSPV4_B_WIDTH},
-                {&na, "A", DSPV4_A_WIDTH},
-                {&nc, "C", DSPV4_C_WIDTH},
+              {&nb, "B", DSPV4_B_WIDTH},
+              {&na, "A", DSPV4_A_WIDTH},
+              {&nc, "C", DSPV4_C_WIDTH},
             };
             for (auto &e : order) {
                 if (distinct_enables() <= DSPV4_MAX_CE_SIGNALS)
@@ -1035,8 +1008,7 @@ struct QlDspV4Pass : public Pass {
                 log_debug("  %s: %s registers left in fabric -- the cell would "
                           "need more than %d distinct clock enables, and %s is "
                           "the narrowest port at %d bits\n",
-                          log_id(st.mul), e.name, DSPV4_MAX_CE_SIGNALS, e.name,
-                          e.width);
+                          log_id(st.mul), e.name, DSPV4_MAX_CE_SIGNALS, e.name, e.width);
                 *e.n = 0;
             }
         }
@@ -1051,8 +1023,7 @@ struct QlDspV4Pass : public Pass {
 
         // With a flop absorbed the DSP drives its Q directly; the
         // combinational result never appears in the netlist at all.
-        SigSpec result = ff_cell != nullptr ? ff_cell->getPort(ID::Q)
-                                            : dsp_result;
+        SigSpec result = ff_cell != nullptr ? ff_cell->getPort(ID::Q) : dsp_result;
 
         if (c_cell != nullptr) {
             if (nc > 0)
@@ -1114,8 +1085,7 @@ struct QlDspV4Pass : public Pass {
             if (nc > 0)
                 cell->setPort(ID(CEC), resolve(module, cc.en, cc.en_inv));
             if (any.arst != SigSpec(State::S1))
-                cell->setPort(ID(RSTN),
-                              resolve(module, any.arst, any.arst_inv));
+                cell->setPort(ID(RSTN), resolve(module, any.arst, any.arst_inv));
             absorbed_regs += na + nb + nc;
         }
 
@@ -1174,8 +1144,7 @@ struct QlDspV4Pass : public Pass {
         }
 
         if (verbose)
-            log("  %s.%s -> %s (%dx%d)\n", log_id(module), log_id(st.mul),
-                mode_name, GetSize(ma), GetSize(mb));
+            log("  %s.%s -> %s (%dx%d)\n", log_id(module), log_id(st.mul), mode_name, GetSize(ma), GetSize(mb));
 
         // Absorb the matched cells. pm.autoremove marks them so the matcher
         // does not hand them out again.
@@ -1291,8 +1260,7 @@ struct QlDspV4Pass : public Pass {
             RTLIL::State v = State::Sx;
             if (bit.wire != nullptr) {
                 auto it = bit.wire->attributes.find(ID::init);
-                if (it != bit.wire->attributes.end() &&
-                    bit.offset < GetSize(it->second))
+                if (it != bit.wire->attributes.end() && bit.offset < GetSize(it->second))
                     v = it->second[bit.offset];
             }
             init += RTLIL::Const(v).as_string();
@@ -1345,7 +1313,10 @@ struct QlDspV4Pass : public Pass {
             // the step key, so a design with a single accumulator says nothing --
             // there was nothing to merge it with, and a refusal nobody could act
             // on is the noise that buried the absorption stalls.
-            struct Cand { AccLoop loop; std::string step, base; };
+            struct Cand {
+                AccLoop loop;
+                std::string step, base;
+            };
             std::vector<Cand> cands;
             std::map<std::string, int> step_count;
 
@@ -1390,26 +1361,21 @@ struct QlDspV4Pass : public Pass {
                 // dsp shapes writes one, and guessing costs more than it saves.
                 c.step = add->type.str();
                 c.step += fb == ID::A ? "|fbA|" : "|fbB|";
-                for (auto p : {ID::A_WIDTH, ID::B_WIDTH, ID::Y_WIDTH,
-                               ID::A_SIGNED, ID::B_SIGNED})
+                for (auto p : {ID::A_WIDTH, ID::B_WIDTH, ID::Y_WIDTH, ID::A_SIGNED, ID::B_SIGNED})
                     c.step += stringf("%d|", add->getParam(p).as_int());
-                c.step += log_signal(sm(add->getPort(fb == ID::A ? ID::B
-                                                                 : ID::A)));
+                c.step += log_signal(sm(add->getPort(fb == ID::A ? ID::B : ID::A)));
                 c.step += "|";
                 c.step += ff->type.str();
-                c.step += stringf("|%d|%d|", GetSize(q),
-                                  ff->getParam(ID(CLK_POLARITY)).as_bool());
+                c.step += stringf("|%d|%d|", GetSize(q), ff->getParam(ID(CLK_POLARITY)).as_bool());
                 c.step += log_signal(sm(ff->getPort(ID(CLK))));
                 if (ff->hasPort(ID(EN))) {
                     c.step += "|";
                     c.step += log_signal(sm(ff->getPort(ID(EN))));
-                    c.step += stringf("|%d",
-                                      ff->getParam(ID(EN_POLARITY)).as_bool());
+                    c.step += stringf("|%d", ff->getParam(ID(EN_POLARITY)).as_bool());
                 }
                 if (ff->hasPort(ID(SRST))) {
                     c.base += log_signal(sm(ff->getPort(ID(SRST))));
-                    c.base += stringf("|%d|",
-                                      ff->getParam(ID(SRST_POLARITY)).as_bool());
+                    c.base += stringf("|%d|", ff->getParam(ID(SRST_POLARITY)).as_bool());
                     // The reset VALUE only has to be common, not zero. The DSP
                     // needs zero to hold the accumulator in its own bank, and
                     // ff_cell's guard says so where that matters; two registers
@@ -1489,8 +1455,7 @@ struct QlDspV4Pass : public Pass {
                     SigSpec dead = loops[i].loop.ff->getPort(ID::Q);
                     log_debug("  %s: accumulator merged into %s -- same clock, "
                               "enable, reset, reset value and next state\n",
-                              log_id(loops[i].loop.ff),
-                              log_id(loops[0].loop.ff));
+                              log_id(loops[i].loop.ff), log_id(loops[0].loop.ff));
                     module->remove(loops[i].loop.add);
                     module->remove(loops[i].loop.ff);
                     module->connect(dead, keep);
@@ -1604,15 +1569,14 @@ struct QlDspV4Pass : public Pass {
                     break;
                 }
             if (k <= 0)
-                continue;               // k == 0 is what the pattern already takes
+                continue; // k == 0 is what the pattern already takes
             if (!opm.extract(0, k).is_fully_zero())
                 continue;
 
             // Above the product the operand must be the padding the pattern and
             // emit() already tolerate, so that rebuilding it from the wider
             // product's own sign bit is the same value.
-            bool sgn = mul->getParam(ID::A_SIGNED).as_bool() &&
-                       mul->getParam(ID::B_SIGNED).as_bool();
+            bool sgn = mul->getParam(ID::A_SIGNED).as_bool() && mul->getParam(ID::B_SIGNED).as_bool();
             SigBit pad = sgn ? y[n - 1] : SigBit(State::S0);
             bool padded = true;
             for (int i = k + n; i < GetSize(opm); i++)
@@ -1651,16 +1615,11 @@ struct QlDspV4Pass : public Pass {
             // an unsigned operand needs a spare bit.
             IdString op_port = cp == ID::A ? ID::B : ID::A;
             int wc = GetSize(c2), wo = GetSize(mul->getPort(op_port));
-            bool c_signed = mul->getParam(cp == ID::A ? ID::A_SIGNED
-                                                      : ID::B_SIGNED).as_bool();
-            bool o_signed = mul->getParam(op_port == ID::A ? ID::A_SIGNED
-                                                           : ID::B_SIGNED)
-                                .as_bool();
+            bool c_signed = mul->getParam(cp == ID::A ? ID::A_SIGNED : ID::B_SIGNED).as_bool();
+            bool o_signed = mul->getParam(op_port == ID::A ? ID::A_SIGNED : ID::B_SIGNED).as_bool();
             auto fits = [](int w, bool s, int p) { return w <= (s ? p : p - 1); };
-            if (!((fits(wc, c_signed, DSPV4_A_WIDTH) &&
-                   fits(wo, o_signed, DSPV4_B_WIDTH)) ||
-                  (fits(wc, c_signed, DSPV4_B_WIDTH) &&
-                   fits(wo, o_signed, DSPV4_A_WIDTH)))) {
+            if (!((fits(wc, c_signed, DSPV4_A_WIDTH) && fits(wo, o_signed, DSPV4_B_WIDTH)) ||
+                  (fits(wc, c_signed, DSPV4_B_WIDTH) && fits(wo, o_signed, DSPV4_A_WIDTH)))) {
                 log_debug("  %s: coefficient not widened by %d bit(s) -- %dx%d "
                           "would no longer fit the %dx%d ports, and the multiply "
                           "is better off soft-shifted than soft entirely\n",
@@ -1693,7 +1652,8 @@ struct QlDspV4Pass : public Pass {
 
             log_debug("  %s: coefficient widened to %d bits so the product lands "
                       "in the low bits of %s -- wreduce had split out a factor of "
-                      "2^%d\n", log_id(mul), GetSize(c2), log_id(add), k);
+                      "2^%d\n",
+                      log_id(mul), GetSize(c2), log_id(add), k);
             refolded++;
         }
         return refolded;
@@ -1725,7 +1685,7 @@ struct QlDspV4Pass : public Pass {
         // "already absorbed by another DSP" and absorbed one stage instead of
         // two -- shared_input_1reg_wrap took 12 A1 banks down to 2.
         bool shared = false;
-        SigSpec source;                     // D of the last stage -- the port value
+        SigSpec source; // D of the last stage -- the port value
         SigSpec clk;
         // Enable and async reset are kept as the RAW signal plus its polarity,
         // and only inverted when the cell is wired. Inverting inside the walk
@@ -1759,10 +1719,7 @@ struct QlDspV4Pass : public Pass {
 
     // Resolve a chain's control to a wire, inverting once if the source was the
     // opposite polarity from what the leaf wants.
-    static SigSpec resolve(RTLIL::Module *module, const SigSpec &sig, bool invert)
-    {
-        return invert ? module->Not(NEW_ID, sig) : sig;
-    }
+    static SigSpec resolve(RTLIL::Module *module, const SigSpec &sig, bool invert) { return invert ? module->Not(NEW_ID, sig) : sig; }
 
     // Two SigSpecs describe the same value.
     static bool same(const SigSpec &a, const SigSpec &b) { return a == b; }
@@ -1773,9 +1730,7 @@ struct QlDspV4Pass : public Pass {
     // with ACCRSTN for the accumulator. So the clock must agree with everything
     // absorbed into the cell, while the enable and reset only have to agree
     // with the rest of THIS chain.
-    static bool controls_agree(FlopChain &c, const SigSpec &clk,
-                               const SigSpec &en, bool en_inv,
-                               const SigSpec &arst, bool arst_inv)
+    static bool controls_agree(FlopChain &c, const SigSpec &clk, const SigSpec &en, bool en_inv, const SigSpec &arst, bool arst_inv)
     {
         if (c.have_clk && !same(c.clk, clk))
             return false;
@@ -1796,34 +1751,32 @@ struct QlDspV4Pass : public Pass {
     // can say which one stalled. Absorption failures used to be entirely silent:
     // the walk just stopped, and the only visible effect was extra flops in
     // fabric -- the same class of invisible QoR loss IN-7 exists to prevent.
-    FlopChain collect_flops(RTLIL::Module *, SigSpec sig, int max_depth,
-                            const SigSpec &clk_seed, const SigSpec &rst_seed,
-                            bool rst_seed_inv, bool seeded,
-                            const char *port = "?", RTLIL::Cell *why_mul = nullptr)
+    FlopChain collect_flops(RTLIL::Module *, SigSpec sig, int max_depth, const SigSpec &clk_seed, const SigSpec &rst_seed, bool rst_seed_inv,
+                            bool seeded, const char *port = "?", RTLIL::Cell *why_mul = nullptr)
     {
-#define STALL(key, reason, ...)                                                   \
-        do {                                                                      \
-            absorb_stall[key]++;                                                  \
-            log_debug("  %s: %s operand register not absorbed after %d stage(s)"  \
-                      " -- " reason "\n",                                         \
-                      why_mul ? log_id(why_mul) : "?", port,                      \
-                      GetSize(chain.stage_flops), ##__VA_ARGS__);                       \
-        } while (0)
+#define STALL(key, reason, ...)                                                                                                                      \
+    do {                                                                                                                                             \
+        absorb_stall[key]++;                                                                                                                         \
+        log_debug("  %s: %s operand register not absorbed after %d stage(s)"                                                                         \
+                  " -- " reason "\n",                                                                                                                \
+                  why_mul ? log_id(why_mul) : "?", port, GetSize(chain.stage_flops), ##__VA_ARGS__);                                                 \
+    } while (0)
         // The walk has to stop somewhere, and stopping is not a refusal: an
         // operand that never had a register, or one whose every stage is already
         // taken, is a *finished* walk. Counting those as stalls buried the
         // refusals worth acting on -- on the dsp suite they outnumbered them 664
         // to 10, and the ranked summary opened with the one line that meant
         // nothing.
-#define WALK_END(reason, ...)                                                     \
-        do {                                                                      \
-            if (GetSize(chain.stage_flops) == 0) absorb_end_none++;               \
-            else absorb_end_exhausted++;                                          \
-            log_debug("  %s: %s operand register walk ended after %d stage(s)"    \
-                      " -- " reason "\n",                                         \
-                      why_mul ? log_id(why_mul) : "?", port,                      \
-                      GetSize(chain.stage_flops), ##__VA_ARGS__);                 \
-        } while (0)
+#define WALK_END(reason, ...)                                                                                                                        \
+    do {                                                                                                                                             \
+        if (GetSize(chain.stage_flops) == 0)                                                                                                         \
+            absorb_end_none++;                                                                                                                       \
+        else                                                                                                                                         \
+            absorb_end_exhausted++;                                                                                                                  \
+        log_debug("  %s: %s operand register walk ended after %d stage(s)"                                                                           \
+                  " -- " reason "\n",                                                                                                                \
+                  why_mul ? log_id(why_mul) : "?", port, GetSize(chain.stage_flops), ##__VA_ARGS__);                                                 \
+    } while (0)
         FlopChain chain;
         chain.source = sig;
         // Seeding pins the clock and the reset from the absorbed output flop --
@@ -1848,7 +1801,10 @@ struct QlDspV4Pass : public Pass {
             bool all_flops = true;
             for (auto bit : src) {
                 auto it = flop_bit.find(bit);
-                if (it == flop_bit.end()) { all_flops = false; break; }
+                if (it == flop_bit.end()) {
+                    all_flops = false;
+                    break;
+                }
                 per_bit.push_back(it->second);
             }
             if (!all_flops) {
@@ -1858,20 +1814,24 @@ struct QlDspV4Pass : public Pass {
                 int nff = 0, nasync = 0, ncomb = 0;
                 for (auto bit : src) {
                     auto d = bit_driver.find(bit);
-                    if (d == bit_driver.end()) { ncomb++; continue; }
+                    if (d == bit_driver.end()) {
+                        ncomb++;
+                        continue;
+                    }
                     RTLIL::Cell *dc = d->second;
                     if (dc->type.in(ID($adff), ID($adffe), ID($adffsr), ID($aldff), ID($aldffe)))
                         nasync++;
                     else if (dc->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe), ID($sdffce)))
                         nff++;
-                    else ncomb++;
+                    else
+                        ncomb++;
                 }
                 if (nasync > 0 && nff == 0)
-                    STALL("driver is an async-reset flop (no routable async reset on the DSP)",
-                          "driver is an async-reset flop");
+                    STALL("driver is an async-reset flop (no routable async reset on the DSP)", "driver is an async-reset flop");
                 else if (nff == 0)
                     WALK_END("operand is combinational here, no register stage to take"
-                             " (%d comb bit(s))", ncomb);
+                             " (%d comb bit(s))",
+                             ncomb);
                 else
                     STALL("operand is only partly register-driven",
                           "operand is only partly register-driven -- absorbing part of a"
@@ -1886,7 +1846,8 @@ struct QlDspV4Pass : public Pass {
             std::vector<RTLIL::Cell *> stage;
             dict<RTLIL::Cell *, int> bits_used;
             for (auto &pb : per_bit) {
-                if (!bits_used.count(pb.first)) stage.push_back(pb.first);
+                if (!bits_used.count(pb.first))
+                    stage.push_back(pb.first);
                 bits_used[pb.first]++;
             }
 
@@ -1901,8 +1862,10 @@ struct QlDspV4Pass : public Pass {
                 if (bits_used.at(ff) != GetSize(q)) {
                     STALL("only part of the flop's width feeds this operand",
                           "flop %s contributes %d of its %d bits; absorbing it would "
-                          "strip the rest", log_id(ff), bits_used.at(ff), GetSize(q));
-                    ok = false; break;
+                          "strip the rest",
+                          log_id(ff), bits_used.at(ff), GetSize(q));
+                    ok = false;
+                    break;
                 }
                 // A flop with several readers is COPIED rather than moved: the
                 // bank is wired from the flop's D, so it recomputes the same
@@ -1922,28 +1885,30 @@ struct QlDspV4Pass : public Pass {
                 // be reading a value that is about to disappear. Only shared
                 // flops can be claimed twice.
                 if (absorbed.count(ff) && !shared_claimed.count(ff)) {
-                    STALL("driving flop already absorbed by another DSP",
-                          "already absorbed by another DSP");
-                    ok = false; break;
+                    STALL("driving flop already absorbed by another DSP", "already absorbed by another DSP");
+                    ok = false;
+                    break;
                 }
                 if (sig_users(q) > 2 || shared_claimed.count(ff))
                     chain.shared = true;
                 if (!ff->getParam(ID(CLK_POLARITY)).as_bool()) {
                     STALL("falling-edge flop (banks are rising-edge)", "falling-edge flop");
-                    ok = false; break;
+                    ok = false;
+                    break;
                 }
                 if (dspv4_flop_attrs_block(ff)) {
                     STALL("flop carries keep or a non-zero init", "keep or non-zero init");
-                    ok = false; break;
+                    ok = false;
+                    break;
                 }
-                if (ff->hasPort(ID(SRST)) &&
-                    !ff->getParam(ID(SRST_VALUE)).is_fully_zero()) {
-                    STALL("flop resets to a non-zero value",
-                          "resets to non-zero; bank resets to 0");
-                    ok = false; break;
+                if (ff->hasPort(ID(SRST)) && !ff->getParam(ID(SRST_VALUE)).is_fully_zero()) {
+                    STALL("flop resets to a non-zero value", "resets to non-zero; bank resets to 0");
+                    ok = false;
+                    break;
                 }
             }
-            if (!ok) break;
+            if (!ok)
+                break;
 
             // Every flop in the stage shares one bank, so they must agree with
             // each other AND with whatever this cell already absorbed.
@@ -1962,19 +1927,22 @@ struct QlDspV4Pass : public Pass {
                 }
                 SigSpec clk = ff->getPort(ID(CLK));
                 if (first) {
-                    s_clk = clk; s_en = en; s_en_inv = en_inv;
-                    s_arst = arst; s_arst_inv = arst_inv; first = false;
-                } else if (!same(s_clk, clk) || !same(s_en, en) || s_en_inv != en_inv ||
-                           !same(s_arst, arst) || s_arst_inv != arst_inv) {
-                    STALL("flops in one stage disagree on clock/reset/enable",
-                          "flops forming this stage disagree on clock/reset/enable");
-                    agree = false; break;
+                    s_clk = clk;
+                    s_en = en;
+                    s_en_inv = en_inv;
+                    s_arst = arst;
+                    s_arst_inv = arst_inv;
+                    first = false;
+                } else if (!same(s_clk, clk) || !same(s_en, en) || s_en_inv != en_inv || !same(s_arst, arst) || s_arst_inv != arst_inv) {
+                    STALL("flops in one stage disagree on clock/reset/enable", "flops forming this stage disagree on clock/reset/enable");
+                    agree = false;
+                    break;
                 }
             }
-            if (!agree) break;
+            if (!agree)
+                break;
             if (!controls_agree(chain, s_clk, s_en, s_en_inv, s_arst, s_arst_inv)) {
-                STALL("clock/reset/enable disagree with the rest of the cell",
-                      "control signals disagree with what the cell already absorbed");
+                STALL("clock/reset/enable disagree with the rest of the cell", "control signals disagree with what the cell already absorbed");
                 break;
             }
 
@@ -2044,8 +2012,7 @@ struct QlDspV4Pass : public Pass {
             // $sdffce is excluded on purpose: there the enable gates the reset,
             // while the DSP flop (and $sdffe) resets regardless of the enable.
             // Absorbing one would hold a register that should have cleared.
-            if (cell->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe)))
-            {
+            if (cell->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe))) {
                 SigSpec q = cell->getPort(ID::Q);
                 for (int i = 0; i < GetSize(q); i++)
                     flop_bit[sigmapper(q[i])] = std::make_pair(cell, i);
@@ -2132,10 +2099,7 @@ static int signed_width(const SigSpec &sig)
 }
 
 struct QlDsp4CheckPass : public Pass {
-    QlDsp4CheckPass()
-        : Pass("ql_dsp4_check", "warn about QL_DSP4 arithmetic that can silently overflow")
-    {
-    }
+    QlDsp4CheckPass() : Pass("ql_dsp4_check", "warn about QL_DSP4 arithmetic that can silently overflow") {}
 
     void help() override
     {
@@ -2178,15 +2142,16 @@ struct QlDsp4CheckPass : public Pass {
         // Only a port whose register is actually enabled consumes a slot: with
         // CREG = 0 the techmap never instantiates the C flops, so CEC drives
         // nothing. Constants do not count either.
-        struct CeUse { RTLIL::IdString reg_a, reg_b, ce; int width; const char *name; };
+        struct CeUse {
+            RTLIL::IdString reg_a, reg_b, ce;
+            int width;
+            const char *name;
+        };
         static const CeUse CE_USES[] = {
-            // Widest first -- if the limit is exceeded, the widest ports are the
-            // ones worth keeping, so they are reported as the survivors.
-            {ID(CREG),  RTLIL::IdString(), ID(CEC), 50, "C"},
-            {ID(PREG),  ID(MREG),          ID(CEP), 50, "P"},
-            {ID(AREG0), ID(AREG1),         ID(CEA), 32, "A"},
-            {ID(DREG),  RTLIL::IdString(), ID(CED), 27, "D"},
-            {ID(BREG0), ID(BREG1),         ID(CEB), 18, "B"},
+          // Widest first -- if the limit is exceeded, the widest ports are the
+          // ones worth keeping, so they are reported as the survivors.
+          {ID(CREG), RTLIL::IdString(), ID(CEC), 50, "C"}, {ID(PREG), ID(MREG), ID(CEP), 50, "P"},   {ID(AREG0), ID(AREG1), ID(CEA), 32, "A"},
+          {ID(DREG), RTLIL::IdString(), ID(CED), 27, "D"}, {ID(BREG0), ID(BREG1), ID(CEB), 18, "B"},
         };
 
         for (auto module : design->selected_modules()) {
@@ -2213,8 +2178,7 @@ struct QlDsp4CheckPass : public Pass {
                 int w_i0 = d_active ? signed_width(sigmap(cell->getPort(ID(D)))) : 1;
                 int w_i1 = 1;
                 if (!gated)
-                    w_i1 = signed_width(
-                        sigmap(cell->getPort(preaddinsel ? ID(B) : ID(A))));
+                    w_i1 = signed_width(sigmap(cell->getPort(preaddinsel ? ID(B) : ID(A))));
 
                 // D +/- I1 needs one bit more than the wider operand.
                 int w_sum = std::max(w_i0, w_i1) + 1;
@@ -2232,21 +2196,19 @@ struct QlDsp4CheckPass : public Pass {
                     continue;
                 reported++;
                 if (bmultsel)
-                    log_warning(
-                        "%s.%s: DSP-V4 pre-adder %s%s needs %d bits, but BMULTSEL "
-                        "feeds the result to the 18-bit multiplier port as AD[17:0]. "
-                        "The high bits are discarded silently -- results are correct "
-                        "only while |%s%s| < 2^17. Narrow an operand, or pre-add in "
-                        "fabric.\n",
-                        log_id(module), log_id(cell), op, rhs, w_sum, op, rhs);
+                    log_warning("%s.%s: DSP-V4 pre-adder %s%s needs %d bits, but BMULTSEL "
+                                "feeds the result to the 18-bit multiplier port as AD[17:0]. "
+                                "The high bits are discarded silently -- results are correct "
+                                "only while |%s%s| < 2^17. Narrow an operand, or pre-add in "
+                                "fabric.\n",
+                                log_id(module), log_id(cell), op, rhs, w_sum, op, rhs);
                 else
-                    log_warning(
-                        "%s.%s: DSP-V4 pre-adder %s%s needs %d bits and AD holds 32. "
-                        "The pre-adder wraps in two's complement and raises no overflow "
-                        "flag, so results are correct only while the sum stays in the "
-                        "32-bit signed range. Narrow an operand to 31 bits, or pre-add "
-                        "in fabric.\n",
-                        log_id(module), log_id(cell), op, rhs, w_sum);
+                    log_warning("%s.%s: DSP-V4 pre-adder %s%s needs %d bits and AD holds 32. "
+                                "The pre-adder wraps in two's complement and raises no overflow "
+                                "flag, so results are correct only while the sum stays in the "
+                                "32-bit signed range. Narrow an operand to 31 bits, or pre-add "
+                                "in fabric.\n",
+                                log_id(module), log_id(cell), op, rhs, w_sum);
             }
 
             // Clock-enable crossbar DRC.
@@ -2256,19 +2218,20 @@ struct QlDsp4CheckPass : public Pass {
                 std::vector<std::pair<SigSpec, const char *>> used;
                 std::string kept, dropped;
                 for (auto &u : CE_USES) {
-                    bool on = cell->hasParam(u.reg_a) &&
-                              cell->getParam(u.reg_a).as_bool();
+                    bool on = cell->hasParam(u.reg_a) && cell->getParam(u.reg_a).as_bool();
                     if (!on && u.reg_b != RTLIL::IdString())
-                        on = cell->hasParam(u.reg_b) &&
-                             cell->getParam(u.reg_b).as_bool();
+                        on = cell->hasParam(u.reg_b) && cell->getParam(u.reg_b).as_bool();
                     if (!on || !cell->hasPort(u.ce))
                         continue;
                     SigSpec ce = sigmap(cell->getPort(u.ce));
                     if (ce.is_fully_const())
-                        continue;   // a tied enable needs no routed signal
+                        continue; // a tied enable needs no routed signal
                     bool seen = false;
                     for (auto &p : used)
-                        if (p.first == ce) { seen = true; break; }
+                        if (p.first == ce) {
+                            seen = true;
+                            break;
+                        }
                     if (!seen)
                         used.push_back({ce, u.name});
                     std::string &tgt = (GetSize(used) <= 3) ? kept : dropped;
@@ -2282,14 +2245,12 @@ struct QlDsp4CheckPass : public Pass {
                 if (ce_reported >= max_report)
                     continue;
                 ce_reported++;
-                log_warning(
-                    "%s.%s: %d distinct clock enables on the DSP's registered "
-                    "ports, but the tile crossbar feeds all five CE pins from "
-                    "only 3 signals. Keep the widest (%s) inside the DSP and "
-                    "move %s back to fabric, or drive the extra ports from an "
-                    "enable already in use.\n",
-                    log_id(module), log_id(cell), GetSize(used),
-                    kept.c_str(), dropped.c_str());
+                log_warning("%s.%s: %d distinct clock enables on the DSP's registered "
+                            "ports, but the tile crossbar feeds all five CE pins from "
+                            "only 3 signals. Keep the widest (%s) inside the DSP and "
+                            "move %s back to fabric, or drive the extra ports from an "
+                            "enable already in use.\n",
+                            log_id(module), log_id(cell), GetSize(used), kept.c_str(), dropped.c_str());
             }
         }
 
@@ -2299,14 +2260,16 @@ struct QlDsp4CheckPass : public Pass {
                         at_risk - reported);
         if (ce_over > ce_reported)
             log_warning("%d further QL_DSP4 cell(s) exceed the 3-signal clock-enable "
-                        "limit.\n", ce_over - ce_reported);
+                        "limit.\n",
+                        ce_over - ce_reported);
         if (preadd_cells)
             log("ql_dsp4_check: %d QL_DSP4 pre-adder cell(s), %d at risk of silent "
                 "overflow.\n",
                 preadd_cells, at_risk);
         if (ce_over)
             log("ql_dsp4_check: %d QL_DSP4 cell(s) over the 3-signal clock-enable "
-                "limit.\n", ce_over);
+                "limit.\n",
+                ce_over);
     }
 
 } QlDsp4CheckPass;

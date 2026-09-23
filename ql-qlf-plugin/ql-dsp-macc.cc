@@ -466,10 +466,7 @@ struct QlDspMacc : public Pass {
         log("\n");
     }
 
-    bool replace_existing_pass() const override
-    {
-        return true;
-    }
+    bool replace_existing_pass() const override { return true; }
 
     void clear_flags() override { use_dsp_cfg_params = false; }
 

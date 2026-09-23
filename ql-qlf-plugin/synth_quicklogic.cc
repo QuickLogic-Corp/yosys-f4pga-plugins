@@ -34,10 +34,10 @@ PRIVATE_NAMESPACE_BEGIN
 #define PASS_NAME synth_quicklogic
 #endif
 
-/* This function extracts abc metrics (lev(delay logic level) 
+/* This function extracts abc metrics (lev(delay logic level)
     and nd(number of luts) from the abc log.)*/
 
-std::pair<int, int> extract_abc_metrics(const std::string &fname) 
+std::pair<int, int> extract_abc_metrics(const std::string &fname)
 {
     std::ifstream f(fname);
     std::string line;
@@ -47,7 +47,7 @@ std::pair<int, int> extract_abc_metrics(const std::string &fname)
     while (std::getline(f, line)) {
         std::smatch m;
         if (std::regex_search(line, m, re)) {
-            int nd  = std::stoi(m[1].str());
+            int nd = std::stoi(m[1].str());
             int lev = std::stoi(m[2].str());
             return {nd, lev};
         }
@@ -56,12 +56,11 @@ std::pair<int, int> extract_abc_metrics(const std::string &fname)
     return {-1, -1};
 }
 
-
-bool check_equivalence(const std::string& fname)
+bool check_equivalence(const std::string &fname)
 {
     std::ifstream f(fname);
     if (!f.is_open())
-        return false;  
+        return false;
 
     std::string line;
     while (std::getline(f, line)) {
@@ -71,7 +70,6 @@ bool check_equivalence(const std::string& fname)
 
     return false;
 }
-
 
 struct SynthQuickLogicPass : public ScriptPass {
 
@@ -209,7 +207,8 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("\n");
     }
 
-    string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script, de;
+    string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script,
+      de;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -218,11 +217,11 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool abc9;
     bool noffmap;
     bool nosdff;
-    bool noffenable; 
+    bool noffenable;
     bool ioff;
-	bool bramecc;
-	bool dspv2;
-	bool dspv4;
+    bool bramecc;
+    bool dspv2;
+    bool dspv4;
     bool notdpram;
     bool noOpt;
     bool synplify;
@@ -248,9 +247,9 @@ struct SynthQuickLogicPass : public ScriptPass {
         nosdff = false;
         noffenable = false;
         ioff = false;
-		bramecc = false;
-		dspv2 = false;
-		dspv4 = false;
+        bramecc = false;
+        dspv2 = false;
+        dspv4 = false;
         notdpram = false;
         noOpt = false;
         synplify = false;
@@ -261,9 +260,9 @@ struct SynthQuickLogicPass : public ScriptPass {
         rel_ip_blif_files.clear();
     }
 
-    pool<RTLIL::Wire*> find_clock_wires(RTLIL::Module *mod)
+    pool<RTLIL::Wire *> find_clock_wires(RTLIL::Module *mod)
     {
-        pool<RTLIL::Wire*> clock_wires;
+        pool<RTLIL::Wire *> clock_wires;
         SigMap sigmap(mod);
 
         for (auto cell : mod->cells()) {
@@ -297,9 +296,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                     if (!canonical.wire)
                         continue; // clkbuf_sink tied to a constant
 
-                    log("Found clock wire: %s (via clkbuf_sink on cell %s port %s)\n",
-                        log_id(canonical.wire->name),
-                        log_id(cell->name),
+                    log("Found clock wire: %s (via clkbuf_sink on cell %s port %s)\n", log_id(canonical.wire->name), log_id(cell->name),
                         log_id(conn.first));
 
                     clock_wires.insert(canonical.wire);
@@ -345,32 +342,32 @@ struct SynthQuickLogicPass : public ScriptPass {
     size_t parse_options(const std::vector<std::string> &args, std::string &run_from, std::string &run_to)
     {
         const ValueOption value_options[] = {
-            {"-edif", &edif_file},
-            {"-family", &family},
-            {"-lib_path", &lib_path},
-            {"-blif", &blif_file},
-            {"-verilog", &verilog_file},
-            {"-clocks_file", &clocks_file},
-            {"-custom_abc_script", &custom_abc_script},
-            {"-mince_num", &mince_num},
-            {"-de", &de},
+          {"-edif", &edif_file},
+          {"-family", &family},
+          {"-lib_path", &lib_path},
+          {"-blif", &blif_file},
+          {"-verilog", &verilog_file},
+          {"-clocks_file", &clocks_file},
+          {"-custom_abc_script", &custom_abc_script},
+          {"-mince_num", &mince_num},
+          {"-de", &de},
         };
         const SwitchOption switch_options[] = {
-            {"-no_dsp", &nodsp, true},
-            {"-no_adder", &inferAdder, false},
-            {"-no_bram", &inferBram, false},
-            {"-bram_types", &bramTypes, true},
-            {"-no_abc_opt", &abcOpt, false},
-            {"-no_abc9", &abc9, false},
-            {"-no_ff_map", &noffmap, true},
-            {"-nosdff", &nosdff, true},
-            {"-no_ffenable", &noffenable, true},
-            {"-ioff", &ioff, true},
-            {"-bramecc", &bramecc, true},
-            {"-dspv2", &dspv2, true},
-            {"-dspv4", &dspv4, true},
-            {"-no_tdpram", &notdpram, true},
-            {"-synplify", &synplify, true},
+          {"-no_dsp", &nodsp, true},
+          {"-no_adder", &inferAdder, false},
+          {"-no_bram", &inferBram, false},
+          {"-bram_types", &bramTypes, true},
+          {"-no_abc_opt", &abcOpt, false},
+          {"-no_abc9", &abc9, false},
+          {"-no_ff_map", &noffmap, true},
+          {"-nosdff", &nosdff, true},
+          {"-no_ffenable", &noffenable, true},
+          {"-ioff", &ioff, true},
+          {"-bramecc", &bramecc, true},
+          {"-dspv2", &dspv2, true},
+          {"-dspv4", &dspv4, true},
+          {"-no_tdpram", &notdpram, true},
+          {"-synplify", &synplify, true},
         };
 
         size_t argidx;
@@ -482,8 +479,8 @@ struct SynthQuickLogicPass : public ScriptPass {
 
     // Error out unless `have` declares the same ports as `want`: names,
     // directions, and widths when check_width is set.
-    static void require_same_ports(const std::string &ip_file, RTLIL::Module *want, const char *want_desc,
-                                   RTLIL::Module *have, const char *have_desc, bool check_width)
+    static void require_same_ports(const std::string &ip_file, RTLIL::Module *want, const char *want_desc, RTLIL::Module *have, const char *have_desc,
+                                   bool check_width)
     {
         for (int side = 0; side < 2; side++) {
             RTLIL::Module *a = side == 0 ? want : have;
@@ -494,17 +491,16 @@ struct SynthQuickLogicPass : public ScriptPass {
                 RTLIL::Wire *wa = a->wire(port);
                 RTLIL::Wire *wb = b->wire(port);
                 if (wb == nullptr || (!wb->port_input && !wb->port_output))
-                    log_error("-rel_ip_blif %s: module '%s' has a port '%s' in %s but not in %s\n", ip_file.c_str(),
-                              log_id(want->name), log_id(port), a_desc, b_desc);
+                    log_error("-rel_ip_blif %s: module '%s' has a port '%s' in %s but not in %s\n", ip_file.c_str(), log_id(want->name), log_id(port),
+                              a_desc, b_desc);
                 if (side == 1)
                     continue;
                 if (wa->port_input != wb->port_input || wa->port_output != wb->port_output)
-                    log_error("-rel_ip_blif %s: module '%s': port '%s' is an %s in %s but an %s in %s\n", ip_file.c_str(),
-                              log_id(want->name), log_id(port), wa->port_input ? "input" : "output", a_desc,
-                              wb->port_input ? "input" : "output", b_desc);
+                    log_error("-rel_ip_blif %s: module '%s': port '%s' is an %s in %s but an %s in %s\n", ip_file.c_str(), log_id(want->name),
+                              log_id(port), wa->port_input ? "input" : "output", a_desc, wb->port_input ? "input" : "output", b_desc);
                 if (check_width && wa->width != wb->width)
-                    log_error("-rel_ip_blif %s: module '%s': port '%s' is %d bits wide in %s but %d in %s\n",
-                              ip_file.c_str(), log_id(want->name), log_id(port), wa->width, a_desc, wb->width, b_desc);
+                    log_error("-rel_ip_blif %s: module '%s': port '%s' is %d bits wide in %s but %d in %s\n", ip_file.c_str(), log_id(want->name),
+                              log_id(port), wa->width, a_desc, wb->width, b_desc);
             }
         }
     }
@@ -515,8 +511,9 @@ struct SynthQuickLogicPass : public ScriptPass {
     {
         RTLIL::Module *tpl = cell->module->design->module(cell->type);
         for (auto &conn : cell->connections()) {
-            bool is_output = cell->type.in(ID($lut), ID($sop)) ? conn.first == ID::Y
-                             : tpl != nullptr && tpl->wire(conn.first) != nullptr && tpl->wire(conn.first)->port_output;
+            bool is_output = cell->type.in(ID($lut), ID($sop))
+                               ? conn.first == ID::Y
+                               : tpl != nullptr && tpl->wire(conn.first) != nullptr && tpl->wire(conn.first)->port_output;
             if (is_output && !conn.second.is_fully_const())
                 return stringf("the %s cell driving '%s'", log_id(cell->type), log_signal(conn.second));
         }
@@ -548,8 +545,8 @@ struct SynthQuickLogicPass : public ScriptPass {
         size_t num_annotated = 0;
         for (auto cell : ip->cells()) {
             bool has_type = cell->attributes.count(id_type) != 0;
-            bool has_any = has_type || cell->attributes.count(id_x) || cell->attributes.count(id_y) ||
-                           cell->attributes.count(id_subtile) || cell->attributes.count(id_site_path);
+            bool has_any = has_type || cell->attributes.count(id_x) || cell->attributes.count(id_y) || cell->attributes.count(id_subtile) ||
+                           cell->attributes.count(id_site_path);
             if (!has_any)
                 continue;
             if (!has_type || !cell->attributes.count(id_x) || !cell->attributes.count(id_y) || !cell->attributes.count(id_subtile))
@@ -568,8 +565,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 if (id != id_type && id != id_site_path && !is_decimal_integer(value.decode_string()))
                     log_error("-rel_ip_blif %s: %s in module '%s': attribute %s must be a decimal integer, "
                               "got \"%s\"\n",
-                              ip_file.c_str(), rel_cell_desc(cell).c_str(), log_id(ip->name), log_id(id),
-                              value.decode_string().c_str());
+                              ip_file.c_str(), rel_cell_desc(cell).c_str(), log_id(ip->name), log_id(id), value.decode_string().c_str());
             }
             num_annotated++;
         }
@@ -611,8 +607,8 @@ struct SynthQuickLogicPass : public ScriptPass {
             log_error("-rel_ip_blif %s: no .model with contents found\n", ip_file.c_str());
 
         if (linked_from.count(ip_mod->name))
-            log_error("-rel_ip_blif %s: module '%s' was already linked from %s\n", ip_file.c_str(),
-                      log_id(ip_mod->name), linked_from.at(ip_mod->name).c_str());
+            log_error("-rel_ip_blif %s: module '%s' was already linked from %s\n", ip_file.c_str(), log_id(ip_mod->name),
+                      linked_from.at(ip_mod->name).c_str());
         linked_from[ip_mod->name] = ip_file;
 
         // The stub must still be the empty blackbox that synthesis saw.
@@ -621,8 +617,7 @@ struct SynthQuickLogicPass : public ScriptPass {
             log_error("-rel_ip_blif %s: module '%s' is not part of the design; read a (* blackbox *) stub of the IP "
                       "together with the user RTL\n",
                       ip_file.c_str(), log_id(ip_mod->name));
-        bool is_empty_stub = stub->cells().size() == 0 && stub->processes.empty() && stub->memories.empty() &&
-                             stub->connections().empty();
+        bool is_empty_stub = stub->cells().size() == 0 && stub->processes.empty() && stub->memories.empty() && stub->connections().empty();
         if (!stub->get_blackbox_attribute() || !is_empty_stub)
             log_error("-rel_ip_blif %s: module '%s' is already defined and is not an empty blackbox stub - the IP "
                       "must pass through user-logic synthesis untouched\n",
@@ -667,19 +662,18 @@ struct SynthQuickLogicPass : public ScriptPass {
             for (auto &conn : cell->connections()) {
                 RTLIL::Wire *port = tpl->wire(conn.first);
                 if (port == nullptr || port->port_id == 0)
-                    log_error("-rel_ip_blif %s: %s connects pin '%s', which primitive '%s' does not have\n",
-                              ip_file.c_str(), rel_cell_desc(cell).c_str(), log_id(conn.first), log_id(cell->type));
+                    log_error("-rel_ip_blif %s: %s connects pin '%s', which primitive '%s' does not have\n", ip_file.c_str(),
+                              rel_cell_desc(cell).c_str(), log_id(conn.first), log_id(cell->type));
                 if (port->width != GetSize(conn.second))
                     log_error("-rel_ip_blif %s: %s connects %d bit(s) to pin '%s' of primitive '%s', which is %d "
                               "bit(s) wide\n",
-                              ip_file.c_str(), rel_cell_desc(cell).c_str(), GetSize(conn.second), log_id(conn.first),
-                              log_id(cell->type), port->width);
+                              ip_file.c_str(), rel_cell_desc(cell).c_str(), GetSize(conn.second), log_id(conn.first), log_id(cell->type),
+                              port->width);
             }
         }
 
         size_t num_annotated = check_rel_ip_annotation(linked, ip_file);
-        log("Relative placement: linked '%s' from %s (%zu annotated cell(s))\n", log_id(linked->name), ip_file.c_str(),
-            num_annotated);
+        log("Relative placement: linked '%s' from %s (%zu annotated cell(s))\n", log_id(linked->name), ip_file.c_str(), num_annotated);
         return linked;
     }
 
@@ -695,8 +689,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         // flattened in `prepare`, so every instance must be in the top module.
         RTLIL::Module *top = active_design->top_module();
         if (top == nullptr)
-            log_error("-rel_ip_blif %s: the design has no top module; run the flow from the `begin` label\n",
-                      ip_file.c_str());
+            log_error("-rel_ip_blif %s: the design has no top module; run the flow from the `begin` label\n", ip_file.c_str());
         std::vector<RTLIL::Cell *> insts;
         for (auto module : active_design->modules())
             for (auto cell : module->cells())
@@ -839,7 +832,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                     readVelArgs += family_path + "/dspv2_sim.v" + family_path + "/dspv4_sim.v";
                 else
                     readVelArgs += family_path + (dspv2 ? "/dspv2_sim.v" : "/dsp_sim.v");
-                if(inferBram) {
+                if (inferBram) {
                     readVelArgs += family_path + "/brams_sim.v";
                     if (bramTypes) {
                         readVelArgs += family_path + "/bram_types_sim.v";
@@ -847,56 +840,55 @@ struct SynthQuickLogicPass : public ScriptPass {
                 }
                 if (synplify) {
                     readVelArgs += family_path + "/synplify_map.v";
-					readVelArgs += family_path + "/synplify_bram_map.v";
+                    readVelArgs += family_path + "/synplify_bram_map.v";
                 }
             }
             // Use -nomem2reg here to prevent Yosys from complaining about
             // some block ram cell models. After all the only part of the cells
             // library required here is cell port definitions plus specify blocks.
             run("read_verilog -lib -specify -nomem2reg " + readVelArgs);
-			if (synplify && !dspv2 && !dspv4) {
-			    // Full behavioural QL_DSPV2.v is only used by the dspv2->dspv1
-			    // translation path.
-			    run("read_verilog " + family_path + "/QL_DSPV2.v");
-			}
-			if (dspv4 && family == "qlf_k6n10f") {
-			    // V4 path: read the QL_DSP4 base-cell primitive (the conversion
-			    // output). The QL_DSPV2 input interface comes from dspv2_sim.v and
-			    // QL_DSP4's behavioural body (dsp4_top) from dspv4_sim.v, both read
-			    // above. QL_DSPV2.v itself is not needed on this path.
-			    run("read_verilog -lib -specify -nomem2reg" + family_path + "/QL_DSP4.v");
-			    // Phase-2 dsp4_logical leaf primitives (QL_DSP4_MULT / _ALU_* /
-			    // _PREADD|PRESUB / _RSS / bit-sliced *_DFFR[E]). The decompose
-			    // techmap (map_dsp) rewrites QL_DSP4 into these; read as black
-			    // boxes so they carry through to write_blif for VPR packing.
-			    run("read_verilog -lib -specify -nomem2reg" + family_path + "/QL_DSP4_leaves.v");
-			    run("read_verilog" + family_path + "/ql_dsp4_macros.v");
-			}
+            if (synplify && !dspv2 && !dspv4) {
+                // Full behavioural QL_DSPV2.v is only used by the dspv2->dspv1
+                // translation path.
+                run("read_verilog " + family_path + "/QL_DSPV2.v");
+            }
+            if (dspv4 && family == "qlf_k6n10f") {
+                // V4 path: read the QL_DSP4 base-cell primitive (the conversion
+                // output). The QL_DSPV2 input interface comes from dspv2_sim.v and
+                // QL_DSP4's behavioural body (dsp4_top) from dspv4_sim.v, both read
+                // above. QL_DSPV2.v itself is not needed on this path.
+                run("read_verilog -lib -specify -nomem2reg" + family_path + "/QL_DSP4.v");
+                // Phase-2 dsp4_logical leaf primitives (QL_DSP4_MULT / _ALU_* /
+                // _PREADD|PRESUB / _RSS / bit-sliced *_DFFR[E]). The decompose
+                // techmap (map_dsp) rewrites QL_DSP4 into these; read as black
+                // boxes so they carry through to write_blif for VPR packing.
+                run("read_verilog -lib -specify -nomem2reg" + family_path + "/QL_DSP4_leaves.v");
+                run("read_verilog" + family_path + "/ql_dsp4_macros.v");
+            }
             run(stringf("hierarchy -check %s", help_mode ? "-top <top>" : top_opt.c_str()));
         }
 
         if (check_label("prepare")) {
             if (synplify) {
-				// As early as possible: synplify_map.v expands IBUF_FF/OBUF_FF into
-				// a plain dff, and it is techmapped in more than one place -- the
-				// map_luts label does so before ABC whenever -de is set, well ahead
-				// of map_synplify. Translating here, straight off the front end,
-				// means the cells are consumed while they still exist regardless of
-				// which of those paths the run takes. On a v3.0 architecture the dff
-				// they would otherwise become has no model and packing fails with
-				// "Subckt instantiates model 'dff'".
-				run("ql_io_translate");
-				run("proc");
-				run("flatten");
-				run("opt -nodffe -nosdff");
-				run("fsm");
-				run("wreduce");
-				run("peepopt");
-				run("opt_clean");
-				run("share");
-            }
-            else{
-			    run("proc");
+                // As early as possible: synplify_map.v expands IBUF_FF/OBUF_FF into
+                // a plain dff, and it is techmapped in more than one place -- the
+                // map_luts label does so before ABC whenever -de is set, well ahead
+                // of map_synplify. Translating here, straight off the front end,
+                // means the cells are consumed while they still exist regardless of
+                // which of those paths the run takes. On a v3.0 architecture the dff
+                // they would otherwise become has no model and packing fails with
+                // "Subckt instantiates model 'dff'".
+                run("ql_io_translate");
+                run("proc");
+                run("flatten");
+                run("opt -nodffe -nosdff");
+                run("fsm");
+                run("wreduce");
+                run("peepopt");
+                run("opt_clean");
+                run("share");
+            } else {
+                run("proc");
                 run("flatten");
                 if (help_mode || family == "pp3") {
                     run("tribuf -logic", "                   (for pp3)");
@@ -950,7 +942,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run("chtype -set $mul t:$__soft_mul", "  (for qlf_k6n10)");
                 }
             }
-            if (help_mode || family == "qlf_k6n10f") {			
+            if (help_mode || family == "qlf_k6n10f") {
 
                 struct DspParams {
                     size_t a_maxwidth;
@@ -1083,13 +1075,15 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // V1 vs V2 behaviour. We therefore reference the same
                             // filenames on both arms here.
                             run("ql_dsp_macc -dspv2");
-                            run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v "
+                            run("techmap -map +/mul2dsp.v -map " + lib_path + family +
+                                "/dsp_map.v "
                                 "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
                                 "-D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 "
                                 "-D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10 "
                                 "-D DSP_NAME=$__QL_MUL32X18");
                             run("chtype -set $mul t:$__soft_mul");
-                            run("techmap -map +/mul2dsp.v -map " + lib_path + family + "/dsp_map.v "
+                            run("techmap -map +/mul2dsp.v -map " + lib_path + family +
+                                "/dsp_map.v "
                                 "-D USE_DSP_CFG_PARAMS=0 -D DSP_SIGNEDONLY "
                                 "-D DSP_A_MAXWIDTH=16 -D DSP_B_MAXWIDTH=9 "
                                 "-D DSP_A_MINWIDTH=4 -D DSP_B_MINWIDTH=4 "
@@ -1149,30 +1143,30 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("coarse")) {
-            //if (!synplify) {
-                run("techmap -map +/cmp2lut.v -D LUT_WIDTH=4");
-                if (!noOpt) {
-                    run("opt_expr");
-                    run("opt_clean");
-                }
-                run("alumacc");
-                run("pmuxtree");
-                if (!noOpt) {
-                    run("opt" + noDFFArgs);
-                }
-                run("memory -nomap");
-                if (!noOpt) {
-                    run("opt_clean");
-                }
+            // if (!synplify) {
+            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=4");
+            if (!noOpt) {
+                run("opt_expr");
+                run("opt_clean");
+            }
+            run("alumacc");
+            run("pmuxtree");
+            if (!noOpt) {
+                run("opt" + noDFFArgs);
+            }
+            run("memory -nomap");
+            if (!noOpt) {
+                run("opt_clean");
+            }
             //}
         }
 
         if (check_label("map_bram", "(skip if -no_bram)") && (help_mode || family == "qlf_k6n10" || family == "qlf_k6n10f" || family == "pp3") &&
             inferBram) {
             if (help_mode || family == "qlf_k6n10f") {
-				if (synplify) {
-					run("techmap -autoproc -map " + lib_path + family + "/synplify_bram_map.v");
-				}
+                if (synplify) {
+                    run("techmap -autoproc -map " + lib_path + family + "/synplify_bram_map.v");
+                }
                 if (notdpram) {
                     run("memory_libmap -lib " + lib_path + family + "/libmap_brams_sdp.txt", "(for qlf_k6n10f)");
                     run("ql_sdpbram_merge", "(for qlf_k6n10f)");
@@ -1195,19 +1189,19 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
 
             if (bramTypes || help_mode) {
-				if (bramecc) {
-					if (notdpram) {
-						run("ql_sdp_bramecc_types", "(if -bramtypes)"); 
-					} else {
-						run("ql_bramecc_types", "(if -bramtypes)");
-					}
-			    } else {
-					if (notdpram) {
-						run("ql_sdp_bram_types", "(if -bramtypes)");
-					} else {
-						run("ql_bram_types", "(if -bramtypes)");
-					}
-				}
+                if (bramecc) {
+                    if (notdpram) {
+                        run("ql_sdp_bramecc_types", "(if -bramtypes)");
+                    } else {
+                        run("ql_bramecc_types", "(if -bramtypes)");
+                    }
+                } else {
+                    if (notdpram) {
+                        run("ql_sdp_bram_types", "(if -bramtypes)");
+                    } else {
+                        run("ql_bram_types", "(if -bramtypes)");
+                    }
+                }
             }
         }
 
@@ -1226,206 +1220,200 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("map_gates")) {
-            //if (!synplify) {
-                if (help_mode || (inferAdder && (family == "qlf_k4n8" || family == "qlf_k6n10" || family == "qlf_k6n10f"))) {
-                    run("techmap -map +/techmap.v -map " + lib_path + family + "/arith_map.v", "(unless -no_adder)");
-                } else {
-                    run("techmap");
-                }
-                if (!noOpt) {
-                    run("opt -fast" + noDFFArgs);
-                }
-                if (help_mode || family == "pp3") {
-                    run("muxcover -mux8 -mux4", "(for pp3)");
-                }
-                if (!noOpt) {
-                    run("opt_expr");
-                    run("opt_merge");
-                    run("opt_clean");
-                    run("opt" + noDFFArgs);
-                }
+            // if (!synplify) {
+            if (help_mode || (inferAdder && (family == "qlf_k4n8" || family == "qlf_k6n10" || family == "qlf_k6n10f"))) {
+                run("techmap -map +/techmap.v -map " + lib_path + family + "/arith_map.v", "(unless -no_adder)");
+            } else {
+                run("techmap");
+            }
+            if (!noOpt) {
+                run("opt -fast" + noDFFArgs);
+            }
+            if (help_mode || family == "pp3") {
+                run("muxcover -mux8 -mux4", "(for pp3)");
+            }
+            if (!noOpt) {
+                run("opt_expr");
+                run("opt_merge");
+                run("opt_clean");
+                run("opt" + noDFFArgs);
+            }
             //}
         }
 
         if (check_label("map_ffs")) {
-            //if (!synplify) {
-                if (!noOpt) {
-                    run("opt_expr");
+            // if (!synplify) {
+            if (!noOpt) {
+                run("opt_expr");
+            }
+            if (help_mode) {
+                run("shregmap -minlen <min> -maxlen <max>", "(for qlf_k4n8, qlf_k6n10f)");
+                run("dfflegalize -cell <supported FF types>");
+                run("techmap -map " + lib_path + family + "/cells_map.v", "(for pp3)");
+            }
+            if (family == "qlf_k4n8") {
+                run("shregmap -minlen 8 -maxlen 8");
+                run("dfflegalize -cell $_DFF_P_ 0 -cell $_DFF_P??_ 0 -cell $_DFF_N_ 0 -cell $_DFF_N??_ 0 -cell $_DFFSR_???_ 0");
+            } else if (family == "qlf_k6n10") {
+                run("dfflegalize -cell $_DFF_P_ 0 -cell $_DFF_PP?_ 0 -cell $_DFFE_PP?P_ 0 -cell $_DFFSR_PPP_ 0 -cell $_DFFSRE_PPPP_ 0 -cell "
+                    "$_DLATCHSR_PPP_ 0");
+            } else if (family == "qlf_k6n10f") {
+                run("shregmap -minlen 8 -maxlen 20");
+                std::string legalizeArgs;
+                if (noffenable) {
+                    legalizeArgs = " -cell $_DFF_?N?_ 0";
+                } else if (mince_num != "") {
+                    legalizeArgs = " -mince " + mince_num + " -cell $_DFFE_?N?P_ 0 -cell $_DFF_?N?_ 0";
+                } else {
+                    legalizeArgs = " -cell $_DFFE_?N?P_ 0";
                 }
-                if (help_mode) {
-                    run("shregmap -minlen <min> -maxlen <max>", "(for qlf_k4n8, qlf_k6n10f)");
-                    run("dfflegalize -cell <supported FF types>");
-                    run("techmap -map " + lib_path + family + "/cells_map.v", "(for pp3)");
-                }
-                if (family == "qlf_k4n8") {
-                    run("shregmap -minlen 8 -maxlen 8");
-                    run("dfflegalize -cell $_DFF_P_ 0 -cell $_DFF_P??_ 0 -cell $_DFF_N_ 0 -cell $_DFF_N??_ 0 -cell $_DFFSR_???_ 0");
-                } else if (family == "qlf_k6n10") {
-                    run("dfflegalize -cell $_DFF_P_ 0 -cell $_DFF_PP?_ 0 -cell $_DFFE_PP?P_ 0 -cell $_DFFSR_PPP_ 0 -cell $_DFFSRE_PPPP_ 0 -cell "
-                        "$_DLATCHSR_PPP_ 0");
-                } else if (family == "qlf_k6n10f") {
-                    run("shregmap -minlen 8 -maxlen 20");
-                    std::string legalizeArgs;
+                if (!nosdff) {
                     if (noffenable) {
-                        legalizeArgs = " -cell $_DFF_?N?_ 0";
+                        legalizeArgs += " -cell $_SDFF_?N?_ 0";
                     } else if (mince_num != "") {
-                        legalizeArgs = " -mince " + mince_num + " -cell $_DFFE_?N?P_ 0 -cell $_DFF_?N?_ 0"; 
+                        legalizeArgs += " -mince " + mince_num + " -cell $_SDFFE_?N?P_ 0 -cell $_SDFF_?N?_ 0";
                     } else {
-						legalizeArgs = " -cell $_DFFE_?N?P_ 0";
-					}
-                    if (!nosdff) {
-						if (noffenable) {
-							legalizeArgs += " -cell $_SDFF_?N?_ 0";
-						} else if (mince_num != "") {
-							legalizeArgs += " -mince " + mince_num + " -cell $_SDFFE_?N?P_ 0 -cell $_SDFF_?N?_ 0";
-						} else {
-							legalizeArgs += " -cell $_SDFFE_?N?P_ 0";							
-						}					
+                        legalizeArgs += " -cell $_SDFFE_?N?P_ 0";
                     }
-                    run("dfflegalize" + legalizeArgs);
-                } else if (family == "pp3") {
-                    run("dfflegalize -cell $_DFFSRE_PPPP_ 0 -cell $_DLATCH_?_ x");
-                    run("techmap -map " + lib_path + family + "/cells_map.v");
                 }
-				std::string techMapArgs = " -map +/techmap.v -map " + lib_path + family + "/ffs_map.v";
-                if (help_mode || !noffmap) {
-                    run("techmap " + techMapArgs, "(unless -no_ff_map)");
-                }
-                if (help_mode || family == "pp3") {
-                    run("opt_expr -mux_undef", "(for pp3)");
-                }
-                if (!noOpt) {
-                    run("opt_merge");
-                    run("opt_clean");
-                    run("opt" + noDFFArgs);
-                }
+                run("dfflegalize" + legalizeArgs);
+            } else if (family == "pp3") {
+                run("dfflegalize -cell $_DFFSRE_PPPP_ 0 -cell $_DLATCH_?_ x");
+                run("techmap -map " + lib_path + family + "/cells_map.v");
+            }
+            std::string techMapArgs = " -map +/techmap.v -map " + lib_path + family + "/ffs_map.v";
+            if (help_mode || !noffmap) {
+                run("techmap " + techMapArgs, "(unless -no_ff_map)");
+            }
+            if (help_mode || family == "pp3") {
+                run("opt_expr -mux_undef", "(for pp3)");
+            }
+            if (!noOpt) {
+                run("opt_merge");
+                run("opt_clean");
+                run("opt" + noDFFArgs);
+            }
             //}
         }
 
         if (check_label("map_luts")) {
-            //if (!synplify) {
-                if (help_mode || abcOpt) {
-                    if (help_mode || family == "qlf_k6n10" || family == "qlf_k6n10f") {
-                        if (abc9) {
-                            run("read_verilog -lib -specify -icells +/quicklogic/pp3/abc9_model.v");
-                            // run("techmap -map +/quicklogic/pp3/abc9_map.v");
-                            // run("abc9 -maxlut 6 -dff");
-                            run("abc9 -maxlut 6");
-                            // run("techmap -map +/quicklogic/pp3/abc9_unmap.v");
-                        } else {
-                            if(custom_abc_script == ""){
-                                if(de == "")
-                                    run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
+            // if (!synplify) {
+            if (help_mode || abcOpt) {
+                if (help_mode || family == "qlf_k6n10" || family == "qlf_k6n10f") {
+                    if (abc9) {
+                        run("read_verilog -lib -specify -icells +/quicklogic/pp3/abc9_model.v");
+                        // run("techmap -map +/quicklogic/pp3/abc9_map.v");
+                        // run("abc9 -maxlut 6 -dff");
+                        run("abc9 -maxlut 6");
+                        // run("techmap -map +/quicklogic/pp3/abc9_unmap.v");
+                    } else {
+                        if (custom_abc_script == "") {
+                            if (de == "")
+                                run("abc -lut 6 ", "(for qlf_k6n10, qlf_k6n10f)");
 
-                                else{
-                                    if (synplify) {
-                                        std::string family_path = " " + lib_path + family;
-                                        run("flatten");
-                                        run("techmap -map" + family_path + "/synplify_map.v");
-                                        run("techmap");
-                                    }
-                                    run("design -save base");
-                                    run("design -load base");
-                                    run("tee -o abc_lut6.log abc -script +/quicklogic/abc_scripts/lut6.scr", "(for qlf_k6n10, qlf_k6n10f)");
-                                    run("design -save lut6");
-                                    run("write_blif lut6.blif");
-                                    run("design -load base");
-                                    if(de == "delay")
-                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/dde.scr", "(for qlf_k6n10, qlf_k6n10f)");
-                                    if(de == "area")
-                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/ade.scr", "(for qlf_k6n10, qlf_k6n10f)");
-                                    if(de == "mixed")
-                                        run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/mde.scr", "(for qlf_k6n10, qlf_k6n10f)");
-                                    run("design -save de");
-                                    run("write_blif de.blif");
-                                    
-                                    if (!check_equivalence("abc_de.log")) {
-                                        log("Networks are not Equivalent. Cannot use DE for this module.\n");
-                                        run("design -load lut6");
-                                    }
-                                    else {
-                                        log("Networks are Equivalent after using DE.\n");
-                                        auto [lut6_nd, lut6_lev] = extract_abc_metrics("abc_lut6.log");                                    
-                                        auto [de_nd, de_lev] = extract_abc_metrics("abc_de.log");
-                                        
-                                        if(de == "delay") {
-                                            if(de_lev <= lut6_lev)
+                            else {
+                                if (synplify) {
+                                    std::string family_path = " " + lib_path + family;
+                                    run("flatten");
+                                    run("techmap -map" + family_path + "/synplify_map.v");
+                                    run("techmap");
+                                }
+                                run("design -save base");
+                                run("design -load base");
+                                run("tee -o abc_lut6.log abc -script +/quicklogic/abc_scripts/lut6.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                run("design -save lut6");
+                                run("write_blif lut6.blif");
+                                run("design -load base");
+                                if (de == "delay")
+                                    run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/dde.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                if (de == "area")
+                                    run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/ade.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                if (de == "mixed")
+                                    run("tee -o abc_de.log abc -script +/quicklogic/abc_scripts/mde.scr", "(for qlf_k6n10, qlf_k6n10f)");
+                                run("design -save de");
+                                run("write_blif de.blif");
+
+                                if (!check_equivalence("abc_de.log")) {
+                                    log("Networks are not Equivalent. Cannot use DE for this module.\n");
+                                    run("design -load lut6");
+                                } else {
+                                    log("Networks are Equivalent after using DE.\n");
+                                    auto [lut6_nd, lut6_lev] = extract_abc_metrics("abc_lut6.log");
+                                    auto [de_nd, de_lev] = extract_abc_metrics("abc_de.log");
+
+                                    if (de == "delay") {
+                                        if (de_lev <= lut6_lev)
+                                            run("design -load de");
+                                        else
+                                            run("design -load lut6");
+                                    } else if (de == "area") {
+                                        if (de_nd <= lut6_nd)
+                                            run("design -load de");
+                                        else
+                                            run("design -load lut6");
+                                    } else if (de == "mixed") {
+                                        if (de_nd <= lut6_nd && de_lev <= lut6_lev)
+                                            run("design -load de");
+                                        else if (de_nd >= lut6_nd && de_lev >= lut6_lev)
+                                            run("design -load lut6");
+                                        else {
+                                            int dmin = std::min(de_lev, lut6_lev);
+                                            int dmax = std::max(de_lev, lut6_lev);
+                                            double D_de = (dmax == dmin) ? 0.0 : (de_lev - dmin) / (dmax - dmin);
+                                            double D_lut6 = (dmax == dmin) ? 0.0 : (lut6_lev - dmin) / (dmax - dmin);
+
+                                            int amin = std::min(de_nd, lut6_nd);
+                                            int amax = std::max(de_nd, lut6_nd);
+                                            double A_de =
+                                              (amax == amin) ? 0.0 : (std::log(de_nd) - std::log(amin)) / (std::log(amax) - std::log(amin));
+                                            double A_lut6 =
+                                              (amax == amin) ? 0.0 : (std::log(lut6_nd) - std::log(amin)) / (std::log(amax) - std::log(amin));
+
+                                            double de_score = 0.5 * A_de + 0.5 * D_de;
+                                            double lut6_score = 0.5 * A_lut6 + 0.5 * D_lut6;
+                                            if (de_score <= lut6_score)
                                                 run("design -load de");
                                             else
                                                 run("design -load lut6");
-                                        }
-                                        else if (de == "area") {
-                                            if(de_nd <= lut6_nd)
-                                                run("design -load de");
-                                            else
-                                                run("design -load lut6");
-                                        }
-                                        else if (de == "mixed") {
-                                            if(de_nd <= lut6_nd && de_lev <= lut6_lev)
-                                                run("design -load de");
-                                            else if(de_nd >= lut6_nd && de_lev >= lut6_lev)
-                                                run("design -load lut6");
-                                            else{
-                                                int dmin = std::min(de_lev, lut6_lev);
-                                                int dmax = std::max(de_lev, lut6_lev);
-                                                double D_de = (dmax == dmin) ? 0.0 : (de_lev - dmin) / (dmax - dmin);
-                                                double D_lut6 = (dmax == dmin) ? 0.0 : (lut6_lev - dmin) / (dmax - dmin);
-
-                                                int amin = std::min(de_nd, lut6_nd);
-                                                int amax = std::max(de_nd, lut6_nd);
-                                                double A_de = (amax == amin) ? 0.0 :
-                                                (std::log(de_nd) - std::log(amin)) /
-                                                (std::log(amax) - std::log(amin));
-                                                double A_lut6 = (amax == amin) ? 0.0 :
-                                                (std::log(lut6_nd) - std::log(amin)) /
-                                                (std::log(amax) - std::log(amin));
-
-                                                double de_score = 0.5 * A_de + 0.5 * D_de;
-                                                double lut6_score = 0.5 * A_lut6 + 0.5 * D_lut6;
-                                                if (de_score <= lut6_score)
-                                                    run("design -load de");
-                                                else 
-                                                    run("design -load lut6");
-                                            }
                                         }
                                     }
                                 }
                             }
-                            else{
-                                run("abc -script " + custom_abc_script + " ", "(for qlf_k6n10, qlf_k6n10f)");
-                            }
-                        }
-                    }
-                    if (help_mode || family == "qlf_k4n8") {
-                        run("abc -lut 4 ", "(for qlf_k4n8)");
-                    }
-                    if (help_mode || family == "pp3") {
-                        run("techmap -map " + lib_path + family + "/latches_map.v", "(for pp3)");
-                        if (help_mode || abc9) {
-                            run("read_verilog -lib -specify -icells " + lib_path + family + "/abc9_model.v", "(for pp3)");
-                            run("techmap -map " + lib_path + family + "/abc9_map.v", "   (for pp3)");
-                            run("abc9 -maxlut 4 -dff", "                             (for pp3)");
-                            run("techmap -map " + lib_path + family + "/abc9_unmap.v", " (for pp3)");
-                        }
-                        if (help_mode || !abc9) {
-                            std::string lutDefs = "" + lib_path + family + "/lutdefs.txt";
-                            rewrite_filename(lutDefs);
-
-                            std::string abcArgs = help_mode ? "<script>"
-                                                            : "+read_lut," + lutDefs +
-                                                                ";"
-                                                                "strash;ifraig;scorr;dc2;dretime;strash;dch,-f;if;mfs2;" // Common Yosys ABC script
-                                                                "sweep;eliminate;if;mfs;lutpack;"                        // Optimization script
-                                                                "dress";                                                 // "dress" to preserve names
-
-                            run("abc -script " + abcArgs, "                            (for pp3 if -no_abc9)");
+                        } else {
+                            run("abc -script " + custom_abc_script + " ", "(for qlf_k6n10, qlf_k6n10f)");
                         }
                     }
                 }
-                run("clean");
-                if (!noOpt) {
-                    run("opt_lut");
+                if (help_mode || family == "qlf_k4n8") {
+                    run("abc -lut 4 ", "(for qlf_k4n8)");
                 }
+                if (help_mode || family == "pp3") {
+                    run("techmap -map " + lib_path + family + "/latches_map.v", "(for pp3)");
+                    if (help_mode || abc9) {
+                        run("read_verilog -lib -specify -icells " + lib_path + family + "/abc9_model.v", "(for pp3)");
+                        run("techmap -map " + lib_path + family + "/abc9_map.v", "   (for pp3)");
+                        run("abc9 -maxlut 4 -dff", "                             (for pp3)");
+                        run("techmap -map " + lib_path + family + "/abc9_unmap.v", " (for pp3)");
+                    }
+                    if (help_mode || !abc9) {
+                        std::string lutDefs = "" + lib_path + family + "/lutdefs.txt";
+                        rewrite_filename(lutDefs);
+
+                        std::string abcArgs = help_mode ? "<script>"
+                                                        : "+read_lut," + lutDefs +
+                                                            ";"
+                                                            "strash;ifraig;scorr;dc2;dretime;strash;dch,-f;if;mfs2;" // Common Yosys ABC script
+                                                            "sweep;eliminate;if;mfs;lutpack;"                        // Optimization script
+                                                            "dress";                                                 // "dress" to preserve names
+
+                        run("abc -script " + abcArgs, "                            (for pp3 if -no_abc9)");
+                    }
+                }
+            }
+            run("clean");
+            if (!noOpt) {
+                run("opt_lut");
+            }
             //}
         }
 
@@ -1437,17 +1425,17 @@ struct SynthQuickLogicPass : public ScriptPass {
                 run("clean");
             }
         }
-		
-		if (check_label("iomap", "(for qlf_k6n10f)") && (family == "qlf_k6n10f" || help_mode)) {
-			// Runs on both front ends. ql_ioff needs the Synplify path's VCC-cell
-			// constants resolved to see an unused E or R at all, which
-			// build_const_drivers does, so the same promotion decisions are
-			// available whichever tool synthesised the design.
-			if (ioff) {
-				run("ql_ioff");
-				run("opt_clean");
-			}
-		}
+
+        if (check_label("iomap", "(for qlf_k6n10f)") && (family == "qlf_k6n10f" || help_mode)) {
+            // Runs on both front ends. ql_ioff needs the Synplify path's VCC-cell
+            // constants resolved to see an unused E or R at all, which
+            // build_const_drivers does, so the same promotion decisions are
+            // available whichever tool synthesised the design.
+            if (ioff) {
+                run("ql_ioff");
+                run("opt_clean");
+            }
+        }
 
         if (check_label("check")) {
             if (!synplify) {
@@ -1485,10 +1473,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             std::string family_path = " " + lib_path + family;
             if (family == "qlf_k6n10f") {
                 if (synplify) {
-					run("opt -fast -mux_undef -undriven -fine" + noDFFArgs);
+                    run("opt -fast -mux_undef -undriven -fine" + noDFFArgs);
                     run("techmap -autoproc -map" + family_path + "/synplify_map.v");
                     run("opt_lut");
-					run("opt" + noDFFArgs);
+                    run("opt" + noDFFArgs);
                     run("opt_expr");
                     run("opt_merge");
                     run("opt_clean -purge");
@@ -1573,12 +1561,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                     // real in-memory netlist (needed by any later -edif/-verilog output
                     // label) is left completely untouched.
                     // ---------------------------------------------------------------
-                    run("design -push");                                    // save the real design, start a scratch one
-                    run("read_blif -wideports " + blif_file);               // reload our BLIF: aliases -> identity $lut cells
-                    run("opt_expr");                                        // collapse the identity $luts to connections
-                    run("opt_clean -purge");                                // merge toward the output-port names (drops buffers)
+                    run("design -push");                                             // save the real design, start a scratch one
+                    run("read_blif -wideports " + blif_file);                        // reload our BLIF: aliases -> identity $lut cells
+                    run("opt_expr");                                                 // collapse the identity $luts to connections
+                    run("opt_clean -purge");                                         // merge toward the output-port names (drops buffers)
                     run(stringf("write_blif %s %s", blif_flags, blif_file.c_str())); // rewrite the buffer-free BLIF (same flags as the first write)
-                    run("design -pop");                                     // restore the real design untouched
+                    run("design -pop");                                              // restore the real design untouched
                 }
                 if (!help_mode && rel_flow)
                     run("design -pop"); // discard the scratch copy
