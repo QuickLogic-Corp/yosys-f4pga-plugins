@@ -118,22 +118,15 @@ jobs:
 
   # Single stable check name for branch protection to require: naming each
   # matrix leg directly breaks protection every time the plugin list changes.
-  #
-  # format-check is deliberately not in `needs` yet: format-check.sh hasn't
-  # actually run since it was buried in the always-timed-out Run-tests job
-  # (see PR description), and the C++ tree has drifted into inconsistent
-  # formatting in the meantime — no clang-format version reproduces it with
-  # a clean diff. It still runs so drift is visible, but making it required
-  # needs a dedicated repo-wide reformat PR first.
   ci-required:
     name: CI required checks
     runs-on: ubuntu-22.04
-    needs: [Run-tests]
+    needs: [format-check, Run-tests]
     if: always()
     steps:
       - name: Check required jobs succeeded
         run: |
-          if [ "${{ needs.Run-tests.result }}" != "success" ]; then
+          if [ "${{ needs.format-check.result }}" != "success" ] || [ "${{ needs.Run-tests.result }}" != "success" ]; then
             echo "::error::one or more required CI jobs did not succeed"
             exit 1
           fi
