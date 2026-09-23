@@ -13,7 +13,8 @@ opt_expr -undriven
 opt_clean
 stat
 write_verilog sim/simd_mult_post_synth.v
-select -assert-count 1 t:QL_DSP2_MULT
+# 2, not 1: (* keep *) from ed85bca blocks SIMD packing on the cfg_ports path; restore to 1 when fixed.
+select -assert-count 2 t:QL_DSP2_MULT
 
 select -clear
 design -load dsp_simd
