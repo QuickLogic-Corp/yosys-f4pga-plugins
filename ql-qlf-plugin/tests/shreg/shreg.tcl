@@ -12,5 +12,5 @@ design -reset
 read_verilog $::env(DESIGN_TOP).v
 synth_ql -family qlf_k6n10f -top top
 stat
-select -assert-count 8 t:sh_dff
+select -assert-count 8 t:sh_dffre
 
