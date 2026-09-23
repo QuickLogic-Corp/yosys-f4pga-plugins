@@ -16,7 +16,11 @@
 
 name: CI tests
 
-on: [push, pull_request]
+# Pushes to PR branches are covered by pull_request; running both doubled every job.
+on:
+  push:
+    branches: [main, 'release/**']
+  pull_request:
 
 jobs:
 
@@ -56,7 +60,8 @@ jobs:
     env:
       # Keep in sync with aurora2's yosys-and-plugins/yosys-gh submodule pin.
       YOSYS_VERSION: v0.55
-      YOSYS_PREFIX: ${{ github.workspace }}/../yosys-install
+      # Outside the checkout, and free of '..' (actions/cache rejects it).
+      YOSYS_PREFIX: /home/runner/yosys-install
 
     steps:
 
