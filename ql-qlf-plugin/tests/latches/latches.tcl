@@ -8,14 +8,14 @@ design -save read
 # Tests for qlf_k6n10 family
 # LATCHP
 design -load read
-synth_ql -family qlf_k6n10 -top latchp
+synth_ql -family qlf_k6n10 -no_abc9 -top latchp
 yosys cd latchp
 stat
 select -assert-count 1 t:latchsre
 
 # LATCHN
 design -load read
-synth_ql -family qlf_k6n10 -top latchn
+synth_ql -family qlf_k6n10 -no_abc9 -top latchn
 yosys cd latchn
 stat
 select -assert-count 1 t:\$lut
@@ -23,7 +23,7 @@ select -assert-count 1 t:latchsre
 
 # LATCHSRE
 design -load read
-synth_ql -family qlf_k6n10 -top my_latchsre
+synth_ql -family qlf_k6n10 -no_abc9 -top my_latchsre
 yosys cd my_latchsre
 stat
 select -assert-count 2 t:\$lut

@@ -19,7 +19,7 @@ design -reset
 read_verilog $::env(DESIGN_TOP).v
 hierarchy -top top
 yosys proc
-equiv_opt -assert -map +/quicklogic/qlf_k6n10/cells_sim.v synth_ql -family qlf_k6n10
+equiv_opt -assert -map +/quicklogic/qlf_k6n10/cells_sim.v synth_ql -family qlf_k6n10 -no_abc9
 design -load postopt
 yosys cd top
 
