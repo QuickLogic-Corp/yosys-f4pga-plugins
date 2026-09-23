@@ -33,11 +33,7 @@ if [ "$PLUGIN_NAME" == "xdc" ] || [ "$PLUGIN_NAME" == "sdc" ]; then
 	make install_design_introspection -j`nproc`
 fi 
 
-# yosys-config --cxxflags embeds whatever -std= the pinned Yosys build itself
-# was compiled with, which can trail a stale -std=c++11 after the -std=c++17
-# it also emits; Makefile_plugin.common appends $(CXXFLAGS) last, so putting
-# -std=c++17 here makes it the one that wins.
-export CXXFLAGS="-Werror -std=c++17"
+export CXXFLAGS=-Werror
 make UHDM_INSTALL_DIR=`pwd`/env/conda/envs/yosys-plugins/ ${PLUGIN_NAME}.so -j`nproc`
 unset CXXFLAGS
 

@@ -427,7 +427,7 @@ struct QlDspV2ToV4Pass : public Pass {
     {
         if (sig.is_fully_const()) {
             RTLIL::Const c = sig.as_const();
-            for (auto &b : c.bits)
+            for (auto &b : c.bits())
                 b = (b == State::S1) ? State::S0 : (b == State::S0 ? State::S1 : b);
             return c;
         }
