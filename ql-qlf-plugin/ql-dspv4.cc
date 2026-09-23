@@ -1213,12 +1213,12 @@ struct QlDspV4Pass : public Pass {
         // prevented by the sole-reader guard in collect_flops -- a register
         // feeding both operands has three readers and stops the walk -- but a
         // duplicate here would be a double module->remove(), so check anyway.
-        auto claim = [&](RTLIL::Cell *f, bool shared) {
+        auto claim = [&](RTLIL::Cell *f, bool copy_instead_of_move) {
             // A copy, not a move: the original has to survive for its other
             // readers, so it goes to the userless sweep instead of straight to
             // removal. Whether this is a copy is a property of the CHAIN -- see
             // FlopChain::shared.
-            if (shared) {
+            if (copy_instead_of_move) {
                 absorbed.insert(f);
                 shared_claimed.insert(f);
                 return;
@@ -1233,7 +1233,7 @@ struct QlDspV4Pass : public Pass {
         auto claim_stages = [&](const FlopChain &c, int n) {
             for (int i = 0; i < n; i++)
                 for (auto f : c.stage_flops[i])
-                    claim(f, c.shared);
+                    claim(f, c.copy_instead_of_move);
         };
         claim_stages(ca, na);
         claim_stages(cb, nb);
@@ -1724,7 +1724,7 @@ struct QlDspV4Pass : public Pass {
         // out from under the others, which then stalled on
         // "already absorbed by another DSP" and absorbed one stage instead of
         // two -- shared_input_1reg_wrap took 12 A1 banks down to 2.
-        bool shared = false;
+        bool copy_instead_of_move = false;
         SigSpec source;                     // D of the last stage -- the port value
         SigSpec clk;
         // Enable and async reset are kept as the RAW signal plus its polarity,
@@ -1890,19 +1890,16 @@ struct QlDspV4Pass : public Pass {
                 bits_used[pb.first]++;
             }
 
-            // Each flop must be consumed ENTIRELY by this operand and by nothing
-            // else. Two ways that can fail, both fatal to absorbing it:
-            //   - the flop is wider than the slice used here, so its other bits
-            //     would lose their driver;
-            //   - a bit has another reader, which would lose the value.
             bool ok = true;
             for (auto ff : stage) {
                 SigSpec q = ff->getPort(ID::Q);
-                if (bits_used.at(ff) != GetSize(q)) {
-                    STALL("only part of the flop's width feeds this operand",
-                          "flop %s contributes %d of its %d bits; absorbing it would "
-                          "strip the rest", log_id(ff), bits_used.at(ff), GetSize(q));
-                    ok = false; break;
+                bool operand_uses_only_part_of_flop =
+                    bits_used.at(ff) != GetSize(q);
+                if (operand_uses_only_part_of_flop) {
+                    log_debug("  %s: flop %s gives %d of its %d bits to this "
+                              "operand, so it is copied, not moved\n",
+                              port, log_id(ff), bits_used.at(ff), GetSize(q));
+                    chain.copy_instead_of_move = true;
                 }
                 // A flop with several readers is COPIED rather than moved: the
                 // bank is wired from the flop's D, so it recomputes the same
@@ -1926,8 +1923,9 @@ struct QlDspV4Pass : public Pass {
                           "already absorbed by another DSP");
                     ok = false; break;
                 }
-                if (sig_users(q) > 2 || shared_claimed.count(ff))
-                    chain.shared = true;
+                if (sig_users(q) > 2 || shared_claimed.count(ff)
+                    || operand_uses_only_part_of_flop)
+                    chain.copy_instead_of_move = true;
                 if (!ff->getParam(ID(CLK_POLARITY)).as_bool()) {
                     STALL("falling-edge flop (banks are rising-edge)", "falling-edge flop");
                     ok = false; break;
