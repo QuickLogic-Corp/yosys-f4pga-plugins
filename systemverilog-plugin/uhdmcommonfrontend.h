@@ -39,11 +39,26 @@ static inline ObjT *make_new_object_with_optional_extra_true_arg(ArgN &&... arg_
     return new ObjT(std::forward<ArgN>(arg_n)...);
 }
 
-template <typename ObjT, typename... ArgN, std::enable_if_t<!std::is_constructible_v<ObjT, ArgN...>, bool> = true>
+template <typename ObjT, typename... ArgN, std::enable_if_t<!std::is_constructible_v<ObjT, ArgN...> && std::is_constructible_v<ObjT, ArgN..., bool>, bool> = true>
 static inline ObjT *make_new_object_with_optional_extra_true_arg(ArgN &&... arg_n)
 {
     // Newer UHDM version
     return new ObjT(std::forward<ArgN>(arg_n)..., true);
+}
+
+// UHDM::SynthSubset later gained a `design*` parameter ahead of the trailing
+// bool(s) (feeds the `design_` member, currently unused by SynthSubset
+// itself). Neither branch above can express inserting an argument in the
+// middle of the pack, so this is a dedicated third case rather than a
+// generalization of the other two.
+template <typename ObjT, typename Arg0, typename Arg1, typename Arg2,
+          std::enable_if_t<!std::is_constructible_v<ObjT, Arg0, Arg1, Arg2> && !std::is_constructible_v<ObjT, Arg0, Arg1, Arg2, bool> &&
+                                std::is_constructible_v<ObjT, Arg0, Arg1, std::nullptr_t, Arg2, bool>,
+                            bool> = true>
+static inline ObjT *make_new_object_with_optional_extra_true_arg(Arg0 &&arg0, Arg1 &&arg1, Arg2 &&arg2)
+{
+    // Newest UHDM version: `design*` inserted before the trailing bool(s)
+    return new ObjT(std::forward<Arg0>(arg0), std::forward<Arg1>(arg1), nullptr, std::forward<Arg2>(arg2), true);
 }
 
 struct UhdmCommonFrontend : public ::Yosys::Frontend {
