@@ -28,6 +28,11 @@ fi
 
 start_section Building
 
+# Same pass name aurora2 builds with; the default clashes with Yosys's built-in synth_quicklogic.
+if [ "$PLUGIN_NAME" == "ql-qlf" ]; then
+    export EXTRA_FLAGS=-DPASS_NAME=synth_ql
+fi
+
 if [ "$PLUGIN_NAME" == "xdc" ] || [ "$PLUGIN_NAME" == "sdc" ]; then 
     make design_introspection.so -j`nproc`
 	make install_design_introspection -j`nproc`
