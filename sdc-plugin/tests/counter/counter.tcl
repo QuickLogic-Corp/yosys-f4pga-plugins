@@ -21,8 +21,8 @@ puts $fh [get_clocks]
 puts $fh [get_clocks -include_generated_clocks]
 close $fh
 
-# Clean processes before writing JSON.
-yosys proc
+# Clean processes before writing JSON; =* also covers the whitebox cell models.
+yosys proc =*
 
 # Write out the SDC file after the clock propagation step
 write_sdc [test_output_path "counter.sdc"]
