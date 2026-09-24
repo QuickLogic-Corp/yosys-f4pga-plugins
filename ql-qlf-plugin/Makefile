@@ -75,6 +75,7 @@ VERILOG_MODULES = $(COMMON)/cells_sim.v         \
                   $(QLF_K6N10F_DIR)/QL_DSP4.v \
                   $(QLF_K6N10F_DIR)/QL_DSP4_leaves.v \
                   $(QLF_K6N10F_DIR)/dsp4_logical_map.v \
+                  $(QLF_K6N10F_DIR)/ql_dsp4_macros.v \
                   $(QLF_K6N10F_DIR)/primitives_sim.v \
                   $(QLF_K6N10F_DIR)/brams_sim.v \
                   $(QLF_K6N10F_DIR)/bram_types_sim.v \

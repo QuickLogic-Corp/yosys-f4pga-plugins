@@ -36,7 +36,7 @@ set clocks [test_output_path "rel_ip_blif.clocks"]
 # -----------------------------------------------------------------------------
 # 1. Catalog-style IP file (a single .model), two instances.
 # -----------------------------------------------------------------------------
-synth_quicklogic -family qlf_k6n10f -top top -rel_ip_blif rel_ip.eblif -blif $blif -clocks_file $clocks
+synth_ql -family qlf_k6n10f -top top -rel_ip_blif rel_ip.eblif -blif $blif -clocks_file $clocks
 
 # In memory: each annotated cell carries its instance's macro name; keep is gone.
 yosys cd top
@@ -67,7 +67,7 @@ assert_clocks "single-model IP" $clocks
 #    dffre, the .clocks file would come out empty.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top top_ip_only -rel_ip_blif rel_ip_embedded.eblif -blif $blif -clocks_file $clocks
+synth_ql -family qlf_k6n10f -top top_ip_only -rel_ip_blif rel_ip_embedded.eblif -blif $blif -clocks_file $clocks
 assert_clocks "embedded-model IP" $clocks
 set txt [file_text $blif]
 assert_lines "dffre model" $txt {^\.model dffre$} 1
@@ -79,7 +79,7 @@ assert_lines "macro name u_ip1" $txt {^\.attr REL_MACRO_NAME "u_ip1"$} 2
 #    reaching VPR with the same net on two pins.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top top_const -rel_ip_blif rel_ip.eblif -blif $blif -clocks_file $clocks
+synth_ql -family qlf_k6n10f -top top_const -rel_ip_blif rel_ip.eblif -blif $blif -clocks_file $clocks
 set txt [file_text $blif]
 assert_lines "kk is constant" $txt {^\.names \$false kk$} 1
 
@@ -88,7 +88,7 @@ assert_lines "kk is constant" $txt {^\.names \$false kk$} 1
 #    contributes no atoms rather than atoms VPR no longer has.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top top_dead -rel_ip_blif rel_ip.eblif -blif $blif -clocks_file $clocks
+synth_ql -family qlf_k6n10f -top top_dead -rel_ip_blif rel_ip.eblif -blif $blif -clocks_file $clocks
 set txt [file_text $blif]
 assert_lines "macro name u_ip0" $txt {^\.attr REL_MACRO_NAME "u_ip0"$} 2
 assert_lines "macro name u_ip1" $txt {^\.attr REL_MACRO_NAME "u_ip1"$} 0
@@ -98,7 +98,7 @@ assert_lines "macro name u_ip1" $txt {^\.attr REL_MACRO_NAME "u_ip1"$} 0
 #    must survive it unchanged.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top top -dspv4 -rel_ip_blif rel_ip.eblif -blif $blif -clocks_file $clocks
+synth_ql -family qlf_k6n10f -top top -dspv4 -rel_ip_blif rel_ip.eblif -blif $blif -clocks_file $clocks
 set txt [file_text $blif]
 assert_lines "macro name u_ip0" $txt {^\.attr REL_MACRO_NAME "u_ip0"$} 2
 assert_lines "macro name u_ip1" $txt {^\.attr REL_MACRO_NAME "u_ip1"$} 2
@@ -106,4 +106,4 @@ assert_lines "other attributes" $txt {^\.attr (?!REL_|SITE_PATH )} 0
 assert_clocks "dspv4 flow" $clocks
 
 # The help text must be reachable (it used to crash); checked by the Makefile.
-help synth_quicklogic
+help synth_ql

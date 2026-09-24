@@ -86,16 +86,16 @@ module TB;
 
 	always @ (posedge clk_a)
 	begin
-		if (error_a_0)
+		if (error_a_0 && rce_a)
 			error_a_0_cnt <= error_a_0_cnt + 1'b1;
-		if (error_a_1)
+		if (error_a_1 && rce_a)
 			error_a_1_cnt <= error_a_1_cnt + 1'b1;
 	end
 	always @ (posedge clk_b)
 	begin
-		if (error_b_0)
+		if (error_b_0 && rce_b)
 			error_b_0_cnt <= error_b_0_cnt + 1'b1;
-		if (error_b_1)
+		if (error_b_1 && rce_b)
 			error_b_1_cnt <= error_b_1_cnt + 1'b1;
 	end
 

@@ -24,7 +24,7 @@ design -save read
 
 # 5.1  Asynchronous reset is never promoted: the IO FF reset is synchronous.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top async_rst -ioff
+synth_ql -family qlf_k6n10f -top async_rst -ioff
 yosys cd async_rst
 stat
 select -assert-count 0 t:io_sdffr
@@ -33,7 +33,7 @@ select -assert-count 1 t:dffre
 
 # 5.2  Negedge asynchronous variant.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top async_rst_n -ioff
+synth_ql -family qlf_k6n10f -top async_rst_n -ioff
 yosys cd async_rst_n
 stat
 select -assert-count 0 t:io_sdffnr
@@ -42,7 +42,7 @@ select -assert-count 1 t:dffnre
 
 # 5.3  A real clock enable disqualifies the candidate: no enable in the IO FF.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top enabled -ioff
+synth_ql -family qlf_k6n10f -top enabled -ioff
 yosys cd enabled
 stat
 select -assert-count 0 t:io_sdffr
@@ -50,7 +50,7 @@ select -assert-count 1 t:sdffre
 
 # 5.4  D has another consumer.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top fanout_d -ioff
+synth_ql -family qlf_k6n10f -top fanout_d -ioff
 yosys cd fanout_d
 stat
 select -assert-count 0 t:io_sdffr
@@ -58,7 +58,7 @@ select -assert-count 1 t:sdffre
 
 # 5.5  Output-side Q also feeds the fabric.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top q_used -ioff
+synth_ql -family qlf_k6n10f -top q_used -ioff
 yosys cd q_used
 stat
 select -assert-count 0 t:io_sdffr
@@ -66,7 +66,7 @@ select -assert-count 1 t:sdffre
 
 # 5.6  Not a boundary register at all.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top not_boundary -ioff
+synth_ql -family qlf_k6n10f -top not_boundary -ioff
 yosys cd not_boundary
 stat
 select -assert-count 0 t:io_sdffr
@@ -76,7 +76,7 @@ select -assert-count 1 t:sdffre
 #      set `keep` on a freshly built cell, so the absence of `keep` is what
 #      distinguishes the two.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top both_paths -ioff
+synth_ql -family qlf_k6n10f -top both_paths -ioff
 yosys cd both_paths
 stat
 select -assert-count 1 t:io_sdffr
@@ -85,16 +85,16 @@ select -assert-count 0 t:io_sdffr a:keep %i
 # 5.8  The three refusal reasons are separately greppable (REQ-B6, defect D4:
 #      they used to be one "E or R is used" message).
 design -load read
-set log_async [debug_log async_rst synth_quicklogic -family qlf_k6n10f -top async_rst -ioff]
+set log_async [debug_log async_rst synth_ql -family qlf_k6n10f -top async_rst -ioff]
 assert_log_has async_rst $log_async "asynchronous reset is used"
 
 design -load read
-set log_en [debug_log enabled synth_quicklogic -family qlf_k6n10f -top enabled -ioff]
+set log_en [debug_log enabled synth_ql -family qlf_k6n10f -top enabled -ioff]
 assert_log_has enabled $log_en "E is used"
 assert_log_lacks enabled $log_en "asynchronous reset is used"
 
 design -load read
-set log_fan [debug_log fanout_d synth_quicklogic -family qlf_k6n10f -top fanout_d -ioff]
+set log_fan [debug_log fanout_d synth_ql -family qlf_k6n10f -top fanout_d -ioff]
 assert_log_has fanout_d $log_fan "D has other consumers"
 
 # =============================================================================
@@ -103,7 +103,7 @@ assert_log_has fanout_d $log_fan "D has other consumers"
 
 # 5A.1  Active-low port reset: promoted, R wired straight to the port.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top rst_lo -ioff
+synth_ql -family qlf_k6n10f -top rst_lo -ioff
 yosys cd rst_lo
 stat
 select -assert-count 1 t:io_sdffr
@@ -114,7 +114,7 @@ assert_no_inverter_on_reset rst_lo
 #       on the reset path. Nothing in the log may present the polarity as a
 #       reason not to promote.
 design -load read
-set log_hi [capture_log rst_hi synth_quicklogic -family qlf_k6n10f -top rst_hi -ioff]
+set log_hi [capture_log rst_hi synth_ql -family qlf_k6n10f -top rst_hi -ioff]
 yosys cd rst_hi
 stat
 select -assert-count 1 t:io_sdffr
@@ -125,7 +125,7 @@ assert_log_lacks rst_hi $log_hi "E or R is used"
 
 # 5A.3  Negedge variant of 5A.2.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top rst_hi_n -ioff
+synth_ql -family qlf_k6n10f -top rst_hi_n -ioff
 yosys cd rst_hi_n
 stat
 select -assert-count 1 t:io_sdffnr
@@ -134,7 +134,7 @@ assert_inverter_on_reset rst_hi_n
 
 # 5A.4  Active-low reset on an output-side register: promoted.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top rst_lo_out -ioff
+synth_ql -family qlf_k6n10f -top rst_lo_out -ioff
 yosys cd rst_lo_out
 stat
 select -assert-count 1 t:io_sdffr
@@ -146,7 +146,7 @@ assert_no_inverter_on_reset rst_lo_out
 #       path builds a fresh cell and swaps the port, so `keep` is what shows the
 #       promotion actually went down that path.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top rst_hi_out -ioff
+synth_ql -family qlf_k6n10f -top rst_hi_out -ioff
 yosys cd rst_hi_out
 stat
 select -assert-count 1 t:io_sdffr
@@ -158,7 +158,7 @@ assert_inverter_on_reset rst_hi_out
 #       it -- see ioff.tcl -- and its R is tied inactive, so no reset net and no
 #       inverter exist on this path at all.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top resetless -ioff
+synth_ql -family qlf_k6n10f -top resetless -ioff
 yosys cd resetless
 stat
 select -assert-count 1 t:io_sdffr
@@ -169,7 +169,7 @@ assert_all_ports_connected resetless io_sdffr R {1'1}
 #       reset-expression LUT mask, so no separate inverter is built -- unlike
 #       5A.2, where the reset comes straight from a port.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top rst_hi_expr -ioff
+synth_ql -family qlf_k6n10f -top rst_hi_expr -ioff
 yosys cd rst_hi_expr
 stat
 select -assert-count 1 t:io_sdffr
@@ -178,7 +178,7 @@ assert_no_inverter_on_reset rst_hi_expr
 # 5A.8  Active-low reset from fabric logic: structurally identical to 5A.7 apart
 #       from the LUT mask, and must also promote with no separate inverter.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top rst_lo_expr -ioff
+synth_ql -family qlf_k6n10f -top rst_lo_expr -ioff
 yosys cd rst_lo_expr
 stat
 select -assert-count 1 t:io_sdffr

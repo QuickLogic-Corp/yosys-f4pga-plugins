@@ -366,10 +366,7 @@ struct QLBramAsymmetric : public Pass {
         log("\n");
     }
 
-    bool replace_existing_pass() const override
-    {
-        return true;
-    }
+    bool replace_existing_pass() const override { return true; }
 
     void execute(std::vector<std::string> a_Args, RTLIL::Design *a_Design) override
     {
