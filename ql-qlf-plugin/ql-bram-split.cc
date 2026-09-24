@@ -30,10 +30,7 @@ struct QlBramSplitPass : public Pass {
         log("    be split into 2x18K BRAMs.\n");
     }
 
-    bool replace_existing_pass() const override
-    {
-        return true;
-    }
+    bool replace_existing_pass() const override { return true; }
 
     // ..........................................
 
@@ -51,14 +48,15 @@ struct QlBramSplitPass : public Pass {
         BramConfig(const BramConfig &ref) = default;
         BramConfig(BramConfig &&ref) = default;
 
-        #if defined YS_HASHING_VERSION && YS_HASHING_VERSION == 1
-                Hasher hash_into(Hasher h) const {
-                h.eat(connections);
-                return h;
-                }
-        #else
-            #error "This version of Yosys uses an unsupported hashing interface"
-        #endif
+#if defined YS_HASHING_VERSION && YS_HASHING_VERSION == 1
+        Hasher hash_into(Hasher h) const
+        {
+            h.eat(connections);
+            return h;
+        }
+#else
+#error "This version of Yosys uses an unsupported hashing interface"
+#endif
 
         bool operator==(const BramConfig &ref) const { return connections == ref.connections; }
     };

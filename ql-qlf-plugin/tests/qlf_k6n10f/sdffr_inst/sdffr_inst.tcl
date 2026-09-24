@@ -17,7 +17,7 @@ design -save read
 # 3.1  Survives synthesis without -ioff.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top direct_sdffr
+synth_ql -family qlf_k6n10f -top direct_sdffr
 yosys cd direct_sdffr
 stat
 select -assert-count 1 t:io_sdffr
@@ -27,7 +27,7 @@ select -assert-count 1 t:io_sdffr
 #      types, so a directly instantiated primitive is never touched.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top direct_sdffr -ioff
+synth_ql -family qlf_k6n10f -top direct_sdffr -ioff
 yosys cd direct_sdffr
 stat
 select -assert-count 1 t:io_sdffr
@@ -40,7 +40,7 @@ assert_port_connected direct_sdffr io_sdffr R {\rst_n}
 # 3.3  Negedge variant.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top direct_sdffnr -ioff
+synth_ql -family qlf_k6n10f -top direct_sdffnr -ioff
 yosys cd direct_sdffnr
 stat
 select -assert-count 1 t:io_sdffnr
@@ -49,7 +49,7 @@ assert_port_set direct_sdffnr io_sdffnr {C D R Q}
 
 # -----------------------------------------------------------------------------
 # 3.5  The primitives carry abc9_flop and lib_whitebox like their siblings.
-#      `read_verilog -lib` -- how synth_quicklogic reads cells_sim.v -- turns
+#      `read_verilog -lib` -- how synth_ql reads cells_sim.v -- turns
 #      lib_whitebox into the plain `whitebox` attribute, so that is what to
 #      assert here.
 # 3.6  ...and are *synchronous*: elaborating the behavioural model must yield

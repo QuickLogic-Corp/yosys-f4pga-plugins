@@ -16,14 +16,14 @@ design -save read
 #            ask for it.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top flag_rst
+synth_ql -family qlf_k6n10f -top flag_rst
 yosys cd flag_rst
 stat
 select -assert-count 0 t:io_sdffr
 select -assert-count 1 t:sdffre
 
 design -load read
-synth_quicklogic -family qlf_k6n10f -top flag_none
+synth_ql -family qlf_k6n10f -top flag_none
 yosys cd flag_none
 stat
 select -assert-count 0 t:dff
@@ -31,12 +31,12 @@ select -assert-count 1 t:sdffre
 
 # With -ioff, the same two designs promote.
 design -load read
-synth_quicklogic -family qlf_k6n10f -top flag_rst -ioff
+synth_ql -family qlf_k6n10f -top flag_rst -ioff
 yosys cd flag_rst
 select -assert-count 1 t:io_sdffr
 
 design -load read
-synth_quicklogic -family qlf_k6n10f -top flag_none -ioff
+synth_ql -family qlf_k6n10f -top flag_none -ioff
 yosys cd flag_none
 # Resetless, but this library defines io_sdffr, so the reset-less path targets the
 # IO FF with its reset tied inactive rather than a plain dff -- see ioff.tcl.
@@ -52,7 +52,7 @@ select -assert-count 0 t:dff
 #      still promotes.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top flag_rst -ioff -nosdff
+synth_ql -family qlf_k6n10f -top flag_rst -ioff -nosdff
 yosys cd flag_rst
 stat
 select -assert-count 0 t:io_sdffr
@@ -60,7 +60,7 @@ select -assert-count 0 t:io_sdffnr
 select -assert-count 1 t:dffre
 
 design -load read
-synth_quicklogic -family qlf_k6n10f -top flag_none -ioff -nosdff
+synth_ql -family qlf_k6n10f -top flag_none -ioff -nosdff
 yosys cd flag_none
 stat
 select -assert-count 1 t:io_sdffr
@@ -71,7 +71,7 @@ select -assert-count 0 t:dff
 #      four source cell types exist, so the pass has nothing to match.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top flag_rst -ioff -no_ff_map
+synth_ql -family qlf_k6n10f -top flag_rst -ioff -no_ff_map
 yosys cd flag_rst
 stat
 select -assert-count 0 t:io_sdffr

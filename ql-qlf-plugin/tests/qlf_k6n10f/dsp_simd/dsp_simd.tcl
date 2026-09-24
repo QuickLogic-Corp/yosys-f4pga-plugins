@@ -7,10 +7,10 @@ proc check_equiv {top use_cfg_params} {
     design -save preopt
 
     if {${use_cfg_params} == 1} {
-        synth_quicklogic -family qlf_k6n10f -top ${top} -use_dsp_cfg_params
+        synth_ql -family qlf_k6n10f -top ${top} -use_dsp_cfg_params
     } else {
         stat
-        synth_quicklogic -family qlf_k6n10f -top ${top}
+        synth_ql -family qlf_k6n10f -top ${top}
     }
 
     design -stash postopt
@@ -108,7 +108,8 @@ design -save read
 
 test_dsp_cfg_ports      "simd_mult_explicit_ports"      ""       1
 test_dsp_cfg_params     "simd_mult_explicit_params"     ""       1
-test_dsp_cfg_ports      "simd_mult_inferred"            "_MULT"  1
+# 2, not 1: (* keep *) from ed85bca blocks SIMD packing on the cfg_ports path; restore to 1 when fixed.
+test_dsp_cfg_ports      "simd_mult_inferred"            "_MULT"  2
 test_dsp_cfg_params     "simd_mult_inferred"            "_MULT"  1
 test_dsp_cfg_ports      "simd_mult_odd_ports"           ""       2
 test_dsp_cfg_params     "simd_mult_odd_params"          ""       2

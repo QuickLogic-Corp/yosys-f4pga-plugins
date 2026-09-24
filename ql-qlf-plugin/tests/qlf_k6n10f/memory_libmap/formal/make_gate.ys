@@ -1,10 +1,10 @@
 read_verilog -sv top.v
 hierarchy -top top
 scratchpad -set ql.lib_path "../../../../../"
-synth_quicklogic -top top -family qlf_k6n10f -bram_types -run begin:map_bram
+synth_ql -top top -family qlf_k6n10f -bram_types -run begin:map_bram
 write_rtlil top.pre_map.il
 design -save pre_map
-synth_quicklogic -top top -family qlf_k6n10f -run map_bram:map_gates
+synth_ql -top top -family qlf_k6n10f -run map_bram:map_gates
 stat; tee -o top.new select -count t:TDP36K
 dump -o top.TDP36K.new.il t:TDP36K
 hierarchy -purge_lib
@@ -16,7 +16,7 @@ write_rtlil top.to_merge.il
 debug ql_bram_merge
 write_rtlil top.merged.il
 techmap -map ../../../../../qlf_k6n10f/libmap_brams_map.v
-synth_quicklogic -top top -family qlf_k6n10f -bram_types -run map_bram:map_gates
+synth_ql -top top -family qlf_k6n10f -bram_types -run map_bram:map_gates
 check
 stat; tee -o top.debug select -count t:TDP36K*
 dump -o top.TDP36K.debug.il t:TDP36K*

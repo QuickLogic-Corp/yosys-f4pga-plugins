@@ -1,4 +1,4 @@
-# synth_quicklogic option handling. Every option runs on one small design and
+# synth_ql option handling. Every option runs on one small design and
 # is checked through what it changes in the result, so a change to the option
 # parser or to an option's effect is caught here.
 
@@ -12,14 +12,14 @@ design -save rtl
 # Synthesize the saved RTL with the given extra options.
 proc synth {args} {
     design -load rtl
-    eval synth_quicklogic -family qlf_k6n10f -top top $args
+    eval synth_ql -family qlf_k6n10f -top top $args
     yosys cd top
 }
 
 # Same, capturing the synthesis log in `logfile` for options only visible there.
 proc synth_logged {logfile args} {
     design -load rtl
-    eval tee -q -o $logfile synth_quicklogic -family qlf_k6n10f -top top $args
+    eval tee -q -o $logfile synth_ql -family qlf_k6n10f -top top $args
     yosys cd top
 }
 
@@ -162,10 +162,10 @@ select -assert-count 1 t:\$mul
 # Rejected command lines.
 design -load rtl
 foreach bad {
-    {synth_quicklogic -family qlf_k6n10f -top top -bogus}
-    {synth_quicklogic -family qlf_k6n10f -top top -blif}
-    {synth_quicklogic -family qlf_k6n10f -top top -mince_num}
-    {synth_quicklogic -family nope -top top}
+    {synth_ql -family qlf_k6n10f -top top -bogus}
+    {synth_ql -family qlf_k6n10f -top top -blif}
+    {synth_ql -family qlf_k6n10f -top top -mince_num}
+    {synth_ql -family nope -top top}
 } {
     if {![catch {eval $bad} msg]} {
         error "accepted a command line that must be rejected: $bad"

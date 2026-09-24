@@ -35,10 +35,7 @@ struct QuicklogicEqnPass : public Pass {
         log("\n");
     }
 
-    bool replace_existing_pass() const override
-    {
-        return true;
-    }
+    bool replace_existing_pass() const override { return true; }
 
     Const init2eqn(Const init, int inputs)
     {

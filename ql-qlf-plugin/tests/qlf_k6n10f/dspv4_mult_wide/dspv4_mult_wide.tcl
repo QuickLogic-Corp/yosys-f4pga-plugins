@@ -7,7 +7,7 @@ yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
 
-set PASS_NAME synth_quicklogic
+set PASS_NAME synth_ql
 if { [info commands synth_ql] != {} } { set PASS_NAME synth_ql }
 
 # The DSP-V4 collateral ships with the plugin, so no device_data tree is

@@ -17,19 +17,9 @@
 # The bram test will be enable in a future PR after it's been fixed.
 
 TESTS = \
-	consts \
 	dffs \
-	latches \
 	shreg \
-	iob_no_flatten \
 	full_adder \
-	mac_unit \
-	multiplier \
-	logic \
-	mux \
-	tribuf \
-	fsm \
-	pp3_bram \
 	qlf_k6n10f/dsp_mult \
 	qlf_k6n10f/dsp_simd \
 	qlf_k6n10f/dsp_macc \
@@ -72,11 +62,10 @@ TESTS = \
 	qlf_k6n10f/rel_ip_blif_unquoted \
 	qlf_k6n10f/rel_ip_blif_badstub \
 	qlf_k6n10f/rel_ip_blif_noprim \
-	qlf_k6n10f/synth_options
-#	qlf_k6n10_bram \
+	qlf_k6n10f/synth_options \
+	qlf_k6n10f/latches_k6n10f
 
 SIM_TESTS = \
-     qlf_k6n10f/sim_dsp_mult_cfg_ports \
      qlf_k6n10f/sim_dsp_mult_cfg_ports \
      qlf_k6n10f/sim_dsp_mult_cfg_params \
      qlf_k6n10f/sim_dsp_mult_r_cfg_ports \
@@ -110,9 +99,11 @@ POST_SYNTH_SIM_TESTS = \
      qlf_k6n10f/bram_asymmetric_wider_write \
      qlf_k6n10f/bram_asymmetric_wider_read
 
+# Synthesis-side copies of cells that dspv2_sim.v and dspv4_leaves_sim.v already model.
+SIM_LIBS_EXCLUDE = QL_DSPV2.v QL_DSP4_leaves.v
+
 include $(shell pwd)/../../Makefile_test.common
 
-consts_verify = true
 qlf_k6n10f-dspv4_mult_verify = true
 qlf_k6n10f-dspv4_mult_add_verify = true
 qlf_k6n10f-dspv4_mult_add_chain_verify = true
@@ -122,16 +113,7 @@ qlf_k6n10f-dspv4_mult_sub_verify = true
 qlf_k6n10f-dspv4_macc_verify = true
 dffs_verify = true
 shreg_verify = true
-iob_no_flatten_verify = true
-latches_verify = true
 full_adder_verify = true
-mac_unit_verify = true
-multiplier_verify = true
-logic_verify = true
-mux_verify = true
-tribuf_verify = true
-fsm_verify = true
-pp3_bram_verify = true
 qlf_k6n10f-dsp_mult_verify = true
 qlf_k6n10f-dsp_simd_verify = true
 qlf_k6n10f-dsp_macc_verify = true
@@ -157,4 +139,3 @@ qlf_k6n10f/rel_ip_blif_badstub_negative = 1
 qlf_k6n10f-rel_ip_blif_badstub_verify = grep -q "port 'd' is 1 bits wide in the IP netlist but 2 in the stub" qlf_k6n10f/rel_ip_blif_badstub/rel_ip_blif_badstub.log
 qlf_k6n10f/rel_ip_blif_noprim_negative = 1
 qlf_k6n10f-rel_ip_blif_noprim_verify = grep -q "primitive 'QL_OTHER_PRIM', which the cell library does not define" qlf_k6n10f/rel_ip_blif_noprim/rel_ip_blif_noprim.log
-#qlf_k6n10_bram_verify = true

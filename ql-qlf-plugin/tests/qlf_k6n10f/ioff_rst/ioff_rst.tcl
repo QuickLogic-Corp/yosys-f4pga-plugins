@@ -20,7 +20,7 @@ design -save read
 # 4.8  R net identity on the input path (in-place mutation).
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top in_sdffr -ioff
+synth_ql -family qlf_k6n10f -top in_sdffr -ioff
 yosys cd in_sdffr
 stat
 select -assert-count 1 t:io_sdffr
@@ -33,7 +33,7 @@ assert_port_connected in_sdffr io_sdffr D {\pad_in}
 # 4.2  Negedge variant promotes to io_sdffnr.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top in_sdffnr -ioff
+synth_ql -family qlf_k6n10f -top in_sdffnr -ioff
 yosys cd in_sdffnr
 stat
 select -assert-count 1 t:io_sdffnr
@@ -49,7 +49,7 @@ assert_port_connected in_sdffnr io_sdffnr R {\rst_n}
 # 4.10 The top-level output port name survives on the replacement wire.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top out_sdffr -ioff
+synth_ql -family qlf_k6n10f -top out_sdffr -ioff
 yosys cd out_sdffr
 stat
 select -assert-count 1 t:io_sdffr
@@ -64,7 +64,7 @@ assert_port_connected out_sdffr io_sdffr Q {\q_o}
 # 4.4  Negedge output-side variant.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top out_sdffnr -ioff
+synth_ql -family qlf_k6n10f -top out_sdffnr -ioff
 yosys cd out_sdffnr
 stat
 select -assert-count 1 t:io_sdffnr
@@ -78,7 +78,7 @@ assert_port_connected out_sdffnr io_sdffnr R {\rst_n}
 # 4.5  Both boundary paths in one module.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top both_sdffr -ioff
+synth_ql -family qlf_k6n10f -top both_sdffr -ioff
 yosys cd both_sdffr
 stat
 select -assert-count 2 t:io_sdffr
@@ -91,7 +91,7 @@ assert_all_ports_connected both_sdffr io_sdffr R {\rst_n}
 # 4.6  8-bit registered input port: all eight bits promote off one reset net.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top bus_sdffr -ioff
+synth_ql -family qlf_k6n10f -top bus_sdffr -ioff
 yosys cd bus_sdffr
 stat
 select -assert-count 8 t:io_sdffr
@@ -105,7 +105,7 @@ assert_all_ports_connected bus_sdffr io_sdffr R {\rst_n}
 #      the unpromoted bits through.
 # -----------------------------------------------------------------------------
 design -load read
-synth_quicklogic -family qlf_k6n10f -top mixed_bus -ioff
+synth_ql -family qlf_k6n10f -top mixed_bus -ioff
 yosys cd mixed_bus
 stat
 select -assert-count 6 t:io_sdffr
@@ -126,5 +126,5 @@ foreach top {in_sdffr in_sdffnr out_sdffr out_sdffnr both_sdffr bus_sdffr} {
     hierarchy -top $top
     yosys proc
     equiv_opt -assert -async2sync -map +/quicklogic/qlf_k6n10f/cells_sim.v \
-        synth_quicklogic -family qlf_k6n10f -top $top -ioff
+        synth_ql -family qlf_k6n10f -top $top -ioff
 }

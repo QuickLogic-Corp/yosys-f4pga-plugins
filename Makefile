@@ -78,7 +78,7 @@ plugins_clean: $(PLUGINS_CLEAN)
 clean:: plugins_clean
 	rm -rf pmgen.py
 
-CLANG_FORMAT ?= clang-format-8
+CLANG_FORMAT ?= clang-format-14
 .PHONY: format
 format:
 	find . \( -name "*.h" -o -name "*.cc" \) -and -not -path '*/third_party/*' -print0 | xargs -0 -P $$(nproc) ${CLANG_FORMAT} -style=file -i
