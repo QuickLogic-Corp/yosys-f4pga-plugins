@@ -222,11 +222,11 @@ static bool dspv4_sig_kept(const SigSpec &sig)
 //
 // ql-dspv2.pmg checks both in its in_dffe / out_dffe subpatterns; this is the
 // same rule for the banks DSP-V4 absorbs into.
-static bool dspv4_flop_attrs_block(RTLIL::Cell *ff)
+static bool dspv4_flop_attrs_block(RTLIL::Cell *output_flop)
 {
-    if (ff->get_bool_attribute(ID::keep))
+    if (output_flop->get_bool_attribute(ID::keep))
         return true;
-    for (auto &c : ff->getPort(ID::Q).chunks()) {
+    for (auto &c : output_flop->getPort(ID::Q).chunks()) {
         if (c.wire == nullptr)
             continue;
         if (c.wire->get_bool_attribute(ID::keep))
@@ -333,8 +333,8 @@ struct QlDspV4Pass : public Pass {
                         total++;
                 });
             }
-            for (auto ff : pending_removal)
-                module->remove(ff);
+            for (auto output_flop : pending_removal)
+                module->remove(output_flop);
             pending_removal.clear();
 
             // Copied operand flops (see claim()) were deliberately left
@@ -361,9 +361,9 @@ struct QlDspV4Pass : public Pass {
                             for (auto bit : sm(wire))
                                 live[bit]++;
                     for (auto it = shared_claimed.begin(); it != shared_claimed.end();) {
-                        RTLIL::Cell *ff = *it;
+                        RTLIL::Cell *output_flop = *it;
                         bool read = false;
-                        for (auto bit : sm(ff->getPort(ID::Q)))
+                        for (auto bit : sm(output_flop->getPort(ID::Q)))
                             if (live.count(bit) && live.at(bit) > 0) {
                                 read = true;
                                 break;
@@ -373,7 +373,7 @@ struct QlDspV4Pass : public Pass {
                             continue;
                         }
                         it = shared_claimed.erase(it);
-                        module->remove(ff);
+                        module->remove(output_flop);
                         dropped++;
                         again = true;
                     }
@@ -439,14 +439,14 @@ struct QlDspV4Pass : public Pass {
     // multiply-form control word and must stay soft.
     const char *classify(ql_dspv4_pm &pm, bool feedback, std::string &why)
     {
-        auto &st = pm.st_ql_dspv4;
-        if (st.add == nullptr)
+        auto &matched = pm.st_ql_dspv4;
+        if (matched.alu_addend == nullptr)
             return "MULT";
         if (feedback) {
             // The adder's other operand is the flop's own output, so this is an
             // accumulator rather than an add of an external value.
-            if (st.add_is_sub) {
-                if (st.acc != nullptr) {
+            if (matched.add_is_sub) {
+                if (matched.accumulator != nullptr) {
                     why = "accumulate with a subtract and a C term has no "
                           "control word";
                     return nullptr;
@@ -455,23 +455,23 @@ struct QlDspV4Pass : public Pass {
                 // operand muxes: out - a*b is P - A*B, the subtract;
                 // a*b - out is A*B - P, the reverse-subtract, which
                 // dspv4_apply_mode ties CIN high for.
-                return st.add_mul_port == ID(B) ? "MULT_ACC_SUB" : "MULT_ACC_RSUB";
+                return matched.add_mul_port == ID(B) ? "MULT_ACC_SUB" : "MULT_ACC_RSUB";
             }
             // Two adders: the first took C, the second the feedback, so the DSP
             // computes A*B + P + C in one cell.
-            return st.acc != nullptr ? "MULT_ACC_C" : "MULT_ACC";
+            return matched.accumulator != nullptr ? "MULT_ACC_C" : "MULT_ACC";
         }
-        if (!st.add_is_sub)
+        if (!matched.add_is_sub)
             return "MULT_ADD_C";
         // Operand order picks the ALU direction, nothing more: C - A*B is the
         // subtract, A*B - C the reverse-subtract. The latter is only right with
         // CIN=1, which dspv4_apply_mode ties off.
-        return st.add_mul_port == ID(B) ? "MULT_SUB_C" : "MULT_RSUB_C";
+        return matched.add_mul_port == ID(B) ? "MULT_SUB_C" : "MULT_RSUB_C";
     }
 
     bool emit(ql_dspv4_pm &pm, RTLIL::Module *module)
     {
-        auto &st = pm.st_ql_dspv4;
+        auto &matched = pm.st_ql_dspv4;
         std::string why;
 
         // A flop another DSP has already claimed must not be claimed again.
@@ -496,11 +496,11 @@ struct QlDspV4Pass : public Pass {
         // Refusing the whole match is the safe answer: the flop belongs to the
         // DSP that got there first, and the smaller shape the matcher offers
         // next does not need it.
-        for (auto claimed : {st.mff, st.ff, st.ff2})
+        for (auto claimed : {matched.product_flop, matched.output_flop, matched.output_flop2})
             if (claimed != nullptr && absorbed.count(claimed)) {
                 log_debug("  %s: not fused -- flop %s is already absorbed by "
                           "another DSP\n",
-                          log_id(st.mul), log_id(claimed));
+                          log_id(matched.multiply), log_id(claimed));
                 return false;
             }
 
@@ -508,7 +508,7 @@ struct QlDspV4Pass : public Pass {
         // round as the adder's other operand. Otherwise it is an ordinary
         // pipeline register on the result, which the DSP's P register can hold
         // just as well -- same register, different mode.
-        bool feedback = st.ff != nullptr && st.add != nullptr && st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
+        bool feedback = matched.output_flop != nullptr && matched.alu_addend != nullptr && matched.output_flop->getPort(ID::Q) == matched.alu_addend->getPort(matched.add_ba);
 
         const char *mode_name = classify(pm, feedback, why);
 
@@ -525,7 +525,7 @@ struct QlDspV4Pass : public Pass {
         // operand), the second addition was never expressed because classify()
         // only reads `acc` under `ff`, and autoremove() deleted that adder
         // anyway -- leaving its result net with no driver at all.
-        RTLIL::Cell *acc_cell = feedback ? st.acc : nullptr;
+        RTLIL::Cell *acc_cell = feedback ? matched.accumulator : nullptr;
 
         // Absorbing `acc` makes the first adder's sum internal to the DSP, so it
         // must have exactly one reader -- `acc` itself. The pattern carries no
@@ -533,19 +533,19 @@ struct QlDspV4Pass : public Pass {
         // the DSP's P output and any number of readers can have it. This is the
         // one shape where it matters, so the check lives here.
         // Refuse the match rather than just dropping acc_cell: classify() reads
-        // st.acc directly, so a null acc_cell with st.acc still set would emit a
+        // matched.acc directly, so a null acc_cell with matched.acc still set would emit a
         // MULT_ACC_C control word for a cell that does not implement the second
         // addition. pmgen then offers the same shape without `acc`, which is a
         // plain MULT_ACC with the C adder left in fabric.
-        if (acc_cell != nullptr && st.add_nusers > 2) {
+        if (acc_cell != nullptr && matched.add_nusers > 2) {
             log_debug("  %s: not fused as MULT_ACC_C -- the first adder's sum has "
                       "%d readers, and absorbing the second adder would strip it\n",
-                      log_id(st.mul), st.add_nusers - 1);
+                      log_id(matched.multiply), matched.add_nusers - 1);
             return false;
         }
 
         // Which cell's output this DSP actually produces.
-        RTLIL::Cell *out_cell = acc_cell != nullptr ? acc_cell : st.add != nullptr ? st.add : st.mul;
+        RTLIL::Cell *out_cell = acc_cell != nullptr ? acc_cell : matched.alu_addend != nullptr ? matched.alu_addend : matched.multiply;
         SigSpec dsp_result = out_cell->getPort(ID::Y);
 
         // The DSP produces 50 bits of P and nothing above it. A wider result
@@ -568,7 +568,7 @@ struct QlDspV4Pass : public Pass {
         if (GetSize(dsp_result) > DSPV4_P_WIDTH) {
             log_debug("  %s: not fused -- %d-bit result exceeds the %d-bit P "
                       "port\n",
-                      log_id(st.mul), GetSize(dsp_result), DSPV4_P_WIDTH);
+                      log_id(matched.multiply), GetSize(dsp_result), DSPV4_P_WIDTH);
             return false;
         }
 
@@ -583,7 +583,7 @@ struct QlDspV4Pass : public Pass {
         // Testing D against the result rather than special-casing that shape
         // keeps the rule true for every combination of the optional matches.
         //
-        RTLIL::Cell *ff_cell = (st.ff != nullptr && st.ff->getPort(ID::D) == dsp_result) ? st.ff : nullptr;
+        RTLIL::Cell *ff_cell = (matched.output_flop != nullptr && matched.output_flop->getPort(ID::D) == dsp_result) ? matched.output_flop : nullptr;
 
         // Second output register stage: `mul -> reg -> reg` with no adder. The
         // DSP has two register positions between the multiplier and P, so both
@@ -593,7 +593,7 @@ struct QlDspV4Pass : public Pass {
         //
         // Only without an adder: with one, both stages sit downstream of the ALU
         // and M is upstream of it, so only P is reachable.
-        RTLIL::Cell *ff2_cell = (st.add == nullptr && acc_cell == nullptr && ff_cell != nullptr && st.ff2 != nullptr) ? st.ff2 : nullptr;
+        RTLIL::Cell *ff2_cell = (matched.alu_addend == nullptr && acc_cell == nullptr && ff_cell != nullptr && matched.output_flop2 != nullptr) ? matched.output_flop2 : nullptr;
         // Report a further output register we could not take. The DSP has two
         // register positions between the multiplier and P -- M and P -- and none
         // after P, so a second stage behind an absorbed output register can never
@@ -621,7 +621,7 @@ struct QlDspV4Pass : public Pass {
                     continue;
                 log_debug("  %s: output register %s (%s) stays in fabric -- the "
                           "DSP has no register stage after P\n",
-                          log_id(st.mul), log_id(c), log_id(c->type));
+                          log_id(matched.multiply), log_id(c), log_id(c->type));
             }
         }
 
@@ -632,7 +632,7 @@ struct QlDspV4Pass : public Pass {
         // register and belongs in P, which ff_cell above already covers. Taking
         // it here as well would double-absorb, because pmgen can hand the same
         // cell to both `mff` and `ff` -- both index on the product.
-        RTLIL::Cell *mff_cell = (st.add != nullptr) ? st.mff : nullptr;
+        RTLIL::Cell *mff_cell = (matched.alu_addend != nullptr) ? matched.product_flop : nullptr;
 
         // Reassign for the two-stage output shape: the flop `ff` matched becomes
         // the M register and the second one becomes P. Everything downstream
@@ -650,7 +650,7 @@ struct QlDspV4Pass : public Pass {
         if (ff2_cell != nullptr && mff_cell != nullptr && dspv4_sig_kept(mff_cell->getPort(ID::Q))) {
             log_debug("  %s: not fused -- the first output register's value is "
                       "marked keep\n",
-                      log_id(st.mul));
+                      log_id(matched.multiply));
             return false;
         }
 
@@ -658,8 +658,8 @@ struct QlDspV4Pass : public Pass {
         // offered an M register at all. Without this the pass is silent about a
         // product register it did not take, which is indistinguishable from
         // there not being one.
-        if (log_force_debug && st.mff == nullptr) {
-            SigSpec muly = sigmapper(st.mul->getPort(ID::Y));
+        if (log_force_debug && matched.product_flop == nullptr) {
+            SigSpec muly = sigmapper(matched.multiply->getPort(ID::Y));
             for (auto c : module->cells()) {
                 if (!c->hasPort(ID::D) || !c->hasPort(ID::Q))
                     continue;
@@ -674,8 +674,8 @@ struct QlDspV4Pass : public Pass {
                 log_debug("  %s: product register %s (%s) not offered as an M "
                           "stage -- D is %d bits of a %d-bit product, "
                           "CLK_POLARITY=%d, product has %d user(s)\n",
-                          log_id(st.mul), log_id(c), log_id(c->type), GetSize(d), GetSize(muly),
-                          c->hasParam(ID(CLK_POLARITY)) ? c->getParam(ID(CLK_POLARITY)).as_bool() : -1, st.mul_nusers);
+                          log_id(matched.multiply), log_id(c), log_id(c->type), GetSize(d), GetSize(muly),
+                          c->hasParam(ID(CLK_POLARITY)) ? c->getParam(ID(CLK_POLARITY)).as_bool() : -1, matched.mul_nusers);
             }
         }
         // If the M register cannot go in, the whole fusion has to be refused --
@@ -712,8 +712,8 @@ struct QlDspV4Pass : public Pass {
             // 50 bits and sign-extend, which is the same padding.
             else {
                 SigSpec d = sigmapper(mff_cell->getPort(ID::D));
-                SigSpec y = sigmapper(st.mul->getPort(ID::Y));
-                bool sgn = st.mul->getParam(ID::A_SIGNED).as_bool() && st.mul->getParam(ID::B_SIGNED).as_bool();
+                SigSpec y = sigmapper(matched.multiply->getPort(ID::Y));
+                bool sgn = matched.multiply->getParam(ID::A_SIGNED).as_bool() && matched.multiply->getParam(ID::B_SIGNED).as_bool();
                 SigBit pad = sgn ? y[GetSize(y) - 1] : SigBit(State::S0);
                 for (int i = GetSize(y); i < GetSize(d); i++)
                     if (d[i] != pad) {
@@ -727,7 +727,7 @@ struct QlDspV4Pass : public Pass {
             if (why != nullptr) {
                 log_debug("  %s: not fused -- M register cannot be absorbed "
                           "(%s), and the adder reads it\n",
-                          log_id(st.mul), why);
+                          log_id(matched.multiply), why);
                 return false;
             }
         }
@@ -738,32 +738,32 @@ struct QlDspV4Pass : public Pass {
         // rest really is a sign extension of it and not a concatenation with
         // something else. Sound for the same reason as the M register: the ALU is
         // 64 bits and sign-extends, so the padding is what it would add itself.
-        if (st.add != nullptr) {
-            SigSpec op = sigmapper(st.add->getPort(st.add_mul_port));
-            SigSpec src = sigmapper(st.mff != nullptr && mff_cell != nullptr ? mff_cell->getPort(ID::Q) : st.mul->getPort(ID::Y));
-            bool sgn = st.mul->getParam(ID::A_SIGNED).as_bool() && st.mul->getParam(ID::B_SIGNED).as_bool();
+        if (matched.alu_addend != nullptr) {
+            SigSpec op = sigmapper(matched.alu_addend->getPort(matched.add_mul_port));
+            SigSpec src = sigmapper(matched.product_flop != nullptr && mff_cell != nullptr ? mff_cell->getPort(ID::Q) : matched.multiply->getPort(ID::Y));
+            bool sgn = matched.multiply->getParam(ID::A_SIGNED).as_bool() && matched.multiply->getParam(ID::B_SIGNED).as_bool();
             SigBit pad = sgn ? src[GetSize(src) - 1] : SigBit(State::S0);
             for (int i = GetSize(src); i < GetSize(op); i++)
                 if (op[i] != pad) {
                     log_debug("  %s: not fused -- the adder reads the product "
                               "with padding that is not a sign extension of it\n",
-                              log_id(st.mul));
+                              log_id(matched.multiply));
                     return false;
                 }
         }
 
-        // feedback is derived from st.ff, so a rejected flop must not leave a
+        // feedback is derived from matched.ff, so a rejected flop must not leave a
         // mode that reads P back without the P register (CR-5). Unreachable as
         // the matches stand; refusing beats emitting a combinational loop.
         if (feedback && ff_cell == nullptr) {
             log_debug("  %s: not fused -- accumulator flop does not register "
                       "the DSP result\n",
-                      log_id(st.mul));
+                      log_id(matched.multiply));
             return false;
         }
 
         if (mode_name == nullptr) {
-            log_debug("  %s: not fused -- %s\n", log_id(st.mul), why.c_str());
+            log_debug("  %s: not fused -- %s\n", log_id(matched.multiply), why.c_str());
             return false;
         }
 
@@ -772,28 +772,28 @@ struct QlDspV4Pass : public Pass {
         // product, `acc` consumes `add`'s sum, and an absorbed flop consumes
         // whichever of them produced the result. Refusing here degrades the
         // shape by one step instead of pushing the multiply to fabric.
-        if (st.add != nullptr && dspv4_sig_kept(st.mul->getPort(ID::Y))) {
-            log_debug("  %s: not fused -- the product is marked keep\n", log_id(st.mul));
+        if (matched.alu_addend != nullptr && dspv4_sig_kept(matched.multiply->getPort(ID::Y))) {
+            log_debug("  %s: not fused -- the product is marked keep\n", log_id(matched.multiply));
             return false;
         }
-        if (acc_cell != nullptr && dspv4_sig_kept(st.add->getPort(ID::Y))) {
-            log_debug("  %s: not fused -- the first sum is marked keep\n", log_id(st.mul));
+        if (acc_cell != nullptr && dspv4_sig_kept(matched.alu_addend->getPort(ID::Y))) {
+            log_debug("  %s: not fused -- the first sum is marked keep\n", log_id(matched.multiply));
             return false;
         }
         if (ff_cell != nullptr && dspv4_sig_kept(dsp_result)) {
-            log_debug("  %s: not fused -- the registered value is marked keep\n", log_id(st.mul));
+            log_debug("  %s: not fused -- the registered value is marked keep\n", log_id(matched.multiply));
             return false;
         }
-        for (auto c : {st.add, acc_cell})
+        for (auto c : {matched.alu_addend, acc_cell})
             if (c != nullptr && c->get_bool_attribute(ID::keep)) {
-                log_debug("  %s: not fused -- %s is marked keep\n", log_id(st.mul), log_id(c));
+                log_debug("  %s: not fused -- %s is marked keep\n", log_id(matched.multiply), log_id(c));
                 return false;
             }
         if (ff_cell != nullptr && dspv4_flop_attrs_block(ff_cell)) {
             log_debug("  %s: not fused -- the output flop carries keep or a "
                       "non-zero init, which the DSP's P register cannot "
                       "express\n",
-                      log_id(st.mul));
+                      log_id(matched.multiply));
             return false;
         }
 
@@ -808,92 +808,92 @@ struct QlDspV4Pass : public Pass {
         // Hence capacity is the port width for a signed operand and one less
         // for an unsigned one. Try both assignments and take one that fits;
         // when both do, the wider operand goes to the 32-bit port.
-        SigSpec ma = st.mul->getPort(ID::A), mb = st.mul->getPort(ID::B);
-        bool a_signed = st.mul->getParam(ID::A_SIGNED).as_bool();
-        bool b_signed = st.mul->getParam(ID::B_SIGNED).as_bool();
+        SigSpec a_port_signal = matched.multiply->getPort(ID::A), b_port_signal = matched.multiply->getPort(ID::B);
+        bool a_signed = matched.multiply->getParam(ID::A_SIGNED).as_bool();
+        bool b_signed = matched.multiply->getParam(ID::B_SIGNED).as_bool();
 
         auto fits = [](int w, bool sgn, int port) { return w <= (sgn ? port : port - 1); };
 
         // Decided before the operand-capacity test below, so rewriting
-        // ma/mb leaves every later stage unchanged.
+        // a_port_signal/b_port_signal leaves every later stage unchanged.
         RTLIL::Cell *padd_cell = nullptr;
-        SigSpec md;
+        SigSpec d_port_signal;
         bool d_signed = false;
 
-        if (st.padd_a != nullptr && st.padd_b != nullptr) {
+        if (matched.preadder_on_a != nullptr && matched.preadder_on_b != nullptr) {
             // One pre-adder, so refuse both and let pmgen offer the
             // one-sided shapes next.
             absorb_stall["both multiply operands are pre-adder sums, and the DSP "
                          "has one pre-adder"]++;
-        } else if (st.padd_a != nullptr || st.padd_b != nullptr) {
-            RTLIL::Cell *p = st.padd_a != nullptr ? st.padd_a : st.padd_b;
-            bool sum_on_a = st.padd_a != nullptr;
+        } else if (matched.preadder_on_a != nullptr || matched.preadder_on_b != nullptr) {
+            RTLIL::Cell *preadd = matched.preadder_on_a != nullptr ? matched.preadder_on_a : matched.preadder_on_b;
+            bool sum_on_a = matched.preadder_on_a != nullptr;
 
-            SigSpec p0 = p->getPort(ID::A), p1 = p->getPort(ID::B);
-            bool p0_signed = p->getParam(ID::A_SIGNED).as_bool();
-            bool p1_signed = p->getParam(ID::B_SIGNED).as_bool();
-            SigSpec other = sum_on_a ? mb : ma;
+            SigSpec first_addend = preadd->getPort(ID::A), second_addend = preadd->getPort(ID::B);
+            bool first_addend_signed = preadd->getParam(ID::A_SIGNED).as_bool();
+            bool second_addend_signed = preadd->getParam(ID::B_SIGNED).as_bool();
+            SigSpec other = sum_on_a ? b_port_signal : a_port_signal;
             bool other_signed = sum_on_a ? b_signed : a_signed;
 
             // D +/- X needs one bit more than the wider operand. AD wraps rather
             // than saturating, so a sum that does not fit is a silent wrong
             // answer -- this bound is the whole guard.
-            int w_sum = std::max(signed_width(p0), signed_width(p1)) + 1;
+            int sum_width = std::max(signed_width(first_addend), signed_width(second_addend)) + 1;
 
             // $add is commutative, so either operand can take the D port.
             // Port widths differ per path, so the orientation is chosen.
-            SigSpec d, x;
-            bool ds = false, xs = false;
+            SigSpec d_operand, x_operand;
+            bool d_operand_signed = false, x_operand_signed = false;
             auto orient = [&](int x_port) {
-                d = p0;
-                ds = p0_signed;
-                x = p1;
-                xs = p1_signed;
-                if (!fits(GetSize(x), xs, x_port) || !fits(GetSize(d), ds, DSPV4_D_WIDTH)) {
-                    std::swap(d, x);
-                    std::swap(ds, xs);
+                d_operand = first_addend;
+                d_operand_signed = first_addend_signed;
+                x_operand = second_addend;
+                x_operand_signed = second_addend_signed;
+                if (!fits(GetSize(x_operand), x_operand_signed, x_port) || !fits(GetSize(d_operand), d_operand_signed, DSPV4_D_WIDTH)) {
+                    std::swap(d_operand, x_operand);
+                    std::swap(d_operand_signed, x_operand_signed);
                 }
-                return fits(GetSize(x), xs, x_port) && fits(GetSize(d), ds, DSPV4_D_WIDTH);
+                return fits(GetSize(x_operand), x_operand_signed, x_port) && fits(GetSize(d_operand), d_operand_signed, DSPV4_D_WIDTH);
             };
 
-            if (st.add != nullptr) {
+            if (matched.alu_addend != nullptr) {
                 absorb_stall["pre-adder with a fused adder is not inferred yet "
                              "(Phase 4 step 2)"]++;
-            } else if (p->type == ID($sub)) {
+            } else if (preadd->type == ID($sub)) {
                 absorb_stall["pre-adder subtract direction is not inferred yet "
                              "(Phase 4 step 2)"]++;
-            } else if (w_sum <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && orient(DSPV4_A_WIDTH)) {
+            } else if (sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && orient(DSPV4_A_WIDTH)) {
                 // (D + A) * B -- the sum keeps all 32 bits of AD.
                 mode_name = "PREADD_A_MULT_B";
-                ma = x;
-                a_signed = xs;
-                mb = other;
+                a_port_signal = x_operand;
+                a_signed = x_operand_signed;
+                b_port_signal = other;
                 b_signed = other_signed;
-                md = d;
-                d_signed = ds;
-                padd_cell = p;
-            } else if (w_sum <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && orient(DSPV4_B_WIDTH)) {
+                d_port_signal = d_operand;
+                d_signed = d_operand_signed;
+                padd_cell = preadd;
+            } else if (sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && orient(DSPV4_B_WIDTH)) {
                 // (D + B) * A -- AD is truncated to 18 bits here, which is why
                 // this path is tried second and needs the tighter proof.
                 mode_name = "PREADD_B_MULT_A";
-                mb = x;
-                b_signed = xs;
-                ma = other;
+                b_port_signal = x_operand;
+                b_signed = x_operand_signed;
+                a_port_signal = other;
                 a_signed = other_signed;
-                md = d;
-                d_signed = ds;
-                padd_cell = p;
+                d_port_signal = d_operand;
+                d_signed = d_operand_signed;
+                padd_cell = preadd;
             } else {
                 absorb_stall["pre-adder sum may exceed the multiplier port"]++;
                 log_debug("  %s: pre-adder not fused -- D +/- X needs %d bits, "
                           "which exceeds AD's %d on the A path and %d on the B "
                           "path once the other operand is placed\n",
-                          log_id(st.mul), w_sum, DSPV4_AD_A_WIDTH, DSPV4_AD_B_WIDTH);
+                          log_id(matched.multiply), sum_width, DSPV4_AD_A_WIDTH, DSPV4_AD_B_WIDTH);
             }
         }
 
-        bool direct = fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) && fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
-        bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) && fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
+        bool direct = fits(GetSize(a_port_signal), a_signed, DSPV4_A_WIDTH) && fits(GetSize(b_port_signal), b_signed, DSPV4_B_WIDTH);
+        bool swapped = fits(GetSize(b_port_signal), b_signed, DSPV4_A_WIDTH) && fits(GetSize(a_port_signal), a_signed, DSPV4_B_WIDTH);
         if (padd_cell != nullptr) {
             // The pre-adder pinned which operand goes where -- the mode name
             // encodes it. Swapping now would move the sum off the port its mode
@@ -908,15 +908,15 @@ struct QlDspV4Pass : public Pass {
             bool unsigned_operand = !a_signed || !b_signed;
             log_debug("  %s: left soft -- %dx%d (%s x %s) does not fit the "
                       "%dx%d ports%s\n",
-                      log_id(st.mul), GetSize(ma), GetSize(mb), a_signed ? "signed" : "unsigned", b_signed ? "signed" : "unsigned", DSPV4_A_WIDTH,
+                      log_id(matched.multiply), GetSize(a_port_signal), GetSize(b_port_signal), a_signed ? "signed" : "unsigned", b_signed ? "signed" : "unsigned", DSPV4_A_WIDTH,
                       DSPV4_B_WIDTH,
                       unsigned_operand ? "; the multiplier is signed, so an unsigned operand "
                                          "needs a spare bit"
                                        : "");
             return false;
         }
-        if (!direct || (swapped && GetSize(mb) > GetSize(ma))) {
-            std::swap(ma, mb);
+        if (!direct || (swapped && GetSize(b_port_signal) > GetSize(a_port_signal))) {
+            std::swap(a_port_signal, b_port_signal);
             std::swap(a_signed, b_signed);
         }
 
@@ -936,9 +936,9 @@ struct QlDspV4Pass : public Pass {
         //
         // Determined here rather than at the point of use because C's register
         // chain takes part in the absorption decision below.
-        bool acc = feedback;
-        RTLIL::Cell *c_cell = acc_cell != nullptr ? acc_cell : (st.add != nullptr && !acc) ? st.add : nullptr;
-        IdString c_port = acc_cell != nullptr ? st.acc_ba : st.add_ba;
+        bool accumulator = feedback;
+        RTLIL::Cell *c_cell = acc_cell != nullptr ? acc_cell : (matched.alu_addend != nullptr && !accumulator) ? matched.alu_addend : nullptr;
+        IdString c_port = acc_cell != nullptr ? matched.acc_ba : matched.add_ba;
         SigSpec mc;
         bool c_signed = false;
         if (c_cell != nullptr) {
@@ -951,7 +951,7 @@ struct QlDspV4Pass : public Pass {
             if (GetSize(mc) > DSPV4_C_WIDTH) {
                 log_debug("  %s: not fused -- %d-bit C operand exceeds the "
                           "%d-bit C port\n",
-                          log_id(st.mul), GetSize(mc), DSPV4_C_WIDTH);
+                          log_id(matched.multiply), GetSize(mc), DSPV4_C_WIDTH);
                 module->remove(cell);
                 return false;
             }
@@ -960,8 +960,8 @@ struct QlDspV4Pass : public Pass {
         // Peel any extension the RTL applied, so the walk below can see the
         // flop behind it. Both the port value and its signedness are updated,
         // and dspv4_fit re-extends to the port width when the ports are set.
-        ma = dspv4_strip_extension(ma, a_signed);
-        mb = dspv4_strip_extension(mb, b_signed);
+        a_port_signal = dspv4_strip_extension(a_port_signal, a_signed);
+        b_port_signal = dspv4_strip_extension(b_port_signal, b_signed);
 
         // T3.1 / T3.2 -- absorb the designer's registers.
         //
@@ -996,10 +996,10 @@ struct QlDspV4Pass : public Pass {
                     seed_rst_inv = seed_ff->getParam(ID(SRST_POLARITY)).as_bool();
                 }
             }
-            ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "A", st.mul);
-            cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "B", st.mul);
+            ca = collect_flops(module, a_port_signal, DSPV4_MAX_OPERAND_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "A", matched.multiply);
+            cb = collect_flops(module, b_port_signal, DSPV4_MAX_OPERAND_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "B", matched.multiply);
             if (c_cell != nullptr) {
-                cc = collect_flops(module, mc, DSPV4_MAX_C_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "C", st.mul);
+                cc = collect_flops(module, mc, DSPV4_MAX_C_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "C", matched.multiply);
                 // A flop on the C path whose D is this shape's OWN result is
                 // the accumulator feedback, not an independent C operand.
                 // pmgen offers the match without the output flop too, and on
@@ -1054,7 +1054,7 @@ struct QlDspV4Pass : public Pass {
                 if (!same(any.clk, mff_cell->getPort(ID(CLK))) || !same(any.arst, m_rst) || any.arst_inv != m_rst_inv) {
                     log_debug("  %s: M register not absorbed -- clock or reset "
                               "differs from the operand chains'\n",
-                              log_id(st.mul));
+                              log_id(matched.multiply));
                     mff_cell = nullptr;
                 }
             }
@@ -1115,18 +1115,18 @@ struct QlDspV4Pass : public Pass {
                 log_debug("  %s: %s registers left in fabric -- the cell would "
                           "need more than %d distinct clock enables, and %s is "
                           "the narrowest port at %d bits\n",
-                          log_id(st.mul), e.name, DSPV4_MAX_CE_SIGNALS, e.name, e.width);
+                          log_id(matched.multiply), e.name, DSPV4_MAX_CE_SIGNALS, e.name, e.width);
                 *e.n = 0;
             }
         }
 
         if (na > 0)
-            ma = ca.stage_d[na - 1];
+            a_port_signal = ca.stage_d[na - 1];
         if (nb > 0)
-            mb = cb.stage_d[nb - 1];
+            b_port_signal = cb.stage_d[nb - 1];
 
-        cell->setPort(ID::A, dspv4_fit(module, ma, DSPV4_A_WIDTH, a_signed));
-        cell->setPort(ID::B, dspv4_fit(module, mb, DSPV4_B_WIDTH, b_signed));
+        cell->setPort(ID::A, dspv4_fit(module, a_port_signal, DSPV4_A_WIDTH, a_signed));
+        cell->setPort(ID::B, dspv4_fit(module, b_port_signal, DSPV4_B_WIDTH, b_signed));
 
         // With a flop absorbed the DSP drives its Q directly; the
         // combinational result never appears in the netlist at all.
@@ -1141,7 +1141,7 @@ struct QlDspV4Pass : public Pass {
         // DREG stated, not defaulted: absorbing onto D comes later, and an
         // unstated register parameter is a silent default.
         if (padd_cell != nullptr) {
-            cell->setPort(ID(D), dspv4_fit(module, md, DSPV4_D_WIDTH, d_signed));
+            cell->setPort(ID(D), dspv4_fit(module, d_port_signal, DSPV4_D_WIDTH, d_signed));
             cell->setParam(ID(DREG), RTLIL::Const(0, 1));
         }
 
@@ -1245,7 +1245,7 @@ struct QlDspV4Pass : public Pass {
                 if (!ff_cell->getParam(ID(SRST_VALUE)).is_fully_zero()) {
                     log_debug("  %s: not fused -- absorbed flop resets to a "
                               "non-zero value, which the DSP cannot express\n",
-                              log_id(st.mul));
+                              log_id(matched.multiply));
                     module->remove(cell);
                     return false;
                 }
@@ -1258,13 +1258,13 @@ struct QlDspV4Pass : public Pass {
         }
 
         if (verbose)
-            log("  %s.%s -> %s (%dx%d)\n", log_id(module), log_id(st.mul), mode_name, GetSize(ma), GetSize(mb));
+            log("  %s.%s -> %s (%dx%d)\n", log_id(module), log_id(matched.multiply), mode_name, GetSize(a_port_signal), GetSize(b_port_signal));
 
         // Absorb the matched cells. pm.autoremove marks them so the matcher
         // does not hand them out again.
-        pm.autoremove(st.mul);
-        if (st.add)
-            pm.autoremove(st.add);
+        pm.autoremove(matched.multiply);
+        if (matched.alu_addend)
+            pm.autoremove(matched.alu_addend);
             // Only if it actually folded. Removing a cell whose value the DSP
             // does not compute leaves a net undriven.
         if (padd_cell)
@@ -1362,8 +1362,8 @@ struct QlDspV4Pass : public Pass {
     // One accumulator loop: a flop whose D is an add or subtract of its own Q
     // and one other operand.
     struct AccLoop {
-        RTLIL::Cell *ff;
-        RTLIL::Cell *add;
+        RTLIL::Cell *output_flop;
+        RTLIL::Cell *alu_addend;
     };
 
     // The power-up value of a flop's Q, rendered LSB first, one bit at a time.
@@ -1371,10 +1371,10 @@ struct QlDspV4Pass : public Pass {
     // the bits inside one print MSB first, so a Q held in one 2-bit wire and a Q
     // held in two 1-bit wires can render the same "10" from opposite power-up
     // states -- a false match on the half of the key that carries the base case.
-    static std::string flop_init(RTLIL::Cell *ff)
+    static std::string flop_init(RTLIL::Cell *output_flop)
     {
         std::string init;
-        for (auto bit : ff->getPort(ID::Q)) {
+        for (auto bit : output_flop->getPort(ID::Q)) {
             RTLIL::State v = State::Sx;
             if (bit.wire != nullptr) {
                 auto it = bit.wire->attributes.find(ID::init);
@@ -1438,72 +1438,72 @@ struct QlDspV4Pass : public Pass {
             std::vector<Cand> cands;
             std::map<std::string, int> step_count;
 
-            for (auto ff : module->cells()) {
+            for (auto output_flop : module->cells()) {
                 // The four shapes index_module() accepts. $dff and $dffe are
                 // here so the missing-reset refusal below can name them, not
                 // because they can be merged.
-                if (!ff->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe)))
+                if (!output_flop->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe)))
                     continue;
-                SigSpec q = sm(ff->getPort(ID::Q));
-                SigSpec d = sm(ff->getPort(ID::D));
+                SigSpec q = sm(output_flop->getPort(ID::Q));
+                SigSpec d = sm(output_flop->getPort(ID::D));
                 if (GetSize(d) == 0)
                     continue;
                 auto dr = driver.find(d[0]);
                 if (dr == driver.end())
                     continue;
-                RTLIL::Cell *add = dr->second;
-                if (!add->type.in(ID($add), ID($sub)))
+                RTLIL::Cell *alu_addend = dr->second;
+                if (!alu_addend->type.in(ID($add), ID($sub)))
                     continue;
                 // The whole of D has to be the sum and the whole of one operand
                 // has to be Q. A partial or sign-padded match is a different
                 // function of a different value, and this comparison is not
                 // enough to prove two of those equal.
-                if (sm(add->getPort(ID::Y)) != d)
+                if (sm(alu_addend->getPort(ID::Y)) != d)
                     continue;
                 IdString fb;
-                if (sm(add->getPort(ID::A)) == q)
+                if (sm(alu_addend->getPort(ID::A)) == q)
                     fb = ID::A;
-                else if (sm(add->getPort(ID::B)) == q)
+                else if (sm(alu_addend->getPort(ID::B)) == q)
                     fb = ID::B;
                 else
                     continue;
 
                 Cand c;
-                c.loop.ff = ff;
-                c.loop.add = add;
+                c.loop.output_flop = output_flop;
+                c.loop.alu_addend = alu_addend;
                 // Which port the feedback sits on is part of the key rather
                 // than normalised away. $sub does not commute, and taking
                 // `out - a*b` for `a*b - out` is a sign error no structural
                 // check downstream would see. $add does commute, so a commuted
                 // pair is refused where it could have been merged; none of the
                 // dsp shapes writes one, and guessing costs more than it saves.
-                c.step = add->type.str();
+                c.step = alu_addend->type.str();
                 c.step += fb == ID::A ? "|fbA|" : "|fbB|";
                 for (auto p : {ID::A_WIDTH, ID::B_WIDTH, ID::Y_WIDTH, ID::A_SIGNED, ID::B_SIGNED})
-                    c.step += stringf("%d|", add->getParam(p).as_int());
-                c.step += log_signal(sm(add->getPort(fb == ID::A ? ID::B : ID::A)));
+                    c.step += stringf("%d|", alu_addend->getParam(p).as_int());
+                c.step += log_signal(sm(alu_addend->getPort(fb == ID::A ? ID::B : ID::A)));
                 c.step += "|";
-                c.step += ff->type.str();
-                c.step += stringf("|%d|%d|", GetSize(q), ff->getParam(ID(CLK_POLARITY)).as_bool());
-                c.step += log_signal(sm(ff->getPort(ID(CLK))));
-                if (ff->hasPort(ID(EN))) {
+                c.step += output_flop->type.str();
+                c.step += stringf("|%d|%d|", GetSize(q), output_flop->getParam(ID(CLK_POLARITY)).as_bool());
+                c.step += log_signal(sm(output_flop->getPort(ID(CLK))));
+                if (output_flop->hasPort(ID(EN))) {
                     c.step += "|";
-                    c.step += log_signal(sm(ff->getPort(ID(EN))));
-                    c.step += stringf("|%d", ff->getParam(ID(EN_POLARITY)).as_bool());
+                    c.step += log_signal(sm(output_flop->getPort(ID(EN))));
+                    c.step += stringf("|%d", output_flop->getParam(ID(EN_POLARITY)).as_bool());
                 }
-                if (ff->hasPort(ID(SRST))) {
-                    c.base += log_signal(sm(ff->getPort(ID(SRST))));
-                    c.base += stringf("|%d|", ff->getParam(ID(SRST_POLARITY)).as_bool());
+                if (output_flop->hasPort(ID(SRST))) {
+                    c.base += log_signal(sm(output_flop->getPort(ID(SRST))));
+                    c.base += stringf("|%d|", output_flop->getParam(ID(SRST_POLARITY)).as_bool());
                     // The reset VALUE only has to be common, not zero. The DSP
                     // needs zero to hold the accumulator in its own bank, and
                     // ff_cell's guard says so where that matters; two registers
                     // clearing to the same non-zero value are still one
                     // register, and refusing them here would cost the fabric
                     // adder as well as the flop.
-                    c.base += ff->getParam(ID(SRST_VALUE)).as_string();
+                    c.base += output_flop->getParam(ID(SRST_VALUE)).as_string();
                 }
                 c.base += "|";
-                c.base += flop_init(ff);
+                c.base += flop_init(output_flop);
                 cands.push_back(c);
                 step_count[c.step]++;
             }
@@ -1521,13 +1521,13 @@ struct QlDspV4Pass : public Pass {
                 // Merging deletes one flop and one adder, so `keep` on either
                 // has to refuse: the attribute asks for precisely the net the
                 // merge removes.
-                if (dspv4_flop_attrs_block(c.loop.ff))
+                if (dspv4_flop_attrs_block(c.loop.output_flop))
                     why = "the flop carries keep or a non-zero power-up value";
-                else if (c.loop.add->get_bool_attribute(ID::keep))
+                else if (c.loop.alu_addend->get_bool_attribute(ID::keep))
                     why = "the adder is marked keep";
                 // The sum goes with its adder, so this flop has to be its only
                 // reader.
-                else if (worst_users(c.loop.add->getPort(ID::Y)) > 2)
+                else if (worst_users(c.loop.alu_addend->getPort(ID::Y)) > 2)
                     why = "the sum has another reader, which would lose its "
                           "driver along with the adder";
                 // A missing reset is not a detail to wave through. Two
@@ -1535,14 +1535,14 @@ struct QlDspV4Pass : public Pass {
                 // apart as they powered up, forever: the step holds and the base
                 // case does not, and a SAT induction proof fails on this and
                 // nothing else.
-                else if (!c.loop.ff->hasPort(ID(SRST)))
+                else if (!c.loop.output_flop->hasPort(ID(SRST)))
                     why = "the flop has no synchronous reset, so the two "
                           "registers are equal only if they powered up equal";
                 if (why != nullptr) {
                     if (peers > 0)
                         log_debug("  %s: accumulator not merged with %d loop(s) "
                                   "having the same next state -- %s\n",
-                                  log_id(c.loop.ff), peers, why);
+                                  log_id(c.loop.output_flop), peers, why);
                     continue;
                 }
                 groups[c.step + "||" + c.base].push_back(c);
@@ -1558,7 +1558,7 @@ struct QlDspV4Pass : public Pass {
                                   "having the same next state -- the reset net, "
                                   "its polarity, the reset value or the power-up "
                                   "value differs\n",
-                                  log_id(loops[0].loop.ff), peers);
+                                  log_id(loops[0].loop.output_flop), peers);
                     continue;
                 }
                 // Keep the first and fold the rest onto it. The dead flop's Q is
@@ -1568,14 +1568,14 @@ struct QlDspV4Pass : public Pass {
                 // emit() later compares by RAW port has its ports moved under
                 // it. The cells are removed before the connect so the dead net
                 // is never briefly double-driven.
-                SigSpec keep = loops[0].loop.ff->getPort(ID::Q);
+                SigSpec keep = loops[0].loop.output_flop->getPort(ID::Q);
                 for (int i = 1; i < GetSize(loops); i++) {
-                    SigSpec dead = loops[i].loop.ff->getPort(ID::Q);
+                    SigSpec dead = loops[i].loop.output_flop->getPort(ID::Q);
                     log_debug("  %s: accumulator merged into %s -- same clock, "
                               "enable, reset, reset value and next state\n",
-                              log_id(loops[i].loop.ff), log_id(loops[0].loop.ff));
-                    module->remove(loops[i].loop.add);
-                    module->remove(loops[i].loop.ff);
+                              log_id(loops[i].loop.output_flop), log_id(loops[0].loop.output_flop));
+                    module->remove(loops[i].loop.alu_addend);
+                    module->remove(loops[i].loop.output_flop);
                     module->connect(dead, keep);
                     removed++;
                     again = true;
@@ -1653,8 +1653,8 @@ struct QlDspV4Pass : public Pass {
             if (cell->type == ID($mul))
                 muls.push_back(cell);
 
-        for (auto mul : muls) {
-            SigSpec yraw = mul->getPort(ID::Y);
+        for (auto multiply : muls) {
+            SigSpec yraw = multiply->getPort(ID::Y);
             SigSpec y = sm(yraw);
             int n = GetSize(y);
             if (n == 0)
@@ -1669,16 +1669,16 @@ struct QlDspV4Pass : public Pass {
             auto rd = reader.find(y[0]);
             if (rd == reader.end())
                 continue;
-            RTLIL::Cell *add = rd->second.first;
+            RTLIL::Cell *alu_addend = rd->second.first;
             IdString port = rd->second.second;
-            if (!add->type.in(ID($add), ID($sub)))
+            if (!alu_addend->type.in(ID($add), ID($sub)))
                 continue;
 
             // Where the product sits inside the operand, and what is under it.
             // Searched rather than derived from the operand's leading zeros: a
             // product whose own low bits happen to be constant would make that
             // count overshoot.
-            SigSpec op = add->getPort(port);
+            SigSpec op = alu_addend->getPort(port);
             SigSpec opm = sm(op);
             int k = -1;
             for (int i = 0; i + n <= GetSize(opm); i++)
@@ -1694,7 +1694,7 @@ struct QlDspV4Pass : public Pass {
             // Above the product the operand must be the padding the pattern and
             // emit() already tolerate, so that rebuilding it from the wider
             // product's own sign bit is the same value.
-            bool sgn = mul->getParam(ID::A_SIGNED).as_bool() && mul->getParam(ID::B_SIGNED).as_bool();
+            bool sgn = multiply->getParam(ID::A_SIGNED).as_bool() && multiply->getParam(ID::B_SIGNED).as_bool();
             SigBit pad = sgn ? y[n - 1] : SigBit(State::S0);
             bool padded = true;
             for (int i = k + n; i < GetSize(opm); i++)
@@ -1707,19 +1707,19 @@ struct QlDspV4Pass : public Pass {
             // variables is genuinely beyond the cell, and saying so is the point
             // of IN-7 -- this is the shape whose silence cost the FIR its adder.
             IdString cp;
-            if (sm(mul->getPort(ID::B)).is_fully_const())
+            if (sm(multiply->getPort(ID::B)).is_fully_const())
                 cp = ID::B;
-            else if (sm(mul->getPort(ID::A)).is_fully_const())
+            else if (sm(multiply->getPort(ID::A)).is_fully_const())
                 cp = ID::A;
             else {
                 log_debug("  %s: adder %s reads the product shifted up %d bit(s) "
                           "and neither operand is constant, so the shift cannot "
                           "be folded into one -- the DSP has no shifter and the "
                           "adder stays in fabric\n",
-                          log_id(mul), log_id(add), k);
+                          log_id(multiply), log_id(alu_addend), k);
                 continue;
             }
-            SigSpec c = sm(mul->getPort(cp));
+            SigSpec c = sm(multiply->getPort(cp));
             if (!c.is_fully_def())
                 continue;
 
@@ -1732,24 +1732,24 @@ struct QlDspV4Pass : public Pass {
             // emit()'s, on the same raw port widths: the multiplier is signed, so
             // an unsigned operand needs a spare bit.
             IdString op_port = cp == ID::A ? ID::B : ID::A;
-            int wc = GetSize(c2), wo = GetSize(mul->getPort(op_port));
-            bool c_signed = mul->getParam(cp == ID::A ? ID::A_SIGNED : ID::B_SIGNED).as_bool();
-            bool o_signed = mul->getParam(op_port == ID::A ? ID::A_SIGNED : ID::B_SIGNED).as_bool();
+            int wc = GetSize(c2), wo = GetSize(multiply->getPort(op_port));
+            bool c_signed = multiply->getParam(cp == ID::A ? ID::A_SIGNED : ID::B_SIGNED).as_bool();
+            bool o_signed = multiply->getParam(op_port == ID::A ? ID::A_SIGNED : ID::B_SIGNED).as_bool();
             auto fits = [](int w, bool s, int p) { return w <= (s ? p : p - 1); };
             if (!((fits(wc, c_signed, DSPV4_A_WIDTH) && fits(wo, o_signed, DSPV4_B_WIDTH)) ||
                   (fits(wc, c_signed, DSPV4_B_WIDTH) && fits(wo, o_signed, DSPV4_A_WIDTH)))) {
                 log_debug("  %s: coefficient not widened by %d bit(s) -- %dx%d "
                           "would no longer fit the %dx%d ports, and the multiply "
                           "is better off soft-shifted than soft entirely\n",
-                          log_id(mul), k, wo, wc, DSPV4_A_WIDTH, DSPV4_B_WIDTH);
+                          log_id(multiply), k, wo, wc, DSPV4_A_WIDTH, DSPV4_B_WIDTH);
                 continue;
             }
 
             SigSpec ynew = module->addWire(NEW_ID, n + k);
-            mul->setPort(cp, c2);
-            mul->setParam(cp == ID::A ? ID::A_WIDTH : ID::B_WIDTH, GetSize(c2));
-            mul->setPort(ID::Y, ynew);
-            mul->setParam(ID::Y_WIDTH, n + k);
+            multiply->setPort(cp, c2);
+            multiply->setParam(cp == ID::A ? ID::A_WIDTH : ID::B_WIDTH, GetSize(c2));
+            multiply->setPort(ID::Y, ynew);
+            multiply->setParam(ID::Y_WIDTH, n + k);
 
             // The operand's low k zeros and the product become the wider
             // product; the padding above is rebuilt from its sign bit, which is
@@ -1758,7 +1758,7 @@ struct QlDspV4Pass : public Pass {
             SigBit npad = sgn ? ynew[n + k - 1] : SigBit(State::S0);
             while (GetSize(fixed) < GetSize(op))
                 fixed.append(npad);
-            add->setPort(port, fixed);
+            alu_addend->setPort(port, fixed);
 
             // The narrow product's net is CONNECTED to the wide one's high bits
             // rather than left undriven. wreduce fills the bits it dropped with
@@ -1771,7 +1771,7 @@ struct QlDspV4Pass : public Pass {
             log_debug("  %s: coefficient widened to %d bits so the product lands "
                       "in the low bits of %s -- wreduce had split out a factor of "
                       "2^%d\n",
-                      log_id(mul), GetSize(c2), log_id(add), k);
+                      log_id(multiply), GetSize(c2), log_id(alu_addend), k);
             refolded++;
         }
         return refolded;
@@ -1970,13 +1970,13 @@ struct QlDspV4Pass : public Pass {
             }
 
             bool ok = true;
-            for (auto ff : stage) {
-                SigSpec q = ff->getPort(ID::Q);
-                bool operand_uses_only_part_of_flop = bits_used.at(ff) != GetSize(q);
+            for (auto output_flop : stage) {
+                SigSpec q = output_flop->getPort(ID::Q);
+                bool operand_uses_only_part_of_flop = bits_used.at(output_flop) != GetSize(q);
                 if (operand_uses_only_part_of_flop) {
                     log_debug("  %s: flop %s gives %d of its %d bits to this "
                               "operand, so it is copied, not moved\n",
-                              port, log_id(ff), bits_used.at(ff), GetSize(q));
+                              port, log_id(output_flop), bits_used.at(output_flop), GetSize(q));
                     chain.copy_dsp_reg = true;
                 }
                 // A flop with several readers is COPIED rather than moved: the
@@ -1996,24 +1996,24 @@ struct QlDspV4Pass : public Pass {
                 // that one is queued for removal, so a second claim on it would
                 // be reading a value that is about to disappear. Only shared
                 // flops can be claimed twice.
-                if (absorbed.count(ff) && !shared_claimed.count(ff)) {
+                if (absorbed.count(output_flop) && !shared_claimed.count(output_flop)) {
                     STALL("driving flop already absorbed by another DSP", "already absorbed by another DSP");
                     ok = false;
                     break;
                 }
-                if (sig_users(q) > 2 || shared_claimed.count(ff) || operand_uses_only_part_of_flop)
+                if (sig_users(q) > 2 || shared_claimed.count(output_flop) || operand_uses_only_part_of_flop)
                     chain.copy_dsp_reg = true;
-                if (!ff->getParam(ID(CLK_POLARITY)).as_bool()) {
+                if (!output_flop->getParam(ID(CLK_POLARITY)).as_bool()) {
                     STALL("falling-edge flop (banks are rising-edge)", "falling-edge flop");
                     ok = false;
                     break;
                 }
-                if (dspv4_flop_attrs_block(ff)) {
+                if (dspv4_flop_attrs_block(output_flop)) {
                     STALL("flop carries keep or a non-zero init", "keep or non-zero init");
                     ok = false;
                     break;
                 }
-                if (ff->hasPort(ID(SRST)) && !ff->getParam(ID(SRST_VALUE)).is_fully_zero()) {
+                if (output_flop->hasPort(ID(SRST)) && !output_flop->getParam(ID(SRST_VALUE)).is_fully_zero()) {
                     STALL("flop resets to a non-zero value", "resets to non-zero; bank resets to 0");
                     ok = false;
                     break;
@@ -2026,18 +2026,18 @@ struct QlDspV4Pass : public Pass {
             // each other AND with whatever this cell already absorbed.
             SigSpec s_clk, s_en(State::S1), s_arst(State::S1);
             bool s_en_inv = false, s_arst_inv = false, first = true, agree = true;
-            for (auto ff : stage) {
+            for (auto output_flop : stage) {
                 SigSpec en(State::S1), arst(State::S1);
                 bool en_inv = false, arst_inv = false;
-                if (ff->hasPort(ID(EN))) {
-                    en = ff->getPort(ID(EN));
-                    en_inv = !ff->getParam(ID(EN_POLARITY)).as_bool();
+                if (output_flop->hasPort(ID(EN))) {
+                    en = output_flop->getPort(ID(EN));
+                    en_inv = !output_flop->getParam(ID(EN_POLARITY)).as_bool();
                 }
-                if (ff->hasPort(ID(SRST))) {
-                    arst = ff->getPort(ID(SRST));
-                    arst_inv = ff->getParam(ID(SRST_POLARITY)).as_bool();
+                if (output_flop->hasPort(ID(SRST))) {
+                    arst = output_flop->getPort(ID(SRST));
+                    arst_inv = output_flop->getParam(ID(SRST_POLARITY)).as_bool();
                 }
-                SigSpec clk = ff->getPort(ID(CLK));
+                SigSpec clk = output_flop->getPort(ID(CLK));
                 if (first) {
                     s_clk = clk;
                     s_en = en;
@@ -2282,14 +2282,14 @@ struct QlDsp4CheckPass : public Pass {
                     w_i1 = signed_width(sigmap(cell->getPort(preaddinsel ? ID(B) : ID(A))));
 
                 // D +/- I1 needs one bit more than the wider operand.
-                int w_sum = std::max(w_i0, w_i1) + 1;
+                int sum_width = std::max(w_i0, w_i1) + 1;
                 const char *op = inmode.extract(3, 1).as_bool() ? "D - " : "D + ";
                 const char *rhs = preaddinsel ? "B" : "A";
 
                 // AMULTSEL keeps all 32 bits of AD; BMULTSEL truncates to
                 // AD[17:0] for the 18-bit multiplier port, a much lower ceiling.
                 int keep = bmultsel ? 18 : 32;
-                if (w_sum <= keep)
+                if (sum_width <= keep)
                     continue;
 
                 at_risk++;
@@ -2302,14 +2302,14 @@ struct QlDsp4CheckPass : public Pass {
                                 "The high bits are discarded silently -- results are correct "
                                 "only while |%s%s| < 2^17. Narrow an operand, or pre-add in "
                                 "fabric.\n",
-                                log_id(module), log_id(cell), op, rhs, w_sum, op, rhs);
+                                log_id(module), log_id(cell), op, rhs, sum_width, op, rhs);
                 else
                     log_warning("%s.%s: DSP-V4 pre-adder %s%s needs %d bits and AD holds 32. "
                                 "The pre-adder wraps in two's complement and raises no overflow "
                                 "flag, so results are correct only while the sum stays in the "
                                 "32-bit signed range. Narrow an operand to 31 bits, or pre-add "
                                 "in fabric.\n",
-                                log_id(module), log_id(cell), op, rhs, w_sum);
+                                log_id(module), log_id(cell), op, rhs, sum_width);
             }
 
             // Clock-enable crossbar DRC.
