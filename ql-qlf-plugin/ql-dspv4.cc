@@ -845,10 +845,17 @@ struct QlDspV4Pass : public Pass {
         // one of them stays in fabric -- so absorb the wider, whose carry
         // chain costs more, and fall back to the narrower if it does not fit.
         std::vector<std::pair<RTLIL::Cell *, bool>> preadd_candidates;
-        if (matched.preadder_on_a != nullptr)
-            preadd_candidates.emplace_back(matched.preadder_on_a, true);
-        if (matched.preadder_on_b != nullptr)
-            preadd_candidates.emplace_back(matched.preadder_on_b, false);
+        if (matched.preadder_on_a != nullptr && matched.preadder_on_a == matched.preadder_on_b) {
+            // One adder feeding both multiplier ports is the squaring shape,
+            // which needs AMULTSEL and BMULTSEL together. Absorbing it would
+            // rewrite one port and leave the other reading a deleted cell.
+            absorb_stall["one pre-adder feeds both multiply operands (squaring)"]++;
+        } else {
+            if (matched.preadder_on_a != nullptr)
+                preadd_candidates.emplace_back(matched.preadder_on_a, true);
+            if (matched.preadder_on_b != nullptr)
+                preadd_candidates.emplace_back(matched.preadder_on_b, false);
+        }
         std::stable_sort(preadd_candidates.begin(), preadd_candidates.end(),
                          [](const std::pair<RTLIL::Cell *, bool> &l, const std::pair<RTLIL::Cell *, bool> &r) {
                              return preadder_sum_width(l.first) > preadder_sum_width(r.first);

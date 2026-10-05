@@ -66,6 +66,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_xpath \
 	qlf_k6n10f/dspv4_xpath_sub \
 	qlf_k6n10f/dspv4_preadd_both \
+	qlf_k6n10f/dspv4_preadd_square \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
