@@ -54,6 +54,9 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_width_edge \
 	qlf_k6n10f/dspv4_preadd_width_over \
 	qlf_k6n10f/dspv4_preadd_width_const \
+	qlf_k6n10f/dspv4_preadd_pad \
+	qlf_k6n10f/dspv4_preadd_unsigned \
+	qlf_k6n10f/dspv4_preadd_trunc \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \

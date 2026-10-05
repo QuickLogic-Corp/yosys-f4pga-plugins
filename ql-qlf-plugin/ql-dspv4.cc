@@ -835,6 +835,41 @@ struct QlDspV4Pass : public Pass {
             SigSpec other = sum_on_a ? b_port_signal : a_port_signal;
             bool other_signed = sum_on_a ? b_signed : a_signed;
 
+            // The pass absorbs the adder and lets the DSP recompute the sum, so
+            // the DSP's result has to mean the same thing the RTL's did. Three
+            // ways it does not.
+            SigSpec sum_port = sum_on_a ? a_port_signal : b_port_signal;
+            bool sum_port_signed = sum_on_a ? a_signed : b_signed;
+            SigSpec adder_result = preadd->getPort(ID::Y);
+            const char *unsafe = nullptr;
+
+            // The adder's own result is narrower than the sum it computes, so
+            // the RTL wraps where the DSP's wider pre-adder would not.
+            if (GetSize(adder_result) < std::max(signed_width(first_addend), signed_width(second_addend)) + 1)
+                unsafe = "pre-adder truncates its own sum, which the DSP would not";
+
+            // The multiply reads the sum with a signedness the adder did not
+            // produce, so the same bits mean different numbers.
+            else if (first_addend_signed != sum_port_signed || second_addend_signed != sum_port_signed)
+                unsafe = "pre-adder operand signedness differs from the multiply port";
+
+            // Bits above the sum must be its sign extension. A constant pad
+            // makes the RTL value non-negative while the DSP keeps the sign.
+            else {
+                for (int i = GetSize(adder_result); i < GetSize(sum_port); i++)
+                    if (sum_port[i] != (sum_port_signed ? adder_result[GetSize(adder_result) - 1] : State::S0)) {
+                        unsafe = "multiply operand pads the pre-adder sum instead of extending its sign";
+                        break;
+                    }
+            }
+
+            if (unsafe != nullptr) {
+                absorb_stall[unsafe]++;
+                log_debug("  %s: pre-adder not fused -- %s\n", log_id(matched.multiply), unsafe);
+            }
+
+            if (unsafe == nullptr) {
+
             // D +/- X needs one bit more than the wider operand. AD wraps rather
             // than saturating, so a sum that does not fit is a silent wrong
             // answer -- this bound is the whole guard.
@@ -889,6 +924,7 @@ struct QlDspV4Pass : public Pass {
                           "which exceeds AD's %d on the A path and %d on the B "
                           "path once the other operand is placed\n",
                           log_id(matched.multiply), sum_width, DSPV4_AD_A_WIDTH, DSPV4_AD_B_WIDTH);
+            }
             }
         }
 
