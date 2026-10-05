@@ -277,6 +277,7 @@ struct QlDspV4Pass : public Pass {
         left_soft = 0;
         absorbed_regs = 0;
         absorb_stall.clear();
+        mode_count.clear();
         absorb_end_none = 0;
         absorb_end_exhausted = 0;
         shared_replicated = 0;
@@ -406,6 +407,16 @@ struct QlDspV4Pass : public Pass {
         log("ql_dspv4: inferred %d QL_DSP4 cell(s), %d operand register "
             "stage(s) absorbed, %d multiply idiom(s) left soft.\n",
             total, absorbed_regs, left_soft);
+        if (!mode_count.empty()) {
+            std::vector<std::pair<int, std::string>> by_use;
+            for (auto &it : mode_count)
+                by_use.push_back({it.second, it.first});
+            std::sort(by_use.rbegin(), by_use.rend());
+            std::string modes;
+            for (auto &it : by_use)
+                modes += stringf("%s%s x%d", modes.empty() ? "" : ", ", it.second.c_str(), it.first);
+            log("ql_dspv4: modes inferred: %s\n", modes.c_str());
+        }
         if (!absorb_stall.empty()) {
             // Ranked, because the top line is the one worth acting on.
             std::vector<std::pair<int, std::string>> ranked;
@@ -966,6 +977,7 @@ struct QlDspV4Pass : public Pass {
             std::swap(a_signed, b_signed);
         }
 
+        mode_count[mode_name]++;
         const Dspv4Mode &m = dspv4_mode(mode_name);
         RTLIL::Cell *cell = module->addCell(NEW_ID, ID(QL_DSP4));
         dspv4_apply_mode(cell, m);
@@ -2182,6 +2194,11 @@ struct QlDspV4Pass : public Pass {
     // reported at the end. Without this the only symptom is flops left in
     // fabric, with nothing in the log to say which guard refused them.
     dict<std::string, int> absorb_stall;
+    // Which modes were inferred, tallied over the whole run. Cell counts alone
+    // cannot tell PREADD_A_MULT_B from PREADD_B_MULT_A -- both emit one
+    // QL_DSP4_PREADD and one QL_DSP4_MULT -- so the mode name is the only
+    // record of which way the pass actually went.
+    dict<std::string, int> mode_count;
     // A walk that runs out of registers has not refused anything, so it is
     // counted apart from absorb_stall -- see WALK_END.
     int absorb_end_none = 0;
