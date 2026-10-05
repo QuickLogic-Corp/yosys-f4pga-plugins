@@ -849,6 +849,10 @@ struct QlDspV4Pass : public Pass {
             // One adder feeding both multiplier ports is the squaring shape,
             // which needs AMULTSEL and BMULTSEL together. Absorbing it would
             // rewrite one port and leave the other reading a deleted cell.
+            //
+            // The nusers filter does not catch this: two ports of one cell
+            // reading the same wire count as one reader, so nusers is 2 and
+            // the filter passes.
             absorb_stall["one pre-adder feeds both multiply operands (squaring)"]++;
         } else {
             if (matched.preadder_on_a != nullptr)
