@@ -32,6 +32,12 @@ LDLIBS ?= $(shell $(YOSYS_CONFIG) --ldlibs) -L$(GTEST_DIR)/build/lib -lgtest -lg
 LDFLAGS ?= $(shell $(YOSYS_CONFIG) --ldflags)
 TEST_UTILS ?= $(abspath ../../test-utils/test-utils.tcl)
 
+# `plugin -i <name>` resolves against yosys's own plugin directory, so the
+# INSTALLED copy is what runs, not ../build. Wildcarded: an uninstalled plugin
+# drops the prerequisite instead of failing the build.
+PLUGIN_NAME ?= $(patsubst %-plugin,%,$(notdir $(abspath ..)))
+PLUGIN_SO ?= $(wildcard $(shell $(YOSYS_CONFIG) --datdir)/plugins/$(PLUGIN_NAME).so)
+
 define test_tpl =
 $(1): $(1)/ok
 	@set +e; \
@@ -51,7 +57,7 @@ $(1): $(1)/ok
 		false; \
 	fi
 
-$(1)/ok: $(1)/$$(notdir $(1).v)
+$(1)/ok: $(1)/$$(notdir $(1).v) $(1)/$$(notdir $(1).tcl) $(TEST_UTILS) $(PLUGIN_SO)
 	@set +e; \
 	cd $(1); \
 	echo "source $(TEST_UTILS)" > run-$$(notdir $(1)).tcl ;\
@@ -84,7 +90,7 @@ define test_sim_tpl =
 $(1): $(1)/ok
 	@printf "Test %-18s \e[32mPASSED\e[0m @ %s\n" $(1) $(CURDIR);
 
-$(1)/$$(notdir $(1).vvp): $(1)/$$(notdir $(1).v)
+$(1)/$$(notdir $(1).vvp): $(1)/$$(notdir $(1).v) $(SIM_LIBS)
 	@iverilog -vvvv -g2005 -o $$@ $$< $(addprefix -l ,$(SIM_LIBS)) -I../ -DVCD_FILE=\"$(1)/$$(notdir $(1).vcd)\" >$(1)/$$(notdir $(1).vvp.log) 2>&1; \
 	if [ $$$$? -ne 0 ]; then \
 		printf "Test %-18s \e[31;1mFAILED\e[0m @ %s\n" $(1) $(CURDIR); \
@@ -107,7 +113,7 @@ define test_post_synth_sim_tpl =
 $(1): $(1)/ok
 	@printf "Test %-18s \e[32mPASSED\e[0m @ %s\n" $(1) $(CURDIR);
 
-$(1)/ok: $(1)/synth
+$(1)/ok: $(1)/synth $(SIM_LIBS)
 	@make -C $(1)/sim sim SIM_LIBS="$(addprefix -l ,$(abspath $(SIM_LIBS) ../$(DEV)/cells_sim.v))"; \
 	if [ $$$$? -ne 0 ]; then \
 		printf "Test %-18s \e[31;1mFAILED\e[0m @ %s\n" $(1) $(CURDIR); \
@@ -117,7 +123,7 @@ $(1)/ok: $(1)/synth
 		true; \
 	fi
 
-$(1)/synth: $(1)/$$(notdir $(1).v)
+$(1)/synth: $(1)/$$(notdir $(1).v) $(1)/$$(notdir $(1).tcl) $(TEST_UTILS) $(PLUGIN_SO)
 	@set +e; \
 	cd $(1); \
 	echo "source $(TEST_UTILS)" > run-$$(notdir $(1)).tcl ;\
