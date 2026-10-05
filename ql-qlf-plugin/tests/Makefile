@@ -144,6 +144,24 @@ qlf_k6n10f-dspv4_preadd_width_over_verify = grep -q 'modes inferred: MULT x2' ql
 qlf_k6n10f-dspv4_preadd_pad_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_pad/dspv4_preadd_pad.log
 qlf_k6n10f-dspv4_preadd_trunc_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_trunc/dspv4_preadd_trunc.log
 qlf_k6n10f-dspv4_preadd_unsigned_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_unsigned/dspv4_preadd_unsigned.log
+
+qlf_k6n10f-dspv4_preadd_b_verify = grep -q 'modes inferred: PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_b/dspv4_preadd_b.log
+qlf_k6n10f-dspv4_preadd_a_sub_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_a_sub/dspv4_preadd_a_sub.log
+qlf_k6n10f-dspv4_preadd_b_sub_verify = grep -q 'modes inferred: PREADD_B_SUB_A x1' qlf_k6n10f/dspv4_preadd_b_sub/dspv4_preadd_b_sub.log
+qlf_k6n10f-dspv4_preadd_addc_verify = grep -q 'modes inferred: PREADD_A_MULT_B_C x1' qlf_k6n10f/dspv4_preadd_addc/dspv4_preadd_addc.log
+qlf_k6n10f-dspv4_preadd_a_macc_verify = grep -q 'modes inferred: PREADD_A_MACC x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
+# (A - D) * B. Subtract is not commutative, so a swap would compute
+# (D - A) * B. The SUB mode is the evidence the pass did not swap.
+qlf_k6n10f-dspv4_preadd_order_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_order/dspv4_preadd_order.log
+# Two sums, 19-bit and 9-bit. The wider one is on the A port, so taking
+# the A side is the rule 'absorb the wider' working.
+qlf_k6n10f-dspv4_preadd_both_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
+# Squaring is refused, so no pre-adder mode at all.
+qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+# The cross-path shape folds to a plain PREADD mode. XPATH has no
+# separate control word -- PREADD_A_MULT_B already covers it.
+qlf_k6n10f-dspv4_xpath_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_sub_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_xpath_sub/dspv4_xpath_sub.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
