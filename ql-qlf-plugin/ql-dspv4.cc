@@ -821,8 +821,14 @@ struct QlDspV4Pass : public Pass {
         bool d_signed = false;
 
         if (matched.preadder_on_a != nullptr && matched.preadder_on_b != nullptr) {
-            // One pre-adder, so refuse both and let pmgen offer the
-            // one-sided shapes next.
+            // One pre-adder, so refuse both. pmgen does not then offer the
+            // one-sided shapes: the next branch it hands back is the bare
+            // multiply, so both adders stay in fabric. Phase 2 absorbs the
+            // wider of the two instead of refusing.
+            //
+            // This also catches (a + b) * (a + b), where both matches are the
+            // same cell. The nusers filter does not -- two ports reading one
+            // wire counts once, so nusers is 2 and the filter passes.
             absorb_stall["both multiply operands are pre-adder sums, and the DSP "
                          "has one pre-adder"]++;
         } else if (matched.preadder_on_a != nullptr || matched.preadder_on_b != nullptr) {
