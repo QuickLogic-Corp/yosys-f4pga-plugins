@@ -57,6 +57,15 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_pad \
 	qlf_k6n10f/dspv4_preadd_unsigned \
 	qlf_k6n10f/dspv4_preadd_trunc \
+	qlf_k6n10f/dspv4_preadd_a_sub \
+	qlf_k6n10f/dspv4_preadd_order \
+	qlf_k6n10f/dspv4_preadd_addc \
+	qlf_k6n10f/dspv4_preadd_a_macc \
+	qlf_k6n10f/dspv4_preadd_b \
+	qlf_k6n10f/dspv4_preadd_b_sub \
+	qlf_k6n10f/dspv4_xpath \
+	qlf_k6n10f/dspv4_xpath_sub \
+	qlf_k6n10f/dspv4_preadd_both \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \

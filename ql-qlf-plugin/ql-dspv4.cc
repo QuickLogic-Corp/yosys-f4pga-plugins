@@ -175,6 +175,12 @@ static int signed_width(const SigSpec &sig)
     return i + 2;
 }
 
+// Bits the pre-adder's result needs: one more than its wider operand.
+static int preadder_sum_width(const RTLIL::Cell *preadd)
+{
+    return std::max(signed_width(preadd->getPort(ID::A)), signed_width(preadd->getPort(ID::B))) + 1;
+}
+
 // Drive a design signal from a DSP output port that is wider than it. The port
 // keeps its full width -- the techmap and the leaves expect 50 bits -- and only
 // the low bits reach the design.
@@ -835,26 +841,30 @@ struct QlDspV4Pass : public Pass {
         SigSpec d_port_signal;
         bool d_signed = false;
 
-        if (matched.preadder_on_a != nullptr && matched.preadder_on_b != nullptr) {
-            // One pre-adder, so refuse both. pmgen does not then offer the
-            // one-sided shapes: the next branch it hands back is the bare
-            // multiply, so both adders stay in fabric. Phase 2 absorbs the
-            // wider of the two instead of refusing.
-            //
-            // This also catches (a + b) * (a + b), where both matches are the
-            // same cell. The nusers filter does not -- two ports reading one
-            // wire counts once, so nusers is 2 and the filter passes.
-            absorb_stall["both multiply operands are pre-adder sums, and the DSP "
-                         "has one pre-adder"]++;
-        } else if (matched.preadder_on_a != nullptr || matched.preadder_on_b != nullptr) {
-            RTLIL::Cell *preadd = matched.preadder_on_a != nullptr ? matched.preadder_on_a : matched.preadder_on_b;
-            bool sum_on_a = matched.preadder_on_a != nullptr;
+        // The DSP has one pre-adder. When both multiply operands are sums,
+        // one of them stays in fabric -- so absorb the wider, whose carry
+        // chain costs more, and fall back to the narrower if it does not fit.
+        std::vector<std::pair<RTLIL::Cell *, bool>> preadd_candidates;
+        if (matched.preadder_on_a != nullptr)
+            preadd_candidates.emplace_back(matched.preadder_on_a, true);
+        if (matched.preadder_on_b != nullptr)
+            preadd_candidates.emplace_back(matched.preadder_on_b, false);
+        std::stable_sort(preadd_candidates.begin(), preadd_candidates.end(),
+                         [](const std::pair<RTLIL::Cell *, bool> &l, const std::pair<RTLIL::Cell *, bool> &r) {
+                             return preadder_sum_width(l.first) > preadder_sum_width(r.first);
+                         });
+
+        const char *preadd_refusal = nullptr;
+        for (auto &candidate : preadd_candidates) {
+            RTLIL::Cell *preadd = candidate.first;
+            bool sum_on_a = candidate.second;
 
             SigSpec first_addend = preadd->getPort(ID::A), second_addend = preadd->getPort(ID::B);
             bool first_addend_signed = preadd->getParam(ID::A_SIGNED).as_bool();
             bool second_addend_signed = preadd->getParam(ID::B_SIGNED).as_bool();
             SigSpec other = sum_on_a ? b_port_signal : a_port_signal;
             bool other_signed = sum_on_a ? b_signed : a_signed;
+            bool preadd_is_sub = preadd->type == ID($sub);
 
             // The pass absorbs the adder and lets the DSP recompute the sum, so
             // the DSP's result has to mean the same thing the RTL's did. Three
@@ -885,16 +895,16 @@ struct QlDspV4Pass : public Pass {
             }
 
             if (unsafe != nullptr) {
-                absorb_stall[unsafe]++;
+                preadd_refusal = unsafe;
                 log_debug("  %s: pre-adder not fused -- %s\n", log_id(matched.multiply), unsafe);
+                continue;
             }
-
-            if (unsafe == nullptr) {
+            {
 
                 // D +/- X needs one bit more than the wider operand. AD wraps rather
                 // than saturating, so a sum that does not fit is a silent wrong
                 // answer -- this bound is the whole guard.
-                int sum_width = std::max(signed_width(first_addend), signed_width(second_addend)) + 1;
+                int sum_width = preadder_sum_width(preadd);
 
                 // $add is commutative, so either operand can take the D port.
                 // Port widths differ per path, so the orientation is chosen.
@@ -905,22 +915,48 @@ struct QlDspV4Pass : public Pass {
                     d_operand_signed = first_addend_signed;
                     x_operand = second_addend;
                     x_operand_signed = second_addend_signed;
-                    if (!fits(GetSize(x_operand), x_operand_signed, x_port) || !fits(GetSize(d_operand), d_operand_signed, DSPV4_D_WIDTH)) {
+                    if (!preadd_is_sub &&
+                        (!fits(GetSize(x_operand), x_operand_signed, x_port) || !fits(GetSize(d_operand), d_operand_signed, DSPV4_D_WIDTH))) {
                         std::swap(d_operand, x_operand);
                         std::swap(d_operand_signed, x_operand_signed);
                     }
                     return fits(GetSize(x_operand), x_operand_signed, x_port) && fits(GetSize(d_operand), d_operand_signed, DSPV4_D_WIDTH);
                 };
 
-                if (matched.alu_addend != nullptr) {
-                    absorb_stall["pre-adder with a fused adder is not inferred yet "
-                                 "(Phase 4 step 2)"]++;
-                } else if (preadd->type == ID($sub)) {
-                    absorb_stall["pre-adder subtract direction is not inferred yet "
-                                 "(Phase 4 step 2)"]++;
-                } else if (sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && orient(DSPV4_A_WIDTH)) {
-                    // (D + A) * B -- the sum keeps all 32 bits of AD.
-                    mode_name = "PREADD_A_MULT_B";
+                // The mode name is (path, direction, back-end), and only the
+                // combinations the table enumerates are reachable. The table spells
+                // out the subtract direction for the bare product only, so
+                // `(D - A) * B + C` has no control word and is refused rather than
+                // assembled.
+                const char *preadd_mode_a = nullptr, *preadd_mode_b = nullptr;
+                if (preadd_is_sub) {
+                    if (matched.alu_addend == nullptr) {
+                        preadd_mode_a = "PREADD_A_SUB_B";
+                        preadd_mode_b = "PREADD_B_SUB_A";
+                    }
+                } else if (matched.alu_addend == nullptr) {
+                    preadd_mode_a = "PREADD_A_MULT_B";
+                    preadd_mode_b = "PREADD_B_MULT_A";
+                } else if (!strcmp(mode_name, "MULT_ADD_C")) {
+                    preadd_mode_a = "PREADD_A_MULT_B_C";
+                    preadd_mode_b = "PREADD_B_MULT_A_C";
+                } else if (!strcmp(mode_name, "MULT_ACC")) {
+                    preadd_mode_a = "PREADD_A_MACC";
+                    preadd_mode_b = "PREADD_B_MACC";
+                } else if (!strcmp(mode_name, "MULT_ACC_C")) {
+                    preadd_mode_a = "PREADD_A_MACC_C";
+                    preadd_mode_b = "PREADD_B_MACC_C";
+                }
+
+                if (preadd_mode_a == nullptr) {
+                    preadd_refusal = preadd_is_sub ? "pre-adder subtract direction has no control word with a fused adder"
+                                                   : "pre-adder with this ALU direction has no control word";
+                    continue;
+                }
+
+                if (sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && orient(DSPV4_A_WIDTH)) {
+                    // The sum keeps all 32 bits of AD.
+                    mode_name = preadd_mode_a;
                     a_port_signal = x_operand;
                     a_signed = x_operand_signed;
                     b_port_signal = other;
@@ -928,10 +964,12 @@ struct QlDspV4Pass : public Pass {
                     d_port_signal = d_operand;
                     d_signed = d_operand_signed;
                     padd_cell = preadd;
-                } else if (sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && orient(DSPV4_B_WIDTH)) {
-                    // (D + B) * A -- AD is truncated to 18 bits here, which is why
-                    // this path is tried second and needs the tighter proof.
-                    mode_name = "PREADD_B_MULT_A";
+                    break;
+                }
+                if (sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && orient(DSPV4_B_WIDTH)) {
+                    // AD is truncated to 18 bits here, which is why this path is
+                    // tried second and needs the tighter proof.
+                    mode_name = preadd_mode_b;
                     b_port_signal = x_operand;
                     b_signed = x_operand_signed;
                     a_port_signal = other;
@@ -939,15 +977,17 @@ struct QlDspV4Pass : public Pass {
                     d_port_signal = d_operand;
                     d_signed = d_operand_signed;
                     padd_cell = preadd;
-                } else {
-                    absorb_stall["pre-adder sum may exceed the multiplier port"]++;
-                    log_debug("  %s: pre-adder not fused -- D +/- X needs %d bits, "
-                              "which exceeds AD's %d on the A path and %d on the B "
-                              "path once the other operand is placed\n",
-                              log_id(matched.multiply), sum_width, DSPV4_AD_A_WIDTH, DSPV4_AD_B_WIDTH);
+                    break;
                 }
+                preadd_refusal = "pre-adder sum may exceed the multiplier port";
+                log_debug("  %s: pre-adder not fused -- D +/- X needs %d bits, "
+                          "which exceeds AD's %d on the A path and %d on the B "
+                          "path once the other operand is placed\n",
+                          log_id(matched.multiply), sum_width, DSPV4_AD_A_WIDTH, DSPV4_AD_B_WIDTH);
             }
         }
+        if (padd_cell == nullptr && preadd_refusal != nullptr)
+            absorb_stall[preadd_refusal]++;
 
         bool direct = fits(GetSize(a_port_signal), a_signed, DSPV4_A_WIDTH) && fits(GetSize(b_port_signal), b_signed, DSPV4_B_WIDTH);
         bool swapped = fits(GetSize(b_port_signal), b_signed, DSPV4_A_WIDTH) && fits(GetSize(a_port_signal), a_signed, DSPV4_B_WIDTH);
