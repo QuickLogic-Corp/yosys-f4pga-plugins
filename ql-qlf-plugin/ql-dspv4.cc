@@ -1010,34 +1010,26 @@ struct QlDspV4Pass : public Pass {
                     return fits(GetSize(x_operand), x_operand_signed, x_port) && fits(GetSize(d_operand), d_operand_signed, DSPV4_D_WIDTH);
                 };
 
-                // The mode name is (path, direction, back-end), and only the
-                // combinations the table enumerates are reachable. The table spells
-                // out the subtract direction for the bare product only, so
-                // `(D - A) * B + C` has no control word and is refused rather than
-                // assembled.
+                // The mode name is (path, direction, back-end). The back-end is
+                // whatever the ALU shape already classified as, and the direction
+                // picks between the two rows the table carries for it.
                 const char *preadd_mode_a = nullptr, *preadd_mode_b = nullptr;
-                if (preadd_is_sub) {
-                    if (matched.alu_addend == nullptr) {
-                        preadd_mode_a = "PREADD_A_SUB_B";
-                        preadd_mode_b = "PREADD_B_SUB_A";
-                    }
-                } else if (matched.alu_addend == nullptr) {
-                    preadd_mode_a = "PREADD_A_MULT_B";
-                    preadd_mode_b = "PREADD_B_MULT_A";
+                if (matched.alu_addend == nullptr) {
+                    preadd_mode_a = preadd_is_sub ? "PREADD_A_SUB_B" : "PREADD_A_MULT_B";
+                    preadd_mode_b = preadd_is_sub ? "PREADD_B_SUB_A" : "PREADD_B_MULT_A";
                 } else if (!strcmp(mode_name, "MULT_ADD_C")) {
-                    preadd_mode_a = "PREADD_A_MULT_B_C";
-                    preadd_mode_b = "PREADD_B_MULT_A_C";
+                    preadd_mode_a = preadd_is_sub ? "PREADD_A_SUB_B_C" : "PREADD_A_MULT_B_C";
+                    preadd_mode_b = preadd_is_sub ? "PREADD_B_SUB_A_C" : "PREADD_B_MULT_A_C";
                 } else if (!strcmp(mode_name, "MULT_ACC")) {
-                    preadd_mode_a = "PREADD_A_MACC";
-                    preadd_mode_b = "PREADD_B_MACC";
+                    preadd_mode_a = preadd_is_sub ? "PREADD_A_SUB_MACC" : "PREADD_A_MACC";
+                    preadd_mode_b = preadd_is_sub ? "PREADD_B_SUB_MACC" : "PREADD_B_MACC";
                 } else if (!strcmp(mode_name, "MULT_ACC_C")) {
-                    preadd_mode_a = "PREADD_A_MACC_C";
-                    preadd_mode_b = "PREADD_B_MACC_C";
+                    preadd_mode_a = preadd_is_sub ? "PREADD_A_SUB_MACC_C" : "PREADD_A_MACC_C";
+                    preadd_mode_b = preadd_is_sub ? "PREADD_B_SUB_MACC_C" : "PREADD_B_MACC_C";
                 }
 
                 if (preadd_mode_a == nullptr) {
-                    preadd_refusal = preadd_is_sub ? "pre-adder subtract direction has no control word with a fused adder"
-                                                   : "pre-adder with this ALU direction has no control word";
+                    preadd_refusal = "pre-adder with this ALU direction has no control word";
                     continue;
                 }
 
