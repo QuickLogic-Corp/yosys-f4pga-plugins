@@ -13,9 +13,9 @@ $PASS_NAME -family qlf_k6n10f -top dspv4_preadd_sub_fused -dspv4 -no_abc9 -lib_p
 
 yosys cd dspv4_preadd_sub_fused
 check -assert
-select -assert-count 4 t:QL_DSP4_PRESUB
+select -assert-count 6 t:QL_DSP4_PRESUB
 select -assert-count 0 t:QL_DSP4_PREADD
-select -assert-count 4 t:QL_DSP4_MULT
+select -assert-count 6 t:QL_DSP4_MULT
 select -assert-count 0 t:adder_carry
 select -assert-count 0 t:\$mul
 select -assert-count 0 t:\$add
