@@ -11,9 +11,10 @@
 // addend are both additions, and the arithmetic is right whether or not either
 // one folded -- only a surviving carry chain shows it did not.
 //
-// The +P+C back-end is absent on purpose: MULT_ACC_C is unreachable from RTL
-// today, in the add direction too, so PREADD_A_SUB_MACC_C has no shape to test
-// against. The control words are in the table for when it becomes reachable.
+// The +P+C blocks need the feedback on the FIRST adder and C on the second:
+// `(m + p) + c`, not `p + (m + c)`. classify() measures the feedback against
+// alu_addend only, so the other order classifies as MULT_ADD_C and never
+// reaches MULT_ACC_C.
 module dspv4_preadd_sub_fused (
     input clk,
     // (D - A) * B + C
@@ -25,11 +26,19 @@ module dspv4_preadd_sub_fused (
     input signed [14:0] d2, input signed [14:0] a2, input signed [14:0] b2,
     output reg signed [49:0] p2,
     input signed [14:0] d3, input signed [14:0] a3, input signed [31:0] b3,
-    output reg signed [49:0] p3
+    output reg signed [49:0] p3,
+    // (D - A) * B + P + C
+    input signed [14:0] d4, input signed [14:0] a4, input signed [17:0] b4,
+    input signed [35:0] c4, output reg signed [49:0] p4,
+    input signed [14:0] d5, input signed [14:0] a5, input signed [31:0] b5,
+    input signed [35:0] c5, output reg signed [49:0] p5
 );
   assign p0 = c0 + (d0 - a0) * b0;
   assign p1 = c1 + (d1 - a1) * b1;
 
   always @(posedge clk) p2 <= p2 + (d2 - a2) * b2;
   always @(posedge clk) p3 <= p3 + (d3 - a3) * b3;
+
+  always @(posedge clk) p4 <= ((d4 - a4) * b4 + p4) + c4;
+  always @(posedge clk) p5 <= ((d5 - a5) * b5 + p5) + c5;
 endmodule
