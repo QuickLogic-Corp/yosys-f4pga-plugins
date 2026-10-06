@@ -1064,6 +1064,30 @@ struct QlDspV4Pass : public Pass {
                 module->remove(cell);
                 return false;
             }
+            // C must not be a value this DSP is about to swallow. nusers counts
+            // reader cells, not reader ports, so an adder reading the same wire on
+            // both operands passes the fanout filters. Refusing costs the fusion,
+            // not the multiply: pmgen offers the shape without the adder next.
+            pool<SigBit> swallowed;
+            auto swallow = [&](const SigSpec &sig) {
+                for (auto bit : sigmapper(sig))
+                    swallowed.insert(bit);
+            };
+            if (matched.alu_addend != nullptr)
+                swallow(matched.multiply->getPort(ID::Y));
+            if (mff_cell != nullptr)
+                swallow(mff_cell->getPort(ID::Q));
+            if (acc_cell != nullptr)
+                swallow(matched.alu_addend->getPort(ID::Y));
+            for (auto bit : sigmapper(mc))
+                if (swallowed.count(bit)) {
+                    log_debug("  %s: not fused -- the adder reads the absorbed "
+                              "value on BOTH operands, so there is nothing left "
+                              "to drive C\n",
+                              log_id(matched.multiply));
+                    module->remove(cell);
+                    return false;
+                }
         }
 
         // Peel any extension the RTL applied, so the walk below can see the
