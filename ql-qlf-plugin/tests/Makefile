@@ -66,6 +66,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_xpath \
 	qlf_k6n10f/dspv4_xpath_sub \
 	qlf_k6n10f/dspv4_preadd_both \
+	qlf_k6n10f/dspv4_preadd_shared \
 	qlf_k6n10f/dspv4_preadd_square \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
@@ -156,6 +157,7 @@ qlf_k6n10f-dspv4_preadd_order_verify = grep -q 'modes inferred: PREADD_A_SUB_B x
 # Two sums, 19-bit and 9-bit. The wider one is on the A port, so taking
 # the A side is the rule 'absorb the wider' working.
 qlf_k6n10f-dspv4_preadd_both_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
+qlf_k6n10f-dspv4_preadd_shared_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_shared/dspv4_preadd_shared.log
 # Squaring is refused, so no pre-adder mode at all.
 qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
 # The cross-path shape folds to a plain PREADD mode. XPATH has no
