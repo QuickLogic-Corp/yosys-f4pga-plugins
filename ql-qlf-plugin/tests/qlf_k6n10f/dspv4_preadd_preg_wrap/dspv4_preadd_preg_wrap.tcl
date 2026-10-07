@@ -27,12 +27,14 @@ check -assert
 select -assert-count 4 t:QL_DSP4_PREADD
 select -assert-count 4 t:QL_DSP4_MULT
 # The two registered results are both in a P bank.
-# Both result registers reach P. Without the containment filter on the
-# output_flop index, wreduce leaves one of them a bit wider than the
-# product and the exact compare misses it.
 select -assert-count 2 t:QL_DSP4_ACC_DFFRE_64
 # The two registered-input instances fill their operand banks.
+select -assert-count 2 t:QL_DSP4_A2_DFFRE_32
+select -assert-count 2 t:QL_DSP4_B2_DFFRE_18
+select -assert-count 2 t:QL_DSP4_D_DFFRE_27
 # Nothing left outside.
+select -assert-count 0 t:dffre
+select -assert-count 0 t:sdffre
 select -assert-count 0 t:adder_carry
 select -assert-count 0 t:\$mul
 select -assert-count 0 t:\$add
