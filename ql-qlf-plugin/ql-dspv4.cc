@@ -283,6 +283,7 @@ struct QlDspV4Pass : public Pass {
         left_soft = 0;
         absorbed_regs = 0;
         absorb_stall.clear();
+        output_reg_stall.clear();
         mode_count.clear();
         absorb_end_none = 0;
         absorb_end_exhausted = 0;
@@ -393,6 +394,20 @@ struct QlDspV4Pass : public Pass {
             }
             shared_claimed.clear();
 
+            // IN-7 for the P bank: name every result register that ended up in
+            // fabric. Counted from the survivors for the same reason as the
+            // multiplies below, and because one DSP's refused result register
+            // is often the next DSP's operand register -- absorbed after all,
+            // by the cell downstream.
+            for (auto cell : module->cells()) {
+                auto it = refused_output_reg.find(cell);
+                if (it == refused_output_reg.end())
+                    continue;
+                output_reg_stall[it->second]++;
+                log_debug("  %s.%s: output register left in fabric -- %s\n", log_id(module), log_id(cell), it->second.c_str());
+            }
+            refused_output_reg.clear();
+
             // IN-7: name every multiply that ended up in fabric.
             //
             // Counted from the survivors rather than from refusals. A refusal
@@ -430,6 +445,15 @@ struct QlDspV4Pass : public Pass {
                 ranked.push_back({it.second, it.first});
             std::sort(ranked.rbegin(), ranked.rend());
             log("ql_dspv4: operand-register absorption stalled:\n");
+            for (auto &r : ranked)
+                log("  %8d x  %s\n", r.first, r.second.c_str());
+        }
+        if (!output_reg_stall.empty()) {
+            std::vector<std::pair<int, std::string>> ranked;
+            for (auto &it : output_reg_stall)
+                ranked.push_back({it.second, it.first});
+            std::sort(ranked.rbegin(), ranked.rend());
+            log("ql_dspv4: output register(s) left in fabric on a DSP result:\n");
             for (auto &r : ranked)
                 log("  %8d x  %s\n", r.first, r.second.c_str());
         }
@@ -590,7 +614,7 @@ struct QlDspV4Pass : public Pass {
             return false;
         }
 
-        // Absorb the flop only if it registers exactly that result.
+        // Absorb the flop only if what it registers is that result.
         //
         // `ff` is indexed against `acc` when `acc` matched, so discarding
         // `acc` leaves `ff` sitting behind an adder this DSP does not
@@ -601,7 +625,38 @@ struct QlDspV4Pass : public Pass {
         // Testing D against the result rather than special-casing that shape
         // keeps the rule true for every combination of the optional matches.
         //
-        RTLIL::Cell *ff_cell = (matched.output_flop != nullptr && matched.output_flop->getPort(ID::D) == dsp_result) ? matched.output_flop : nullptr;
+        // D may be WIDER than the result, with padding above it -- the pattern
+        // allows that and this is where the padding is verified. Sound for the
+        // same reason as the M register: P is 50 bits and carries the same
+        // extension the design put on D.
+        //
+        // refused_output_reg notes a register on this result that the DSP is
+        // not taking. It is tallied after the matcher has finished, and only
+        // for the ones still standing -- see the sweep in execute().
+        RTLIL::Cell *ff_cell = nullptr;
+        if (matched.output_flop != nullptr) {
+            SigSpec d = sigmapper(matched.output_flop->getPort(ID::D));
+            SigSpec res = sigmapper(dsp_result);
+            bool res_signed = out_cell->getParam(ID::A_SIGNED).as_bool() && out_cell->getParam(ID::B_SIGNED).as_bool();
+            SigBit pad = res_signed ? res[GetSize(res) - 1] : SigBit(State::S0);
+            const char *refused = nullptr;
+
+            if (GetSize(d) < GetSize(res) || d.extract(0, GetSize(res)) != res)
+                refused = "it does not register the DSP result";
+            else if (GetSize(d) > DSPV4_P_WIDTH)
+                refused = "it is wider than the P port";
+            else
+                for (int i = GetSize(res); i < GetSize(d); i++)
+                    if (d[i] != pad) {
+                        refused = res_signed ? "the bits above the result are not a sign extension of it" : "the bits above the result are not zero";
+                        break;
+                    }
+
+            if (refused != nullptr)
+                refused_output_reg[matched.output_flop] = refused;
+            else
+                ff_cell = matched.output_flop;
+        }
 
         // Second output register stage: `mul -> reg -> reg` with no adder. The
         // DSP has two register positions between the multiplier and P, so both
@@ -614,36 +669,6 @@ struct QlDspV4Pass : public Pass {
         RTLIL::Cell *ff2_cell = (matched.alu_addend == nullptr && acc_cell == nullptr && ff_cell != nullptr && matched.output_flop2 != nullptr)
                                   ? matched.output_flop2
                                   : nullptr;
-        // Report a further output register we could not take. The DSP has two
-        // register positions between the multiplier and P -- M and P -- and none
-        // after P, so a second stage behind an absorbed output register can never
-        // come in. Scanned directly rather than read off `ff2`, because `ff2`
-        // usually cannot even match here: on an accumulator the absorbed flop's Q
-        // has two readers (the feedback and this register), which its fanout
-        // filter rejects.
-        //
-        // Worth saying out loud. Nothing else in the pass mentions an output
-        // register it declined, so the flop just appeared in fabric while the log
-        // talked about operand chains -- the silent QoR loss IN-7 exists to
-        // prevent. dsp_multacc_regout leaves 36 bits this way.
-        if (log_force_debug && ff_cell != nullptr) {
-            SigSpec q = sigmapper(ff_cell->getPort(ID::Q));
-            for (auto c : module->cells()) {
-                if (c == ff_cell || !c->hasPort(ID::D) || !c->hasPort(ID::Q))
-                    continue;
-                SigSpec d = sigmapper(c->getPort(ID::D));
-                bool reads = false;
-                for (auto bit : d)
-                    for (auto qbit : q)
-                        if (bit == qbit)
-                            reads = true;
-                if (!reads)
-                    continue;
-                log_debug("  %s: output register %s (%s) stays in fabric -- the "
-                          "DSP has no register stage after P\n",
-                          log_id(matched.multiply), log_id(c), log_id(c->type));
-            }
-        }
 
         // The M register -- a flop between the multiply and the adder, held in
         // QL_DSP4_M_DFFR_50 rather than left in fabric.
@@ -663,6 +688,17 @@ struct QlDspV4Pass : public Pass {
             mff_cell = ff_cell;
             ff_cell = ff2_cell;
         }
+
+        // Name the register on the result that this DSP is not taking, whether
+        // the pattern rejected it or the checks above did. Without this the flop
+        // just appears in fabric while the log talks about operand chains -- the
+        // silent QoR loss IN-7 exists to prevent. Two shapes reach here: a
+        // register the pattern never offered, and a further stage behind one
+        // already absorbed, which the DSP has no bank for. dsp_multacc_regout
+        // leaves 36 bits the second way.
+        RTLIL::Cell *stranded = ff_cell == nullptr ? register_on(dsp_result) : register_on(ff_cell->getPort(ID::Q));
+        if (stranded != nullptr && stranded != ff_cell && !refused_output_reg.count(stranded))
+            refused_output_reg[stranded] = ff_cell == nullptr ? why_not_in_p(stranded, dsp_result) : "the DSP has no register stage after P";
 
         // The M register's Q vanishes inside the DSP in the two-stage shape, so
         // a `keep` on it has to refuse the absorption the same way `keep` on the
@@ -2230,17 +2266,72 @@ struct QlDspV4Pass : public Pass {
         return worst;
     }
 
+    // The register reading `sig`, or nullptr. Read off the D-port index so the
+    // diagnostics do not have to walk the module.
+    RTLIL::Cell *register_on(const SigSpec &sig)
+    {
+        if (GetSize(sig) == 0)
+            return nullptr;
+        auto it = register_on_bit.find(sigmapper(sig)[0]);
+        if (it == register_on_bit.end() || absorbed.count(it->second))
+            return nullptr;
+        return it->second;
+    }
+
+    // Why the P bank cannot hold the register on `result`. Each branch mirrors
+    // one guard in the pattern, which drops a candidate without a word.
+    std::string why_not_in_p(RTLIL::Cell *reg, const SigSpec &result)
+    {
+        if (!reg->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe)))
+            return stringf("%s has no DSP equivalent", log_id(reg->type));
+        if (!reg->getParam(ID(CLK_POLARITY)).as_bool())
+            return "it is clocked on the falling edge";
+        if (dspv4_flop_attrs_block(reg))
+            return "it carries keep or a non-zero init";
+        SigSpec res = sigmapper(result);
+        pool<SigBit> res_bits;
+        for (auto bit : res)
+            res_bits.insert(bit);
+
+        // The pattern's fan-out guard, asked exactly: it counts a module port as
+        // a reader, and a sign bit repeated inside D as one reader rather than
+        // two. sig_users() answers neither question.
+        RTLIL::Module *module = reg->module;
+        for (auto wire : module->wires())
+            if (wire->port_output)
+                for (auto bit : sigmapper(wire))
+                    if (res_bits.count(bit))
+                        return "the unregistered result is a module output";
+        for (auto other : module->cells())
+            if (other != reg)
+                for (auto &conn : other->connections())
+                    if (!other->output(conn.first))
+                        for (auto bit : sigmapper(conn.second))
+                            if (res_bits.count(bit))
+                                return "the unregistered result has another reader";
+
+        SigSpec d = sigmapper(reg->getPort(ID::D));
+        if (GetSize(d) < GetSize(res) || d.extract(0, GetSize(res)) != res)
+            return "it registers the result mixed with other data";
+        return "the pattern did not offer it";
+    }
+
     // Index a module once: which flop drives which value, and how many cells
     // read each bit. Rebuilding either per candidate made the pass quadratic.
     void index_module(RTLIL::Module *module)
     {
         flop_bit.clear();
+        register_on_bit.clear();
+        refused_output_reg.clear();
         bit_users.clear();
         bit_driver.clear();
         absorbed.clear();
         shared_claimed.clear();
         sigmapper.set(module);
         for (auto cell : module->cells()) {
+            if (cell->hasPort(ID::D) && cell->hasPort(ID::Q))
+                for (auto bit : sigmapper(cell->getPort(ID::D)))
+                    register_on_bit[bit] = cell;
             for (auto &conn : cell->connections()) {
                 for (auto bit : sigmapper(conn.second))
                     bit_users[bit]++;
@@ -2269,6 +2360,10 @@ struct QlDspV4Pass : public Pass {
     // reported at the end. Without this the only symptom is flops left in
     // fabric, with nothing in the log to say which guard refused them.
     dict<std::string, int> absorb_stall;
+    // The same for the P bank. absorb_stall covers OPERAND chains only, so a
+    // stranded OUTPUT register used to leave the summary claiming every stage
+    // was absorbed while the flop sat in fabric.
+    dict<std::string, int> output_reg_stall;
     // Which modes were inferred, tallied over the whole run. Cell counts alone
     // cannot tell PREADD_A_MULT_B from PREADD_B_MULT_A -- both emit one
     // QL_DSP4_PREADD and one QL_DSP4_MULT -- so the mode name is the only
@@ -2295,6 +2390,13 @@ struct QlDspV4Pass : public Pass {
     // absorbed 44 banks, and the diagnostic reported "18 ff / 0 async / 0 comb
     // bits" right before giving up.
     dict<SigBit, std::pair<RTLIL::Cell *, int>> flop_bit;
+    // Which cell reads each bit on a D port. Any cell with D and Q, not just the
+    // four absorbable flop types, so the diagnostic can name a register the
+    // pattern rejected on its type.
+    dict<SigBit, RTLIL::Cell *> register_on_bit;
+    // Result registers emit() declined, and why. Drained per module once the
+    // matcher has finished, so only the ones still in fabric are reported.
+    dict<RTLIL::Cell *, std::string> refused_output_reg;
     pool<RTLIL::Cell *> absorbed;
     // Operand flops copied into a bank rather than moved into one, because they
     // have other readers. Never removed directly -- swept once userless.

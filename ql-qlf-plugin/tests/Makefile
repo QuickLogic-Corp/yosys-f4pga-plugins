@@ -70,6 +70,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_square \
 	qlf_k6n10f/dspv4_mult_add_self \
 	qlf_k6n10f/dspv4_mult_mreg_add_self \
+	qlf_k6n10f/dspv4_preadd_preg_wrap \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -134,6 +135,11 @@ qlf_k6n10f-dspv4_mult_regin_verify = true
 qlf_k6n10f-dspv4_mult_sub_verify = true
 qlf_k6n10f-dspv4_macc_verify = true
 
+# The 36 flops this design is expected to keep have to be explained, not just
+# counted. A pass that says nothing about a result register it declined reads
+# exactly like one whose pattern never saw it.
+qlf_k6n10f-dspv4_macc_dup_verify = grep -q 'the DSP has no register stage after P' qlf_k6n10f/dspv4_macc_dup/dspv4_macc_dup.log
+
 # Which mode the pass chose. The cell counts in the .tcl cannot tell
 # PREADD_A_MULT_B from PREADD_B_MULT_A -- both emit one QL_DSP4_PREADD and one
 # QL_DSP4_MULT -- so without these the A/B decision is untested. A refused
@@ -168,6 +174,16 @@ qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6
 # separate control word -- PREADD_A_MULT_B already covers it.
 qlf_k6n10f-dspv4_xpath_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_sub_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_xpath_sub/dspv4_xpath_sub.log
+# Phase 4, register absorption into the pre-adder's D and AD banks. The mode
+# has to be asserted here as well as the cell counts: a register absorbed into
+# the wrong bank, or an operand register absorbed after the pre-adder was
+# quietly dropped, still leaves one QL_DSP4_PREADD and no fabric flops.
+# The refusal: a resettable AD register leaves a plain MULT, not a PREADD word.
+# The other refusal, by its logged reason: the AD flop is resetless but the
+# cell's RSTN is driven by another absorbed register.
+# Four cells, one mode. The count alone cannot show the pre-adder survived in
+# all four, and the P-bank count in the .tcl cannot show which way it went.
+qlf_k6n10f-dspv4_preadd_preg_wrap_verify = grep -q 'modes inferred: PREADD_A_MULT_B x4' qlf_k6n10f/dspv4_preadd_preg_wrap/dspv4_preadd_preg_wrap.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
