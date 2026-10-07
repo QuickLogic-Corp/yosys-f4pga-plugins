@@ -1170,12 +1170,6 @@ struct QlDspV4Pass : public Pass {
                 }
         }
 
-        // Counted here, not where the cell is created: the two refusals above
-        // delete the cell and return, and pmgen then re-offers the same shape
-        // with the operands swapped. Counting earlier reported a mode per
-        // attempt, so one DSP could print as three modes.
-        mode_count[mode_name]++;
-
         // Peel any extension the RTL applied, so the walk below can see the
         // flop behind it. Both the port value and its signedness are updated,
         // and dspv4_fit re-extends to the port width when the ports are set.
