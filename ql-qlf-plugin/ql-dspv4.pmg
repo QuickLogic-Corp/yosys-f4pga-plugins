@@ -56,16 +56,57 @@ match multiply
     select multiply->type.in($mul)
     set mul_nusers nusers(port(multiply, \Y))
 endmatch
+// Optional register between the pre-adder and the multiplier -- the DSP's AD
+// stage (ADREG).
+//
+//     always @(posedge clk) ad <= d + a;
+//     assign p = ad * b;
+//
+// Matched BEFORE the pre-adder, because the pre-adder has to index THROUGH it.
+// With this flop present the multiply's operand is the flop's Q rather than the
+// adder's Y, so an index straight onto the adder finds nothing: the pre-adder
+// is not inferred at all, the addition stays in fabric, and no refusal is
+// logged because the pattern was never offered the shape.
+//
+// $dff only. QL_DSP4_AD_DFFR_32's port set is {D, R, clk}: no clock enable, so
+// $dffe / $sdffe have nowhere to put one, and R is the cell-wide RSTN rather
+// than a pin of its own, so a resettable flop cannot be expressed either.
+// ql-dspv4.cc refuses the fold when RSTN is driven by another absorbed chain,
+// which is the other half of the same rule.
+match ad_flop_on_a
+    select ad_flop_on_a->type.in($dff)
+    select param(ad_flop_on_a, \CLK_POLARITY).as_bool()
+    index <SigBit> port(ad_flop_on_a, \Q)[0] === port(multiply, \A)[0]
+    filter GetSize(port(ad_flop_on_a, \Q)) >= GetSize(port(multiply, \A))
+    filter port(ad_flop_on_a, \Q).extract(0, GetSize(port(multiply, \A))) == port(multiply, \A)
+    filter nusers(port(ad_flop_on_a, \Q)) <= 2
+    optional
+endmatch
+
+match ad_flop_on_b
+    select ad_flop_on_b->type.in($dff)
+    select param(ad_flop_on_b, \CLK_POLARITY).as_bool()
+    index <SigBit> port(ad_flop_on_b, \Q)[0] === port(multiply, \B)[0]
+    filter GetSize(port(ad_flop_on_b, \Q)) >= GetSize(port(multiply, \B))
+    filter port(ad_flop_on_b, \Q).extract(0, GetSize(port(multiply, \B))) == port(multiply, \B)
+    filter nusers(port(ad_flop_on_b, \Q)) <= 2
+    optional
+endmatch
+
 // Optional pre-adder feeding a multiply operand: the DSP's own front-end
 // adder, computing D +/- (A|B) into one multiplier port.
 //
 // Two matches rather than one `choice`, and the anchor stays on `mul`. Both
 // are forced by pmgen, not preference -- see the spec, "Step 1: see the adder".
+//
+// The indexed value is the AD flop's D when one matched, the multiply operand
+// otherwise. Written longhand on every line: pmgen emits `define` into the
+// index-BUILD scope, where the matched cells are not yet in scope.
 match preadder_on_a
     select preadder_on_a->type.in($add, $sub)
-    index <SigBit> port(preadder_on_a, \Y)[0] === port(multiply, \A)[0]
-    filter GetSize(port(multiply, \A)) >= GetSize(port(preadder_on_a, \Y))
-    filter port(multiply, \A).extract(0, GetSize(port(preadder_on_a, \Y))) == port(preadder_on_a, \Y)
+    index <SigBit> port(preadder_on_a, \Y)[0] === (ad_flop_on_a != nullptr ? port(ad_flop_on_a, \D)[0] : port(multiply, \A)[0])
+    filter GetSize(ad_flop_on_a != nullptr ? port(ad_flop_on_a, \D) : port(multiply, \A)) >= GetSize(port(preadder_on_a, \Y))
+    filter (ad_flop_on_a != nullptr ? port(ad_flop_on_a, \D) : port(multiply, \A)).extract(0, GetSize(port(preadder_on_a, \Y))) == port(preadder_on_a, \Y)
     filter nusers(port(preadder_on_a, \Y)) <= 2
     optional
 endmatch
@@ -74,9 +115,9 @@ endmatch
 // ql-dspv4.cc refuses that combination -- see the spec.
 match preadder_on_b
     select preadder_on_b->type.in($add, $sub)
-    index <SigBit> port(preadder_on_b, \Y)[0] === port(multiply, \B)[0]
-    filter GetSize(port(multiply, \B)) >= GetSize(port(preadder_on_b, \Y))
-    filter port(multiply, \B).extract(0, GetSize(port(preadder_on_b, \Y))) == port(preadder_on_b, \Y)
+    index <SigBit> port(preadder_on_b, \Y)[0] === (ad_flop_on_b != nullptr ? port(ad_flop_on_b, \D)[0] : port(multiply, \B)[0])
+    filter GetSize(ad_flop_on_b != nullptr ? port(ad_flop_on_b, \D) : port(multiply, \B)) >= GetSize(port(preadder_on_b, \Y))
+    filter (ad_flop_on_b != nullptr ? port(ad_flop_on_b, \D) : port(multiply, \B)).extract(0, GetSize(port(preadder_on_b, \Y))) == port(preadder_on_b, \Y)
     filter nusers(port(preadder_on_b, \Y)) <= 2
     optional
 endmatch

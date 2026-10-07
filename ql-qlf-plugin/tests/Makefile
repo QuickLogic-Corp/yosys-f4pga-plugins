@@ -74,6 +74,11 @@ TESTS = \
 	qlf_k6n10f/dspv4_mult_add_self \
 	qlf_k6n10f/dspv4_mult_mreg_add_self \
 	qlf_k6n10f/dspv4_preadd_preg_wrap \
+	qlf_k6n10f/dspv4_preadd_adreg \
+	qlf_k6n10f/dspv4_preadd_adreg_rst \
+	qlf_k6n10f/dspv4_preadd_adreg_cellrst \
+	qlf_k6n10f/dspv4_preadd_dreg \
+	qlf_k6n10f/dspv4_preadd_dreg_asym \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -200,6 +205,13 @@ qlf_k6n10f-dspv4_xpath_sub_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' 
 # Four cells, one mode. The count alone cannot show the pre-adder survived in
 # all four, and the P-bank count in the .tcl cannot show which way it went.
 qlf_k6n10f-dspv4_preadd_preg_wrap_verify = grep -q 'modes inferred: PREADD_A_MULT_B x4' qlf_k6n10f/dspv4_preadd_preg_wrap/dspv4_preadd_preg_wrap.log
+qlf_k6n10f-dspv4_preadd_adreg_verify = grep -q 'modes inferred:.*PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_adreg/dspv4_preadd_adreg.log
+qlf_k6n10f-dspv4_preadd_adreg_verify += && grep -q 'modes inferred:.*PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_adreg/dspv4_preadd_adreg.log
+qlf_k6n10f-dspv4_preadd_adreg_rst_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_rst/dspv4_preadd_adreg_rst.log
+qlf_k6n10f-dspv4_preadd_adreg_cellrst_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_cellrst/dspv4_preadd_adreg_cellrst.log
+qlf_k6n10f-dspv4_preadd_adreg_cellrst_verify += && grep -q 'pre-adder output register cannot go in the AD bank' qlf_k6n10f/dspv4_preadd_adreg_cellrst/dspv4_preadd_adreg_cellrst.log
+qlf_k6n10f-dspv4_preadd_dreg_verify = grep -q 'modes inferred: PREADD_A_MULT_B x6' qlf_k6n10f/dspv4_preadd_dreg/dspv4_preadd_dreg.log
+qlf_k6n10f-dspv4_preadd_dreg_asym_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_dreg_asym/dspv4_preadd_dreg_asym.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
