@@ -17,9 +17,13 @@
 // routes.
 //
 // The bound is 2: nusers counts the driver plus the readers, so 2 means
-// "driven here, read in exactly one place" -- the cell this pattern is about to
+// "driven here, read by exactly one CELL" -- the cell this pattern is about to
 // absorb it into. At 3 a product that also leaves the module still matched, and
 // the DSP would swallow it.
+//
+// CELL, not port: two ports of one cell reading the same wire count once, so
+// `p = m + m` passes every guard below. ql-dspv4.cc catches that where C is
+// picked.
 //
 // Where each guard sits matters as much as its bound. pmgen emits `select`
 // inside the index-BUILD loop and `filter` inside the MATCH loop, so a `select`
@@ -48,9 +52,74 @@ state <int> mff_nusers
 //
 // No fanout guard here -- see the header. The count is recorded so the matches
 // that would absorb the product can check it at match time.
-match mul
-    select mul->type.in($mul)
-    set mul_nusers nusers(port(mul, \Y))
+match multiply
+    select multiply->type.in($mul)
+    set mul_nusers nusers(port(multiply, \Y))
+endmatch
+// Optional register between the pre-adder and the multiplier -- the DSP's AD
+// stage (ADREG).
+//
+//     always @(posedge clk) ad <= d + a;
+//     assign p = ad * b;
+//
+// Matched BEFORE the pre-adder, because the pre-adder has to index THROUGH it.
+// With this flop present the multiply's operand is the flop's Q rather than the
+// adder's Y, so an index straight onto the adder finds nothing: the pre-adder
+// is not inferred at all, the addition stays in fabric, and no refusal is
+// logged because the pattern was never offered the shape.
+//
+// $dff only. QL_DSP4_AD_DFFR_32's port set is {D, R, clk}: no clock enable, so
+// $dffe / $sdffe have nowhere to put one, and R is the cell-wide RSTN rather
+// than a pin of its own, so a resettable flop cannot be expressed either.
+// ql-dspv4.cc refuses the fold when RSTN is driven by another absorbed chain,
+// which is the other half of the same rule.
+match ad_flop_on_a
+    select ad_flop_on_a->type.in($dff)
+    select param(ad_flop_on_a, \CLK_POLARITY).as_bool()
+    index <SigBit> port(ad_flop_on_a, \Q)[0] === port(multiply, \A)[0]
+    filter GetSize(port(ad_flop_on_a, \Q)) >= GetSize(port(multiply, \A))
+    filter port(ad_flop_on_a, \Q).extract(0, GetSize(port(multiply, \A))) == port(multiply, \A)
+    filter nusers(port(ad_flop_on_a, \Q)) <= 2
+    optional
+endmatch
+
+match ad_flop_on_b
+    select ad_flop_on_b->type.in($dff)
+    select param(ad_flop_on_b, \CLK_POLARITY).as_bool()
+    index <SigBit> port(ad_flop_on_b, \Q)[0] === port(multiply, \B)[0]
+    filter GetSize(port(ad_flop_on_b, \Q)) >= GetSize(port(multiply, \B))
+    filter port(ad_flop_on_b, \Q).extract(0, GetSize(port(multiply, \B))) == port(multiply, \B)
+    filter nusers(port(ad_flop_on_b, \Q)) <= 2
+    optional
+endmatch
+
+// Optional pre-adder feeding a multiply operand: the DSP's own front-end
+// adder, computing D +/- (A|B) into one multiplier port.
+//
+// Two matches rather than one `choice`, and the anchor stays on `mul`. Both
+// are forced by pmgen, not preference -- see the spec, "Step 1: see the adder".
+//
+// The indexed value is the AD flop's D when one matched, the multiply operand
+// otherwise. Written longhand on every line: pmgen emits `define` into the
+// index-BUILD scope, where the matched cells are not yet in scope.
+match preadder_on_a
+    select preadder_on_a->type.in($add, $sub)
+    index <SigBit> port(preadder_on_a, \Y)[0] === (ad_flop_on_a != nullptr ? port(ad_flop_on_a, \D)[0] : port(multiply, \A)[0])
+    filter GetSize(ad_flop_on_a != nullptr ? port(ad_flop_on_a, \D) : port(multiply, \A)) >= GetSize(port(preadder_on_a, \Y))
+    filter (ad_flop_on_a != nullptr ? port(ad_flop_on_a, \D) : port(multiply, \A)).extract(0, GetSize(port(preadder_on_a, \Y))) == port(preadder_on_a, \Y)
+    filter nusers(port(preadder_on_a, \Y)) <= 2
+    optional
+endmatch
+
+// The B-path mirror. If both match there is still only one pre-adder, so
+// ql-dspv4.cc refuses that combination -- see the spec.
+match preadder_on_b
+    select preadder_on_b->type.in($add, $sub)
+    index <SigBit> port(preadder_on_b, \Y)[0] === (ad_flop_on_b != nullptr ? port(ad_flop_on_b, \D)[0] : port(multiply, \B)[0])
+    filter GetSize(ad_flop_on_b != nullptr ? port(ad_flop_on_b, \D) : port(multiply, \B)) >= GetSize(port(preadder_on_b, \Y))
+    filter (ad_flop_on_b != nullptr ? port(ad_flop_on_b, \D) : port(multiply, \B)).extract(0, GetSize(port(preadder_on_b, \Y))) == port(preadder_on_b, \Y)
+    filter nusers(port(preadder_on_b, \Y)) <= 2
+    optional
 endmatch
 
 // Optional register between the multiply and the adder -- the DSP's M stage.
@@ -84,14 +153,14 @@ endmatch
 //
 // $dffe / $sdffe stay excluded: QL_DSP4_M_DFFR_50's port set is {D, R, clk},
 // with no clock enable, unlike the output flop's CEP.
-match mff
-    select mff->type.in($dff, $sdff)
-    select param(mff, \CLK_POLARITY).as_bool()
-    index <SigBit> port(mff, \D)[0] === port(mul, \Y)[0]
-    filter GetSize(port(mff, \D)) >= GetSize(port(mul, \Y))
-    filter port(mff, \D).extract(0, GetSize(port(mul, \Y))) == port(mul, \Y)
+match product_flop
+    select product_flop->type.in($dff, $sdff)
+    select param(product_flop, \CLK_POLARITY).as_bool()
+    index <SigBit> port(product_flop, \D)[0] === port(multiply, \Y)[0]
+    filter GetSize(port(product_flop, \D)) >= GetSize(port(multiply, \Y))
+    filter port(product_flop, \D).extract(0, GetSize(port(multiply, \Y))) == port(multiply, \Y)
     filter mul_nusers <= 2
-    set mff_nusers nusers(port(mff, \Q))
+    set mff_nusers nusers(port(product_flop, \Q))
     optional
 endmatch
 
@@ -101,8 +170,8 @@ endmatch
 //
 // The indexed operand is the M register's Q when one matched, otherwise the
 // product itself. Same one-statement-per-line constraint as `ff` below.
-match add
-    select add->type.in($add, $sub)
+match alu_addend
+    select alu_addend->type.in($add, $sub)
     choice <IdString> AB {\A, \B}
     define <IdString> BA (AB == \A ? \B : \A)
     // The operand only has to CONTAIN the product in its low bits, with sign
@@ -117,15 +186,15 @@ match add
     // ql-dspv4.cc checks the padding really is a sign extension.
     // Written longhand rather than with `define`: pmgen emits a define into the
     // index-BUILD scope, where the matched cells are not in scope yet.
-    index <SigBit> port(add, AB)[0] === (mff != nullptr ? port(mff, \Q)[0] : port(mul, \Y)[0])
-    filter GetSize(port(add, AB)) >= GetSize(mff != nullptr ? port(mff, \Q) : port(mul, \Y))
-    filter port(add, AB).extract(0, GetSize(mff != nullptr ? port(mff, \Q) : port(mul, \Y))) == (mff != nullptr ? port(mff, \Q) : port(mul, \Y))
+    index <SigBit> port(alu_addend, AB)[0] === (product_flop != nullptr ? port(product_flop, \Q)[0] : port(multiply, \Y)[0])
+    filter GetSize(port(alu_addend, AB)) >= GetSize(product_flop != nullptr ? port(product_flop, \Q) : port(multiply, \Y))
+    filter port(alu_addend, AB).extract(0, GetSize(product_flop != nullptr ? port(product_flop, \Q) : port(multiply, \Y))) == (product_flop != nullptr ? port(product_flop, \Q) : port(multiply, \Y))
     // Absorbing this adder makes the DSP produce the SUM, so whatever feeds it
     // stops appearing in the netlist. A second reader would be left with no
     // driver. The net to guard is the one this adder actually reads: the M
     // register's Q when it matched, the product otherwise. Checked here rather
     // than on `mul` so that a shared product still reaches the bare-MULT branch.
-    filter (mff != nullptr ? mff_nusers : mul_nusers) <= 2
+    filter (product_flop != nullptr ? mff_nusers : mul_nusers) <= 2
     // NOTE: there is deliberately no guard on this adder's own output fanout.
     // The sum leaves the DSP on P, so any number of readers can have it. It only
     // needs guarding when something downstream absorbs it as well -- `acc` taking
@@ -137,10 +206,10 @@ match add
     // `mul_result = mul_result1 + shifted`, whose sum has three readers (des1,
     // des2 and the tmp_mul feedback) and no output register -- a textbook
     // MULT_ADD_C that fell back to a bare multiply for no reason.
-    set add_nusers nusers(port(add, \Y))
+    set add_nusers nusers(port(alu_addend, \Y))
     set add_ba BA
     set add_mul_port AB
-    set add_is_sub add->type == $sub
+    set add_is_sub alu_addend->type == $sub
     optional
 endmatch
 
@@ -155,11 +224,13 @@ endmatch
 // is the C adder, and the flop's feedback still lands on `add` -- the reverse of
 // what the shape sketch in the plan implies. Verified against a dumped netlist
 // rather than assumed.
-match acc
-    select acc->type.in($add)
+match accumulator
+    select accumulator->type.in($add)
     choice <IdString> AB {\A, \B}
     define <IdString> BA (AB == \A ? \B : \A)
-    index <SigSpec> port(acc, AB) === (add == nullptr ? SigSpec() : port(add, \Y))
+    index <SigBit> port(accumulator, AB)[0] === (alu_addend == nullptr ? SigBit() : port(alu_addend, \Y)[0])
+    filter alu_addend != nullptr && GetSize(port(accumulator, AB)) >= GetSize(port(alu_addend, \Y))
+    filter port(accumulator, AB).extract(0, GetSize(port(alu_addend, \Y))) == port(alu_addend, \Y)
     // No fanout guard here either, for the same reason as `add`: this sum leaves
     // on P. `acc` is only ever absorbed together with `ff` (see ql-dspv4.cc), and
     // `ff`'s own filter guards the net it registers.
@@ -195,17 +266,25 @@ endmatch
 // `always @(negedge clk) p <= a*b` produced a QL_DSP4_ACC_DFFRE_64 clocked on
 // the rising edge. collect_flops() checks CLK_POLARITY for the OPERAND chains;
 // this is the same check for the output flop.
-match ff
-    select ff->type.in($dff, $dffe, $sdff, $sdffe)
-    select param(ff, \CLK_POLARITY).as_bool()
-    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
+//
+// D only has to CONTAIN the result in its low bits, with padding above -- the
+// same tolerance `mff` and `add` need, and for the same reason: wreduce visits
+// cells in netlist order, so a flop it reached before the multiply keeps its
+// declared width and reads the product sign-extended. ql-dspv4.cc checks the
+// padding really is an extension of the result.
+match output_flop
+    select output_flop->type.in($dff, $dffe, $sdff, $sdffe)
+    select param(output_flop, \CLK_POLARITY).as_bool()
+    index <SigBit> port(output_flop, \D)[0] === (accumulator != nullptr ? port(accumulator, \Y)[0] : alu_addend != nullptr ? port(alu_addend, \Y)[0] : port(multiply, \Y)[0])
+    filter GetSize(port(output_flop, \D)) >= GetSize(accumulator != nullptr ? port(accumulator, \Y) : alu_addend != nullptr ? port(alu_addend, \Y) : port(multiply, \Y))
+    filter port(output_flop, \D).extract(0, GetSize(accumulator != nullptr ? port(accumulator, \Y) : alu_addend != nullptr ? port(alu_addend, \Y) : port(multiply, \Y))) == (accumulator != nullptr ? port(accumulator, \Y) : alu_addend != nullptr ? port(alu_addend, \Y) : port(multiply, \Y))
     // The value this flop registers must have exactly one reader -- this flop.
     // Absorbing it makes the DSP drive Q instead of D, so any other reader of D
     // loses its driver. When `add` or `acc` matched, their own nusers selects
     // already cover it; when neither did, `ff` is indexed straight onto the
     // product and this is the only thing standing between a shared product and
     // an undriven net.
-    filter nusers(port(ff, \D)) <= 2
+    filter nusers(port(output_flop, \D)) <= 2
     optional
 endmatch
 
@@ -231,11 +310,13 @@ endmatch
 //
 // Only meaningful without an adder: with one, both stages sit downstream of the
 // ALU and only P is reachable. ql-dspv4.cc gates on that.
-match ff2
-    select ff2->type.in($dff, $sdff)
-    select param(ff2, \CLK_POLARITY).as_bool()
-    index <SigSpec> port(ff2, \D) === (ff == nullptr ? SigSpec() : port(ff, \Q))
-    filter nusers(port(ff2, \D)) <= 2
+match output_flop2
+    select output_flop2->type.in($dff, $sdff)
+    select param(output_flop2, \CLK_POLARITY).as_bool()
+    index <SigBit> port(output_flop2, \D)[0] === (output_flop == nullptr ? SigBit() : port(output_flop, \Q)[0])
+    filter output_flop != nullptr && GetSize(port(output_flop2, \D)) >= GetSize(port(output_flop, \Q))
+    filter port(output_flop2, \D).extract(0, GetSize(port(output_flop, \Q))) == port(output_flop, \Q)
+    filter nusers(port(output_flop2, \D)) <= 2
     optional
 endmatch
 

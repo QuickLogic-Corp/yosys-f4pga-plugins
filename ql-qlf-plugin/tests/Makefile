@@ -49,6 +49,37 @@ TESTS = \
 	qlf_k6n10f/dspv4_mult_shared_operand \
 	qlf_k6n10f/dspv4_macc_dup \
 	qlf_k6n10f/dspv4_mult_add_evencoef \
+	qlf_k6n10f/dspv4_preadd_a \
+	qlf_k6n10f/dspv4_preadd_width_ok \
+	qlf_k6n10f/dspv4_preadd_width_edge \
+	qlf_k6n10f/dspv4_preadd_width_over \
+	qlf_k6n10f/dspv4_preadd_width_const \
+	qlf_k6n10f/dspv4_preadd_pad \
+	qlf_k6n10f/dspv4_preadd_unsigned \
+	qlf_k6n10f/dspv4_preadd_trunc \
+	qlf_k6n10f/dspv4_preadd_a_sub \
+	qlf_k6n10f/dspv4_preadd_order \
+	qlf_k6n10f/dspv4_preadd_addc \
+	qlf_k6n10f/dspv4_preadd_sub_fused \
+	qlf_k6n10f/dspv4_preadd_a_macc \
+	qlf_k6n10f/dspv4_preadd_b \
+	qlf_k6n10f/dspv4_preadd_b_sub \
+	qlf_k6n10f/dspv4_preadd_sub_unsigned \
+	qlf_k6n10f/dspv4_mult_reg_pad \
+	qlf_k6n10f/dspv4_xpath \
+	qlf_k6n10f/dspv4_xpath_sub \
+	qlf_k6n10f/dspv4_preadd_both \
+	qlf_k6n10f/dspv4_preadd_shared \
+	qlf_k6n10f/dspv4_preadd_square \
+	qlf_k6n10f/dspv4_mult_add_self \
+	qlf_k6n10f/dspv4_mult_mreg_add_self \
+	qlf_k6n10f/dspv4_preadd_preg_wrap \
+	qlf_k6n10f/dspv4_preadd_adreg \
+	qlf_k6n10f/dspv4_preadd_adreg_rst \
+	qlf_k6n10f/dspv4_preadd_adreg_cellrst \
+	qlf_k6n10f/dspv4_preadd_dreg \
+	qlf_k6n10f/dspv4_preadd_dreg_asym \
+	qlf_k6n10f/dspv4_preadd_preg_wrap \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -112,6 +143,79 @@ qlf_k6n10f-dspv4_mult_regout_verify = true
 qlf_k6n10f-dspv4_mult_regin_verify = true
 qlf_k6n10f-dspv4_mult_sub_verify = true
 qlf_k6n10f-dspv4_macc_verify = true
+
+# The 36 flops this design is expected to keep have to be explained, not just
+# counted. A pass that says nothing about a result register it declined reads
+# exactly like one whose pattern never saw it.
+qlf_k6n10f-dspv4_macc_dup_verify = grep -q 'the DSP has no register stage after P' qlf_k6n10f/dspv4_macc_dup/dspv4_macc_dup.log
+
+# Which mode the pass chose. The cell counts in the .tcl cannot tell
+# PREADD_A_MULT_B from PREADD_B_MULT_A -- both emit one QL_DSP4_PREADD and one
+# QL_DSP4_MULT -- so without these the A/B decision is untested. A refused
+# shape must report MULT, not a PREADD mode: that is what says the guard
+# refused rather than folded something it should not have.
+qlf_k6n10f-dspv4_preadd_a_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_a/dspv4_preadd_a.log
+qlf_k6n10f-dspv4_preadd_width_ok_verify = grep -q 'modes inferred: PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_width_ok/dspv4_preadd_width_ok.log
+qlf_k6n10f-dspv4_preadd_width_edge_verify = grep -q 'modes inferred: PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_width_edge/dspv4_preadd_width_edge.log
+qlf_k6n10f-dspv4_preadd_width_const_verify = grep -q 'modes inferred: PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_width_const/dspv4_preadd_width_const.log
+qlf_k6n10f-dspv4_preadd_width_over_verify = grep -q 'modes inferred: MULT x2' qlf_k6n10f/dspv4_preadd_width_over/dspv4_preadd_width_over.log
+qlf_k6n10f-dspv4_preadd_pad_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_pad/dspv4_preadd_pad.log
+qlf_k6n10f-dspv4_preadd_trunc_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_trunc/dspv4_preadd_trunc.log
+qlf_k6n10f-dspv4_preadd_unsigned_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_unsigned/dspv4_preadd_unsigned.log
+
+qlf_k6n10f-dspv4_preadd_b_verify = grep -q 'modes inferred: PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_b/dspv4_preadd_b.log
+qlf_k6n10f-dspv4_preadd_a_sub_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_a_sub/dspv4_preadd_a_sub.log
+qlf_k6n10f-dspv4_preadd_b_sub_verify = grep -q 'modes inferred: PREADD_B_SUB_A x1' qlf_k6n10f/dspv4_preadd_b_sub/dspv4_preadd_b_sub.log
+qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
+qlf_k6n10f-dspv4_mult_reg_pad_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_reg_pad/dspv4_mult_reg_pad.log
+qlf_k6n10f-dspv4_mult_add_self_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_add_self/dspv4_mult_add_self.log
+qlf_k6n10f-dspv4_mult_mreg_add_self_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_mreg_add_self/dspv4_mult_mreg_add_self.log
+qlf_k6n10f-dspv4_preadd_addc_verify = grep -q 'modes inferred: PREADD_A_MULT_B_C x1' qlf_k6n10f/dspv4_preadd_addc/dspv4_preadd_addc.log
+qlf_k6n10f-dspv4_preadd_a_macc_verify = grep -q 'modes inferred:.*PREADD_A_MACC x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
+qlf_k6n10f-dspv4_preadd_a_macc_verify += && grep -q 'modes inferred:.*PREADD_A_MACC_C x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
+qlf_k6n10f-dspv4_preadd_a_macc_verify += && grep -q 'modes inferred:.*PREADD_B_MACC_C x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
+# Six modes in one design, so the mode line is asserted a name at a time.
+# The counts cannot stand in for this: all six emit one QL_DSP4_PRESUB and
+# one QL_DSP4_MULT, so swapping any two of them is invisible to a count.
+qlf_k6n10f-dspv4_preadd_sub_fused_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_A_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_MACC x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_MACC x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_MACC_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_MACC_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+# (A - D) * B. Subtract is not commutative, so a swap would compute
+# (D - A) * B. The SUB mode is the evidence the pass did not swap.
+qlf_k6n10f-dspv4_preadd_order_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_order/dspv4_preadd_order.log
+# Two sums, 19-bit and 9-bit. The wider one is on the A port, so taking
+# the A side is the rule 'absorb the wider' working.
+qlf_k6n10f-dspv4_preadd_both_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
+qlf_k6n10f-dspv4_preadd_shared_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_shared/dspv4_preadd_shared.log
+# Squaring is refused, so no pre-adder mode at all.
+qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+# The cross-path shape folds to a plain PREADD mode. XPATH has no
+# separate control word -- PREADD_A_MULT_B already covers it.
+qlf_k6n10f-dspv4_xpath_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_sub_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_xpath_sub/dspv4_xpath_sub.log
+# Phase 4, register absorption into the pre-adder's D and AD banks. The mode
+# has to be asserted here as well as the cell counts: a register absorbed into
+# the wrong bank, or an operand register absorbed after the pre-adder was
+# quietly dropped, still leaves one QL_DSP4_PREADD and no fabric flops.
+# The refusal: a resettable AD register leaves a plain MULT, not a PREADD word.
+# The other refusal, by its logged reason: the AD flop is resetless but the
+# cell's RSTN is driven by another absorbed register.
+# Four cells, one mode. The count alone cannot show the pre-adder survived in
+# all four, and the P-bank count in the .tcl cannot show which way it went.
+qlf_k6n10f-dspv4_preadd_preg_wrap_verify = grep -q 'modes inferred: PREADD_A_MULT_B x4' qlf_k6n10f/dspv4_preadd_preg_wrap/dspv4_preadd_preg_wrap.log
+qlf_k6n10f-dspv4_preadd_adreg_verify = grep -q 'modes inferred:.*PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_adreg/dspv4_preadd_adreg.log
+qlf_k6n10f-dspv4_preadd_adreg_verify += && grep -q 'modes inferred:.*PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_adreg/dspv4_preadd_adreg.log
+qlf_k6n10f-dspv4_preadd_adreg_rst_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_rst/dspv4_preadd_adreg_rst.log
+qlf_k6n10f-dspv4_preadd_adreg_cellrst_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_cellrst/dspv4_preadd_adreg_cellrst.log
+qlf_k6n10f-dspv4_preadd_adreg_cellrst_verify += && grep -q 'pre-adder output register cannot go in the AD bank' qlf_k6n10f/dspv4_preadd_adreg_cellrst/dspv4_preadd_adreg_cellrst.log
+qlf_k6n10f-dspv4_preadd_dreg_verify = grep -q 'modes inferred: PREADD_A_MULT_B x6' qlf_k6n10f/dspv4_preadd_dreg/dspv4_preadd_dreg.log
+qlf_k6n10f-dspv4_preadd_dreg_asym_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_dreg_asym/dspv4_preadd_dreg_asym.log
+# Four cells, one mode. The count alone cannot show the pre-adder survived in
+# all four, and the P-bank count in the .tcl cannot show which way it went.
+qlf_k6n10f-dspv4_preadd_preg_wrap_verify = grep -q 'modes inferred: PREADD_A_MULT_B x4' qlf_k6n10f/dspv4_preadd_preg_wrap/dspv4_preadd_preg_wrap.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
