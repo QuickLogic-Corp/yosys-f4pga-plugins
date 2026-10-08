@@ -208,6 +208,21 @@ static SigSpec dspv4_wide_out(RTLIL::Module *module, SigSpec dst, int width)
 // smaller one, so the kept net keeps a driver -- for
 // `(* keep *) wire prod = a*b; s = prod + c` the multiply still lands in a DSP
 // and only the addition stays in fabric.
+// True when `wide` carries `narrow` in its low bits and nothing but `narrow`'s
+// sign (or zero, unsigned) above it. The relaxed indexes in ql-dspv4.pmg only
+// compare the low bits, so every match that uses one needs this before the
+// cell is absorbed: `p <= {m[0], m}` passes the index and is not an extension.
+static bool dspv4_extends_cleanly(const SigSpec &wide, const SigSpec &narrow, bool is_signed)
+{
+    if (GetSize(wide) < GetSize(narrow) || wide.extract(0, GetSize(narrow)) != narrow)
+        return false;
+    SigBit pad = is_signed ? narrow[GetSize(narrow) - 1] : SigBit(State::S0);
+    for (int i = GetSize(narrow); i < GetSize(wide); i++)
+        if (wide[i] != pad)
+            return false;
+    return true;
+}
+
 static bool dspv4_sig_kept(const SigSpec &sig)
 {
     for (auto &c : sig.chunks())
@@ -568,6 +583,12 @@ struct QlDspV4Pass : public Pass {
         // only reads `acc` under `ff`, and autoremove() deleted that adder
         // anyway -- leaving its result net with no driver at all.
         RTLIL::Cell *acc_cell = feedback ? matched.accumulator : nullptr;
+        if (acc_cell != nullptr) {
+            IdString acc_ab = matched.acc_ba == ID::A ? ID::B : ID::A;
+            bool sum_signed = matched.alu_addend->getParam(ID::A_SIGNED).as_bool();
+            if (!dspv4_extends_cleanly(sigmapper(acc_cell->getPort(acc_ab)), sigmapper(matched.alu_addend->getPort(ID::Y)), sum_signed))
+                acc_cell = nullptr;
+        }
 
         // Absorbing `acc` makes the first adder's sum internal to the DSP, so it
         // must have exactly one reader -- `acc` itself. The pattern carries no
@@ -669,6 +690,13 @@ struct QlDspV4Pass : public Pass {
         RTLIL::Cell *ff2_cell = (matched.alu_addend == nullptr && acc_cell == nullptr && ff_cell != nullptr && matched.output_flop2 != nullptr)
                                   ? matched.output_flop2
                                   : nullptr;
+        if (ff2_cell != nullptr) {
+            bool q_signed = out_cell->getParam(ID::A_SIGNED).as_bool() && out_cell->getParam(ID::B_SIGNED).as_bool();
+            if (!dspv4_extends_cleanly(sigmapper(ff2_cell->getPort(ID::D)), sigmapper(ff_cell->getPort(ID::Q)), q_signed)) {
+                refused_output_reg[ff2_cell] = "the bits above the first register are not an extension of it";
+                ff2_cell = nullptr;
+            }
+        }
 
         // The M register -- a flop between the multiply and the adder, held in
         // QL_DSP4_M_DFFR_50 rather than left in fabric.
@@ -931,6 +959,18 @@ struct QlDspV4Pass : public Pass {
             else if (first_addend_signed != sum_port_signed || second_addend_signed != sum_port_signed)
                 unsafe = "pre-adder operand signedness differs from the multiply port";
 
+            // An unsigned subtract wraps at its own width where the DSP's
+            // pre-adder goes negative: for 17-bit `d - a` with d < a the RTL
+            // holds 131071 and the DSP holds -1. Addition never needed this
+            // question, because an unsigned sum is always positive.
+            //
+            // The two agree only while the product stays inside the subtract's
+            // width: the values are congruent modulo 2^width and multiplication
+            // preserves that, so a product kept no wider than the sum wraps to
+            // the same bits. One bit past it and the sign shows through.
+            else if (preadd_is_sub && !sum_port_signed && GetSize(matched.multiply->getPort(ID::Y)) > GetSize(adder_result))
+                unsafe = "unsigned pre-adder subtract wraps where the DSP signs";
+
             // Bits above the sum must be its sign extension. A constant pad
             // makes the RTL value non-negative while the DSP keeps the sign.
             else {
@@ -1064,7 +1104,6 @@ struct QlDspV4Pass : public Pass {
             std::swap(a_signed, b_signed);
         }
 
-        mode_count[mode_name]++;
         const Dspv4Mode &m = dspv4_mode(mode_name);
         RTLIL::Cell *cell = module->addCell(NEW_ID, ID(QL_DSP4));
         dspv4_apply_mode(cell, m);
@@ -1125,6 +1164,12 @@ struct QlDspV4Pass : public Pass {
                     return false;
                 }
         }
+
+        // Counted here, not where the cell is created: the two refusals above
+        // delete the cell and return, and pmgen then re-offers the same shape
+        // with the operands swapped. Counting earlier reported a mode per
+        // attempt, so one DSP could print as three modes.
+        mode_count[mode_name]++;
 
         // Peel any extension the RTL applied, so the walk below can see the
         // flop behind it. Both the port value and its signedness are updated,

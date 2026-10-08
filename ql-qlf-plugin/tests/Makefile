@@ -63,6 +63,8 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_a_macc \
 	qlf_k6n10f/dspv4_preadd_b \
 	qlf_k6n10f/dspv4_preadd_b_sub \
+	qlf_k6n10f/dspv4_preadd_sub_unsigned \
+	qlf_k6n10f/dspv4_mult_reg_pad \
 	qlf_k6n10f/dspv4_xpath \
 	qlf_k6n10f/dspv4_xpath_sub \
 	qlf_k6n10f/dspv4_preadd_both \
@@ -157,6 +159,10 @@ qlf_k6n10f-dspv4_preadd_unsigned_verify = grep -q 'modes inferred: MULT x1' qlf_
 qlf_k6n10f-dspv4_preadd_b_verify = grep -q 'modes inferred: PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_b/dspv4_preadd_b.log
 qlf_k6n10f-dspv4_preadd_a_sub_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_a_sub/dspv4_preadd_a_sub.log
 qlf_k6n10f-dspv4_preadd_b_sub_verify = grep -q 'modes inferred: PREADD_B_SUB_A x1' qlf_k6n10f/dspv4_preadd_b_sub/dspv4_preadd_b_sub.log
+qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
+qlf_k6n10f-dspv4_mult_reg_pad_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_reg_pad/dspv4_mult_reg_pad.log
+qlf_k6n10f-dspv4_mult_add_self_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_add_self/dspv4_mult_add_self.log
+qlf_k6n10f-dspv4_mult_mreg_add_self_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_mreg_add_self/dspv4_mult_mreg_add_self.log
 qlf_k6n10f-dspv4_preadd_addc_verify = grep -q 'modes inferred: PREADD_A_MULT_B_C x1' qlf_k6n10f/dspv4_preadd_addc/dspv4_preadd_addc.log
 qlf_k6n10f-dspv4_preadd_a_macc_verify = grep -q 'modes inferred:.*PREADD_A_MACC x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
 qlf_k6n10f-dspv4_preadd_a_macc_verify += && grep -q 'modes inferred:.*PREADD_A_MACC_C x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
