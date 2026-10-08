@@ -60,6 +60,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_a_sub \
 	qlf_k6n10f/dspv4_preadd_order \
 	qlf_k6n10f/dspv4_preadd_addc \
+	qlf_k6n10f/dspv4_preadd_sub_fused \
 	qlf_k6n10f/dspv4_preadd_a_macc \
 	qlf_k6n10f/dspv4_preadd_b \
 	qlf_k6n10f/dspv4_preadd_b_sub \
@@ -167,6 +168,15 @@ qlf_k6n10f-dspv4_preadd_addc_verify = grep -q 'modes inferred: PREADD_A_MULT_B_C
 qlf_k6n10f-dspv4_preadd_a_macc_verify = grep -q 'modes inferred:.*PREADD_A_MACC x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
 qlf_k6n10f-dspv4_preadd_a_macc_verify += && grep -q 'modes inferred:.*PREADD_A_MACC_C x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
 qlf_k6n10f-dspv4_preadd_a_macc_verify += && grep -q 'modes inferred:.*PREADD_B_MACC_C x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
+# Six modes in one design, so the mode line is asserted a name at a time.
+# The counts cannot stand in for this: all six emit one QL_DSP4_PRESUB and
+# one QL_DSP4_MULT, so swapping any two of them is invisible to a count.
+qlf_k6n10f-dspv4_preadd_sub_fused_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_A_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_MACC x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_MACC x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_MACC_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_MACC_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
 # (A - D) * B. Subtract is not commutative, so a swap would compute
 # (D - A) * B. The SUB mode is the evidence the pass did not swap.
 qlf_k6n10f-dspv4_preadd_order_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_order/dspv4_preadd_order.log

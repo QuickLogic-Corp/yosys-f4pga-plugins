@@ -99,6 +99,12 @@ static const Dspv4Mode DSPV4_MODES[] = {
     {"MULT_ACC_SUB",         37, 3, 0, 0, 0, 0, 0, 0, true},
     {"MULT_RSUB_C",          53, 1, 0, 0, 0, 0, 0, 0, true},
     {"MULT_ACC_RSUB",        37, 1, 0, 0, 0, 0, 0, 0, true},
+    {"PREADD_A_SUB_B_C",     53, 0, 12, 0, 0, 1, 0, 0, true},
+    {"PREADD_B_SUB_A_C",     53, 0, 12, 0, 0, 0, 1, 1, true},
+    {"PREADD_A_SUB_MACC",    37, 0, 12, 0, 0, 1, 0, 0, true},
+    {"PREADD_B_SUB_MACC",    37, 0, 12, 0, 0, 0, 1, 1, true},
+    {"PREADD_A_SUB_MACC_C",  421, 0, 12, 0, 0, 1, 0, 0, true},
+    {"PREADD_B_SUB_MACC_C",  421, 0, 12, 0, 0, 0, 1, 1, true},
 };
 
 static const size_t DSPV4_MODE_COUNT = sizeof(DSPV4_MODES) / sizeof(DSPV4_MODES[0]);
