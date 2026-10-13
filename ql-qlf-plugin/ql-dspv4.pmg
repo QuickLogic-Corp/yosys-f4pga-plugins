@@ -17,9 +17,13 @@
 // routes.
 //
 // The bound is 2: nusers counts the driver plus the readers, so 2 means
-// "driven here, read in exactly one place" -- the cell this pattern is about to
+// "driven here, read by exactly one CELL" -- the cell this pattern is about to
 // absorb it into. At 3 a product that also leaves the module still matched, and
 // the DSP would swallow it.
+//
+// CELL, not port: two ports of one cell reading the same wire count once, so
+// `p = m + m` passes every guard below. ql-dspv4.cc catches that where C is
+// picked.
 //
 // Where each guard sits matters as much as its bound. pmgen emits `select`
 // inside the index-BUILD loop and `filter` inside the MATCH loop, so a `select`
