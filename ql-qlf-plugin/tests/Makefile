@@ -51,6 +51,17 @@ TESTS = \
 	qlf_k6n10f/dspv4_mult_add_evencoef \
 	qlf_k6n10f/dspv4_mult_add_self \
 	qlf_k6n10f/dspv4_mult_mreg_add_self \
+	qlf_k6n10f/dspv4_trunc_add \
+	qlf_k6n10f/dspv4_trunc_sub \
+	qlf_k6n10f/dspv4_trunc_rsub \
+	qlf_k6n10f/dspv4_trunc_carry \
+	qlf_k6n10f/dspv4_trunc_macc \
+	qlf_k6n10f/dspv4_trunc_mreg \
+	qlf_k6n10f/dspv4_trunc_macc_c \
+	qlf_k6n10f/dspv4_trunc_regout \
+	qlf_k6n10f/dspv4_trunc_narrow \
+	qlf_k6n10f/dspv4_trunc_narrow_macc \
+	qlf_k6n10f/dspv4_trunc_narrow_mreg \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \

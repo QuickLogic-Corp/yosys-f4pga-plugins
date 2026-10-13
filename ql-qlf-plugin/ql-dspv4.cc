@@ -633,6 +633,22 @@ struct QlDspV4Pass : public Pass {
             return false;
         }
 
+        // The DSP has no truncation between its multiplier and its ALU. When the
+        // RTL keeps fewer product bits than the operands make and then reads the
+        // result above that cut, the hardware fills those bits from the full
+        // product where the RTL had padding. A result no wider than the kept
+        // product is still exact: the low bits of a sum depend only on the low
+        // bits of its operands.
+        int full_product = st.mul->getParam(ID::A_WIDTH).as_int() + st.mul->getParam(ID::B_WIDTH).as_int();
+        int kept = GetSize(st.mul->getPort(ID::Y));
+        int read = GetSize(ff_cell != nullptr ? ff_cell->getPort(ID::Q) : dsp_result);
+        if (kept < full_product && read > kept) {
+            log_debug("  %s: not fused -- the RTL keeps %d of %d product bits "
+                      "but reads the %d-bit result above that cut\n",
+                      log_id(st.mul), kept, full_product, read);
+            return false;
+        }
+
         // Diagnostic for the case the guards above cannot see: pmgen never
         // offered an M register at all. Without this the pass is silent about a
         // product register it did not take, which is indistinguishable from
