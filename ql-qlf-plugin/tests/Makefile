@@ -49,6 +49,10 @@ TESTS = \
 	qlf_k6n10f/dspv4_mult_shared_operand \
 	qlf_k6n10f/dspv4_macc_dup \
 	qlf_k6n10f/dspv4_mult_add_evencoef \
+	qlf_k6n10f/dspv4_macc_c \
+	qlf_k6n10f/dspv4_macc_c_reader \
+	qlf_k6n10f/dspv4_macc_c_self \
+	qlf_k6n10f/dspv4_mult_regin_port \
 	qlf_k6n10f/dspv4_mult_add_self \
 	qlf_k6n10f/dspv4_mult_mreg_add_self \
 	qlf_k6n10f/dsp_madd \
@@ -100,7 +104,8 @@ POST_SYNTH_SIM_TESTS = \
      qlf_k6n10f/dsp_mult_post_synth_sim \
      qlf_k6n10f/dsp_simd_post_synth_sim \
      qlf_k6n10f/bram_asymmetric_wider_write \
-     qlf_k6n10f/bram_asymmetric_wider_read
+     qlf_k6n10f/bram_asymmetric_wider_read \
+     qlf_k6n10f/dspv4_macc_c_post_synth_sim
 
 # Synthesis-side copies of cells that dspv2_sim.v and dspv4_leaves_sim.v already model.
 SIM_LIBS_EXCLUDE = QL_DSPV2.v QL_DSP4_leaves.v
@@ -114,6 +119,11 @@ qlf_k6n10f-dspv4_mult_regout_verify = true
 qlf_k6n10f-dspv4_mult_regin_verify = true
 qlf_k6n10f-dspv4_mult_sub_verify = true
 qlf_k6n10f-dspv4_macc_verify = true
+# A register that also drives a module output is copied into the bank, not
+# moved. The cell counts show the copy; this shows the pass knew it was one.
+qlf_k6n10f-dspv4_macc_c_reader_verify = grep -q 'shared operand register(s) copied into a bank' qlf_k6n10f/dspv4_macc_c_reader/dspv4_macc_c_reader.log
+qlf_k6n10f-dspv4_macc_c_self_verify = grep -q 'shared operand register(s) copied into a bank' qlf_k6n10f/dspv4_macc_c_self/dspv4_macc_c_self.log
+qlf_k6n10f-dspv4_mult_regin_port_verify = grep -q 'shared operand register(s) copied into a bank' qlf_k6n10f/dspv4_mult_regin_port/dspv4_mult_regin_port.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
