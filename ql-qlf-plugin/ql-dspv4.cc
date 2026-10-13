@@ -446,7 +446,7 @@ struct QlDspV4Pass : public Pass {
                     log_debug("  %s.%s: left soft\n", log_id(module), log_id(cell));
                 }
         }
-        log("ql_dspv4: inferred %d QL_DSP4 cell(s), %d operand register "
+        log("ql_dspv4: inferred %d QL_DSP4 cell(s), %d register "
             "stage(s) absorbed, %d multiply idiom(s) left soft.\n",
             total, absorbed_regs, left_soft);
         if (!mode_count.empty()) {
@@ -1581,7 +1581,10 @@ struct QlDspV4Pass : public Pass {
         // happened. The tests assert those lines, so they have to mean what
         // they say.
         mode_count[mode_name]++;
-        absorbed_regs += na + nb + nc + nd + (mff_cell != nullptr ? 1 : 0) + (ad_flop_cell != nullptr ? 1 : 0);
+        // Every register this cell took, not just the operand ones: M, AD and
+        // the P stages are absorbed the same way and belong in the same total.
+        absorbed_regs += na + nb + nc + nd + (mff_cell != nullptr ? 1 : 0) + (ad_flop_cell != nullptr ? 1 : 0) +
+                         (ff_cell != nullptr ? 1 : 0) + (ff2_cell != nullptr ? 1 : 0);
 
         if (verbose)
             log("  %s.%s -> %s (%dx%d)\n", log_id(module), log_id(st.mul), mode_name, GetSize(ma), GetSize(mb));
@@ -2412,8 +2415,19 @@ struct QlDspV4Pass : public Pass {
             chain.stage_d.push_back(d);
             chain.source = d;
         }
-        if (GetSize(chain.stage_flops) == max_depth)
-            absorb_stall["reached the bank depth limit"]++;
+        // Only a stall if another full stage was waiting behind the last one.
+        // Filling the bank with nothing left in fabric is a complete
+        // absorption, and D's limit of 1 makes that the common case.
+        if (GetSize(chain.stage_flops) == max_depth) {
+            bool stage_left_behind = true;
+            for (auto bit : sigmapper(chain.source))
+                if (!flop_bit.count(bit)) {
+                    stage_left_behind = false;
+                    break;
+                }
+            if (stage_left_behind)
+                absorb_stall["reached the bank depth limit"]++;
+        }
 #undef STALL
 #undef WALK_END
         return chain;
