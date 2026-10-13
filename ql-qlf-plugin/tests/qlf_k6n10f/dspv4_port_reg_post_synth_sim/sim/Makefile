@@ -16,8 +16,8 @@
 
 # The RTL and every netlist go into one simulation, so a single run compares
 # all four designs against their source.
-TESTBENCH = dspv4_macc_c_post_synth_sim_tb.v
-RTL = ../dspv4_macc_c_post_synth_sim.v
+TESTBENCH = dspv4_port_reg_post_synth_sim_tb.v
+RTL = ../dspv4_port_reg_post_synth_sim.v
 POST_SYNTH = $(wildcard *_post_synth.v)
 SIM_LIBS = $(shell find ../../../../qlf_k6n10f -name "*.v" -not -name "*_map.v")
 

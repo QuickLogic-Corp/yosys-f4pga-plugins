@@ -1,11 +1,12 @@
-// RTL-against-netlist simulation for the shapes in dspv4_macc_c,
-// dspv4_macc_c_reader, dspv4_macc_c_self and dspv4_mult_regin_port.
+// Four shapes where a register also drives a module output.
 //
-// The structural tests pin what the netlist contains; this one pins what it
-// computes. The bug these shapes cover leaves a module output with no driver,
-// which `check -assert` passes and a cell count can only infer -- but a
-// netlist simulated against the RTL it came from shows `x` on every cycle.
-// Each module here is a copy of its structural test's design.
+// dspv4_macc_c is the baseline: the three-input accumulator folds whole. The
+// other three put a register on a DSP operand port while a module output
+// also reads it, so the pass has to copy the register into the bank rather
+// than move it. Moving it left the output with no driver -- `assign p = 50'hx`
+// in the netlist, with `check -assert` reporting nothing. The .tcl pins the
+// structure of each; sim/ runs every netlist against this RTL.
+
 module dspv4_macc_c (input clk, input rst,
                      input signed [17:0] a, input signed [17:0] b,
                      input signed [33:0] c,
