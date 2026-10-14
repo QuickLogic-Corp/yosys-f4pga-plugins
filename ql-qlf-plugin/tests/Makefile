@@ -71,6 +71,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_cellrst \
 	qlf_k6n10f/dspv4_preadd_dreg \
+	qlf_k6n10f/dspv4_preadd_dreg_en \
 	qlf_k6n10f/dspv4_preadd_dreg_asym \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
@@ -237,3 +238,7 @@ qlf_k6n10f-dspv4_preadd_modes_verify = grep -q 'modes inferred: PREADD_A_SUB_B x
 # A refused pre-adder must report MULT, not a PREADD mode -- the cell counts
 # in the .tcl cannot tell a refusal from a fold that never matched.
 qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+
+# Two cells, one mode. The counts cannot show which of the two kept its
+# pre-adder, and the eviction is only visible as a mode plus a flop count.
+qlf_k6n10f-dspv4_preadd_dreg_en_verify = grep -q 'modes inferred: PREADD_A_MULT_B x2' qlf_k6n10f/dspv4_preadd_dreg_en/dspv4_preadd_dreg_en.log
