@@ -674,13 +674,13 @@ struct QlDspV4Pass : public Pass {
         // product where the RTL had padding. A result no wider than the kept
         // product is still exact: the low bits of a sum depend only on the low
         // bits of its operands.
-        int full_product = st.mul->getParam(ID::A_WIDTH).as_int() + st.mul->getParam(ID::B_WIDTH).as_int();
-        int kept = GetSize(st.mul->getPort(ID::Y));
+        int full_product = matched.multiply->getParam(ID::A_WIDTH).as_int() + matched.multiply->getParam(ID::B_WIDTH).as_int();
+        int kept = GetSize(matched.multiply->getPort(ID::Y));
         int read = GetSize(ff_cell != nullptr ? ff_cell->getPort(ID::Q) : dsp_result);
         if (kept < full_product && read > kept) {
             log_debug("  %s: not fused -- the RTL keeps %d of %d product bits "
                       "but reads the %d-bit result above that cut\n",
-                      log_id(st.mul), kept, full_product, read);
+                      log_id(matched.multiply), kept, full_product, read);
             return false;
         }
 
@@ -1038,18 +1038,18 @@ struct QlDspV4Pass : public Pass {
                 for (auto bit : sigmapper(sig))
                     swallowed.insert(bit);
             };
-            if (st.add != nullptr)
-                swallow(st.mul->getPort(ID::Y));
+            if (matched.alu_addend != nullptr)
+                swallow(matched.multiply->getPort(ID::Y));
             if (mff_cell != nullptr)
                 swallow(mff_cell->getPort(ID::Q));
             if (acc_cell != nullptr)
-                swallow(st.add->getPort(ID::Y));
+                swallow(matched.alu_addend->getPort(ID::Y));
             for (auto bit : sigmapper(mc))
                 if (swallowed.count(bit)) {
                     log_debug("  %s: not fused -- the adder reads the absorbed "
                               "value on BOTH operands, so there is nothing left "
                               "to drive C\n",
-                              log_id(st.mul));
+                              log_id(matched.multiply));
                     module->remove(cell);
                     return false;
                 }
