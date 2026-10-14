@@ -101,7 +101,8 @@ POST_SYNTH_SIM_TESTS = \
      qlf_k6n10f/dsp_mult_post_synth_sim \
      qlf_k6n10f/dsp_simd_post_synth_sim \
      qlf_k6n10f/bram_asymmetric_wider_write \
-     qlf_k6n10f/bram_asymmetric_wider_read
+     qlf_k6n10f/bram_asymmetric_wider_read \
+     qlf_k6n10f/dspv4_port_reg_post_synth_sim
 
 # Synthesis-side copies of cells that dspv2_sim.v and dspv4_leaves_sim.v already model.
 SIM_LIBS_EXCLUDE = QL_DSPV2.v QL_DSP4_leaves.v

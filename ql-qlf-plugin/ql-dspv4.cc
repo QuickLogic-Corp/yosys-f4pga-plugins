@@ -1321,11 +1321,10 @@ struct QlDspV4Pass : public Pass {
             again = false;
             SigMap sm(module);
 
-            // Driver plus readers, the convention sig_users() uses -- except
-            // that a module output counts as a reader here. sig_users() can
-            // ignore ports because the nets it guards are internal by
-            // construction; a sum that leaves the module would otherwise look
-            // sole-read and lose its driver along with its adder.
+            // Driver plus readers with a module output counted as a reader,
+            // the convention sig_users() uses. Tallied here rather than read
+            // from bit_users because this merge runs before index_module() and
+            // rewrites the module on every iteration.
             dict<SigBit, int> users;
             dict<SigBit, RTLIL::Cell *> driver;
             for (auto cell : module->cells())
@@ -2019,7 +2018,7 @@ struct QlDspV4Pass : public Pass {
         return worst;
     }
 
-    // Index a module once: which flop drives which value, and how many cells
+    // Index a module once: which flop drives which value, and how many places
     // read each bit. Rebuilding either per candidate made the pass quadratic.
     void index_module(RTLIL::Module *module)
     {
@@ -2052,6 +2051,13 @@ struct QlDspV4Pass : public Pass {
                     flop_bit[sigmapper(q[i])] = std::make_pair(cell, i);
             }
         }
+        // A module output reads the bit too, exactly as pmgen's nusers counts
+        // it. A register whose only other reader is a port has to be copied
+        // into the bank, not moved -- moving it left the port undriven.
+        for (auto wire : module->wires())
+            if (wire->port_output)
+                for (auto bit : sigmapper(wire))
+                    bit_users[bit]++;
     }
 
     // Why operand-register absorption stalled, tallied over the whole run and
