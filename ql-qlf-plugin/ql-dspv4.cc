@@ -448,8 +448,8 @@ struct QlDspV4Pass : public Pass {
                 // dspv4_apply_mode ties CIN high for.
                 return st.add_mul_port == ID(B) ? "MULT_ACC_SUB" : "MULT_ACC_RSUB";
             }
-            // Two adders: the first took C, the second the feedback, so the DSP
-            // computes A*B + P + C in one cell.
+            // Two adders: one took C and the other the feedback, in either
+            // order, so the DSP computes A*B + P + C in one cell.
             return st.acc != nullptr ? "MULT_ACC_C" : "MULT_ACC";
         }
         if (!st.add_is_sub)
@@ -496,10 +496,17 @@ struct QlDspV4Pass : public Pass {
             }
 
         // A matched flop is an accumulator only when its output comes back
-        // round as the adder's other operand. Otherwise it is an ordinary
+        // round as an adder's other operand. Otherwise it is an ordinary
         // pipeline register on the result, which the DSP's P register can hold
         // just as well -- same register, different mode.
-        bool feedback = st.ff != nullptr && st.add != nullptr && st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
+        //
+        // With two adders the feedback can close on either one: Yosys keeps the
+        // RTL's bracketing, so `(a*b + p) + c` puts p on `add` and
+        // `p + (a*b + c)` puts it on `acc`. Both are A*B + P + C; the C
+        // selection below reads which adder is free from these two flags.
+        bool feedback_on_add = st.ff != nullptr && st.add != nullptr && st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
+        bool feedback_on_acc = st.ff != nullptr && st.acc != nullptr && st.ff->getPort(ID::Q) == st.acc->getPort(st.acc_ba);
+        bool feedback = feedback_on_add || feedback_on_acc;
 
         const char *mode_name = classify(pm, feedback, why);
 
@@ -845,21 +852,26 @@ struct QlDspV4Pass : public Pass {
         RTLIL::Cell *cell = module->addCell(NEW_ID, ID(QL_DSP4));
         dspv4_apply_mode(cell, m);
 
-        // C is the adder operand that is not the product. Present for
-        // MULT_ADD_C / MULT_SUB_C, and for MULT_ACC_C where the first adder
-        // takes C and the second takes the accumulator feedback. Plain MULT_ACC
-        // has one adder whose other operand IS the feedback, so no C.
-        // Where C comes from depends on the shape:
+        // C is the adder operand that is neither the product nor the
+        // accumulator feedback. Where it comes from depends on the shape:
         //   MULT_ADD_C / MULT_SUB_C : `add`'s non-product operand
-        //   MULT_ACC_C              : `acc`'s non-chain operand -- `add` holds
-        //                             the accumulator feedback, not C
-        //   MULT_ACC                : no C at all
+        //   MULT_ACC_C              : the free operand of whichever adder does
+        //                             NOT hold the feedback -- `acc` for
+        //                             `(a*b + p) + c`, `add` for `p + (a*b + c)`
+        //   MULT_ACC                : no C at all; `add`'s other operand IS
+        //                             the feedback
         //
         // Determined here rather than at the point of use because C's register
         // chain takes part in the absorption decision below.
-        bool acc = feedback;
-        RTLIL::Cell *c_cell = acc_cell != nullptr ? acc_cell : (st.add != nullptr && !acc) ? st.add : nullptr;
-        IdString c_port = acc_cell != nullptr ? st.acc_ba : st.add_ba;
+        RTLIL::Cell *c_cell = nullptr;
+        IdString c_port;
+        if (acc_cell != nullptr) {
+            c_cell = feedback_on_add ? acc_cell : st.add;
+            c_port = feedback_on_add ? st.acc_ba : st.add_ba;
+        } else if (st.add != nullptr && !feedback) {
+            c_cell = st.add;
+            c_port = st.add_ba;
+        }
         SigSpec mc;
         bool c_signed = false;
         if (c_cell != nullptr) {

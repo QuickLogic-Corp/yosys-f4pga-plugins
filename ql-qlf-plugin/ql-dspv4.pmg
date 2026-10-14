@@ -154,11 +154,11 @@ endmatch
 // before `ff`, so the constraint cannot be expressed here -- ql-dspv4.cc gates
 // it on `ff` and must keep doing so. See the comment there.
 //
-// Yosys builds `p + a*b + c` LEFT-associatively: the first adder takes the
-// accumulator feedback and the product, the second adds C on top. So this match
-// is the C adder, and the flop's feedback still lands on `add` -- the reverse of
-// what the shape sketch in the plan implies. Verified against a dumped netlist
-// rather than assumed.
+// Yosys keeps the RTL's bracketing, and `p + a*b + c` associates LEFT: the
+// first adder takes the accumulator feedback and the product, the second adds
+// C on top, so this match is the C adder and the feedback lands on `add`.
+// Bracketed the other way, `p + (a*b + c)`, the first adder takes C and this
+// one takes the feedback. ql-dspv4.cc looks for the flop's Q on both.
 match acc
     select acc->type.in($add)
     choice <IdString> AB {\A, \B}
