@@ -66,17 +66,18 @@ static void dspv4_apply_mode(RTLIL::Cell *cell, const Dspv4Mode &m)
     cell->setParam(ID(PREADDINSEL), RTLIL::Const(m.preaddinsel, 1));
 
     // The reverse-subtract direction computes ~Z + (W+X+Y) + CIN, which is
-    // (W+X+Y) - Z only at CIN=1. Every other direction wants CIN=0, and an
-    // undriven CIN already gives that (the ALU leaf coerces open/x to 0), so
-    // only ALUMODE=01 needs a tie-off. Safe to key on ALUMODE alone because
-    // every such mode carries CARRYINSEL=000, which routes the ALU's carry-in
-    // from this port rather than from CCIN.
+    // (W+X+Y) - Z only at CIN=1; every other direction wants CIN=0. Keying on
+    // ALUMODE alone is safe because every such mode carries CARRYINSEL=000,
+    // which routes the ALU's carry-in from this port rather than from CCIN.
     //
-    // This is also what makes RSUB_AB_C correct. It came from the spreadsheet
-    // with CARRYINSEL=000 and no carry-in, so on this arithmetic it was off by
-    // one -- latent only because nothing selected it.
-    if (m.alumode == 1)
-        cell->setPort(ID(CIN), RTLIL::State::S1);
+    // Both values are tied explicitly. Left open, CIN reaches the ALU leaf as
+    // an undriven wire that only the default flow's `opt -undriven` cleans up;
+    // under -no_opt `check` reported it on every DSP.
+    //
+    // CIN=1 is also what makes RSUB_AB_C correct: it came from the spreadsheet
+    // with CARRYINSEL=000 and no carry-in, so it was off by one -- latent only
+    // because nothing selected it.
+    cell->setPort(ID(CIN), m.alumode == 1 ? RTLIL::State::S1 : RTLIL::State::S0);
 }
 
 // Port widths on QL_DSP4. A is the 32-bit multiplier operand, B the 18-bit one.
