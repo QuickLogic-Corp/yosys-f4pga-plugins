@@ -52,14 +52,8 @@ TESTS = \
 	qlf_k6n10f/dspv4_mult_add_self \
 	qlf_k6n10f/dspv4_mult_mreg_add_self \
 	qlf_k6n10f/dspv4_trunc \
-	qlf_k6n10f/dspv4_preadd_a \
-	qlf_k6n10f/dspv4_preadd_width_ok \
-	qlf_k6n10f/dspv4_preadd_width_edge \
-	qlf_k6n10f/dspv4_preadd_width_over \
-	qlf_k6n10f/dspv4_preadd_width_const \
-	qlf_k6n10f/dspv4_preadd_pad \
-	qlf_k6n10f/dspv4_preadd_unsigned \
-	qlf_k6n10f/dspv4_preadd_trunc \
+	qlf_k6n10f/dspv4_preadd_widths \
+	qlf_k6n10f/dspv4_preadd_refused \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -130,14 +124,6 @@ qlf_k6n10f-dspv4_macc_verify = true
 # QL_DSP4_MULT -- so without these the A/B decision is untested. A refused
 # shape must report MULT, not a PREADD mode: that is what says the guard
 # refused rather than folded something it should not have.
-qlf_k6n10f-dspv4_preadd_a_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_a/dspv4_preadd_a.log
-qlf_k6n10f-dspv4_preadd_width_ok_verify = grep -q 'modes inferred: PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_width_ok/dspv4_preadd_width_ok.log
-qlf_k6n10f-dspv4_preadd_width_edge_verify = grep -q 'modes inferred: PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_width_edge/dspv4_preadd_width_edge.log
-qlf_k6n10f-dspv4_preadd_width_const_verify = grep -q 'modes inferred: PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_width_const/dspv4_preadd_width_const.log
-qlf_k6n10f-dspv4_preadd_width_over_verify = grep -q 'modes inferred: MULT x2' qlf_k6n10f/dspv4_preadd_width_over/dspv4_preadd_width_over.log
-qlf_k6n10f-dspv4_preadd_pad_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_pad/dspv4_preadd_pad.log
-qlf_k6n10f-dspv4_preadd_trunc_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_trunc/dspv4_preadd_trunc.log
-qlf_k6n10f-dspv4_preadd_unsigned_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_unsigned/dspv4_preadd_unsigned.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
@@ -166,3 +152,9 @@ qlf_k6n10f/rel_ip_blif_badstub_negative = 1
 qlf_k6n10f-rel_ip_blif_badstub_verify = grep -q "port 'd' is 1 bits wide in the IP netlist but 2 in the stub" qlf_k6n10f/rel_ip_blif_badstub/rel_ip_blif_badstub.log
 qlf_k6n10f/rel_ip_blif_noprim_negative = 1
 qlf_k6n10f-rel_ip_blif_noprim_verify = grep -q "primitive 'QL_OTHER_PRIM', which the cell library does not define" qlf_k6n10f/rel_ip_blif_noprim/rel_ip_blif_noprim.log
+
+# Which width lands on which multiply port. Counts cannot tell the two apart.
+qlf_k6n10f-dspv4_preadd_widths_verify = grep -q 'modes inferred: PREADD_B_MULT_A x3, PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_widths/dspv4_preadd_widths.log
+# No pre-adder mode anywhere. Asserted this way rather than as a MULT count
+# because the pass runs twice and splits the count between the two lines.
+qlf_k6n10f-dspv4_preadd_refused_verify = ! grep -q 'modes inferred:.*PREADD' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
