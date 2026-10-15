@@ -1583,8 +1583,8 @@ struct QlDspV4Pass : public Pass {
         mode_count[mode_name]++;
         // Every register this cell took, not just the operand ones: M, AD and
         // the P stages are absorbed the same way and belong in the same total.
-        absorbed_regs += na + nb + nc + nd + (mff_cell != nullptr ? 1 : 0) + (ad_flop_cell != nullptr ? 1 : 0) +
-                         (ff_cell != nullptr ? 1 : 0) + (ff2_cell != nullptr ? 1 : 0);
+        absorbed_regs += na + nb + nc + nd + (mff_cell != nullptr ? 1 : 0) + (ad_flop_cell != nullptr ? 1 : 0) + (ff_cell != nullptr ? 1 : 0) +
+                         (ff2_cell != nullptr ? 1 : 0);
 
         if (verbose)
             log("  %s.%s -> %s (%dx%d)\n", log_id(module), log_id(st.mul), mode_name, GetSize(ma), GetSize(mb));
