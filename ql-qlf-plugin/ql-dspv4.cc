@@ -304,6 +304,7 @@ struct QlDspV4Pass : public Pass {
         left_soft = 0;
         absorbed_regs = 0;
         absorb_stall.clear();
+        stall_counted.clear();
         output_reg_stall.clear();
         mode_count.clear();
         absorb_end_none = 0;
@@ -1571,7 +1572,7 @@ struct QlDspV4Pass : public Pass {
                 log_debug("  %s: not fused -- the pre-adder's output register "
                           "cannot go in the AD bank (%s)\n",
                           log_id(st.mul), refusal);
-                absorb_stall["pre-adder output register cannot go in the AD bank"]++;
+                note_stall(st.mul, "pre-adder output register cannot go in the AD bank");
                 module->remove(cell);
                 return false;
             }
@@ -2216,7 +2217,10 @@ struct QlDspV4Pass : public Pass {
     {
 #define STALL(key, reason, ...)                                                                                                                      \
     do {                                                                                                                                             \
-        absorb_stall[key]++;                                                                                                                         \
+        if (why_mul != nullptr)                                                                                                                      \
+            note_stall(why_mul, key);                                                                                                                \
+        else                                                                                                                                         \
+            absorb_stall[key]++;                                                                                                                     \
         log_debug("  %s: %s operand register not absorbed after %d stage(s)"                                                                         \
                   " -- " reason "\n",                                                                                                                \
                   why_mul ? log_id(why_mul) : "?", port, GetSize(chain.stage_flops), ##__VA_ARGS__);                                                 \
@@ -2564,6 +2568,18 @@ struct QlDspV4Pass : public Pass {
     // reported at the end. Without this the only symptom is flops left in
     // fabric, with nothing in the log to say which guard refused them.
     dict<std::string, int> absorb_stall;
+
+    // pmgen offers one multiply several times, once per combination of its
+    // optional matches, so the same guard can refuse the same cell more than
+    // once. Count each reason once per multiply, or the tally reads higher
+    // than the number of registers actually left behind.
+    pool<std::pair<RTLIL::Cell *, std::string>> stall_counted;
+
+    void note_stall(RTLIL::Cell *mul, const std::string &reason)
+    {
+        if (stall_counted.insert(std::make_pair(mul, reason)).second)
+            absorb_stall[reason]++;
+    }
     // The same for the P bank. absorb_stall covers OPERAND chains only, so a
     // stranded OUTPUT register used to leave the summary claiming every stage
     // was absorbed while the flop sat in fabric.
