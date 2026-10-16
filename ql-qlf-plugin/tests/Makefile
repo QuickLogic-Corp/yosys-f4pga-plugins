@@ -69,7 +69,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_adreg_trunc \
 	qlf_k6n10f/dspv4_preadd_regs \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
-	qlf_k6n10f/dspv4_preadd_adreg_cellrst \
+	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -186,8 +186,10 @@ qlf_k6n10f-dspv4_xpath_sub_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' 
 # all four, and the P-bank count in the .tcl cannot show which way it went.
 qlf_k6n10f-dspv4_preadd_preg_wrap_verify = grep -q 'modes inferred: PREADD_A_MULT_B x4' qlf_k6n10f/dspv4_preadd_preg_wrap/dspv4_preadd_preg_wrap.log
 qlf_k6n10f-dspv4_preadd_adreg_rst_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_rst/dspv4_preadd_adreg_rst.log
-qlf_k6n10f-dspv4_preadd_adreg_cellrst_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_cellrst/dspv4_preadd_adreg_cellrst.log
-qlf_k6n10f-dspv4_preadd_adreg_cellrst_verify += && grep -q 'pre-adder output register cannot go in the AD bank' qlf_k6n10f/dspv4_preadd_adreg_cellrst/dspv4_preadd_adreg_cellrst.log
+# The pre-adder survives: the cell gave up a register chain instead of
+# giving up the fold. MULT alone would mean we refused. The eviction itself
+# is log_debug, so the mode is what we can assert here.
+qlf_k6n10f-dspv4_preadd_adreg_evict_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
