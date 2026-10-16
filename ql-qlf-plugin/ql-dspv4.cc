@@ -1432,6 +1432,34 @@ struct QlDspV4Pass : public Pass {
             else if (ff_cell != nullptr)
                 cell_clk = ff_cell->getPort(ID(CLK));
 
+            // A chain holding RSTN can be given up instead. Those registers
+            // go back to fabric, which is where they end up anyway when we
+            // refuse the pre-adder and the matcher re-offers without it -- so
+            // this costs no flops and keeps the adder out of fabric. The M
+            // register's reset cannot be given up the same way, because it is
+            // not a chain we can empty.
+            bool mff_holds_rstn = mff_cell != nullptr && mff_cell->hasPort(ID(SRST));
+            if (rstn_taken && !mff_holds_rstn) {
+                for (auto *n : {&na, &nb, &nc, &nd}) {
+                    const FlopChain &c = n == &na ? ca : (n == &nb ? cb : (n == &nc ? cc : cd));
+                    if (*n > 0 && c.arst != SigSpec(State::S1)) {
+                        log_debug("  %s: giving up a register chain so the "
+                                  "pre-adder can keep the AD bank -- it held "
+                                  "RSTN, which the AD bank shares\n",
+                                  log_id(st.mul));
+                        *n = 0;
+                    }
+                }
+                any_chain = na > 0 || nb > 0 || nc > 0 || nd > 0;
+                rstn_taken = false;
+                if (any_chain) {
+                    const FlopChain &now = na > 0 ? ca : (nb > 0 ? cb : (nc > 0 ? cc : cd));
+                    cell_clk = now.clk;
+                } else if (mff_cell == nullptr && ff_cell == nullptr) {
+                    cell_clk = SigSpec();
+                }
+            }
+
             const char *refusal = nullptr;
             if (rstn_taken)
                 refusal = "another absorbed register drives RSTN, which the AD bank shares";
