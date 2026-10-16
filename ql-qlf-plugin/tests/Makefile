@@ -229,8 +229,6 @@ qlf_k6n10f-dspv4_preadd_modes_verify = grep -q 'modes inferred: PREADD_A_SUB_B x
 # in the .tcl cannot tell a refusal from a fold that never matched.
 qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
 
-# Two cells, one mode. The counts cannot show which of the two kept its
-# pre-adder, and the eviction is only visible as a mode plus a flop count.
 
 # Eleven shapes, two paths. Counts cannot tell PREADD_A from PREADD_B.
 qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x10, PREADD_B_MULT_A x1' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log

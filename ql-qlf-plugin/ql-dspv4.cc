@@ -987,10 +987,13 @@ struct QlDspV4Pass : public Pass {
                 unsafe = "pre-adder operand signedness differs from the multiply port";
 
             // With an AD flop the check above reads the flop's D, which no
-            // longer says how much of the sum the multiply takes. A port
-            // narrower than the sum means the RTL wraps where the DSP would
-            // carry on.
-            else if (ad_flop != nullptr && GetSize(sum_on_a ? a_port_signal : b_port_signal) < GetSize(adder_result))
+            // longer says how much of the sum the multiply takes. Compare
+            // against the bits the sum actually needs, not the width it was
+            // declared at: a 32-bit flop holding the sum of two 16-bit numbers
+            // still only carries 17 bits of value, and a port that reads all
+            // 17 loses nothing.
+            else if (ad_flop != nullptr &&
+                     GetSize(sum_on_a ? a_port_signal : b_port_signal) < std::max(signed_width(first_addend), signed_width(second_addend)) + 1)
                 unsafe = "multiply reads fewer bits of the registered sum than the pre-adder produces";
 
             // An unsigned subtract wraps at its own width where the DSP's
