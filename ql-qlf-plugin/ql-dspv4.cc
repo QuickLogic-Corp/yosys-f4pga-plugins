@@ -667,6 +667,21 @@ struct QlDspV4Pass : public Pass {
                       log_id(st.mul), kept, full_product, read);
             return false;
         }
+        // The same cut one adder later. With `acc` absorbed the first sum is
+        // internal to the DSP and added at full width; an RTL that kept it
+        // narrower wrapped there, then sign-extended. A sum no wider than its
+        // operands plus one bit cannot have wrapped, so only a genuine cut is
+        // refused.
+        if (acc_cell != nullptr) {
+            int full_sum = std::max(st.add->getParam(ID::A_WIDTH).as_int(), st.add->getParam(ID::B_WIDTH).as_int()) + 1;
+            int kept_sum = GetSize(st.add->getPort(ID::Y));
+            if (kept_sum < full_sum && read > kept_sum) {
+                log_debug("  %s: not fused -- the RTL keeps %d of %d first-sum "
+                          "bits but reads the %d-bit result above that cut\n",
+                          log_id(st.mul), kept_sum, full_sum, read);
+                return false;
+            }
+        }
 
         // Diagnostic for the case the guards above cannot see: pmgen never
         // offered an M register at all. Without this the pass is silent about a

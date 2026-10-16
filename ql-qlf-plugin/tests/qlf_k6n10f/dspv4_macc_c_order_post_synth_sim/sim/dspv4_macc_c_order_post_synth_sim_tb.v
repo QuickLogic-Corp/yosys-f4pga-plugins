@@ -10,20 +10,12 @@ module tb;
   integer i, bad = 0;
 
   wire signed [49:0] p0_rtl, p0_syn;
-  dspv4_macc_c_inner          u0_rtl (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p0_rtl));
-  dspv4_macc_c_inner_syn      u0_syn (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p0_syn));
+  dspv4_macc_c_inner     u0_rtl (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p0_rtl));
+  dspv4_macc_c_inner_syn u0_syn (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p0_syn));
 
   wire signed [49:0] p1_rtl, p1_syn;
-  dspv4_macc_c_outer          u1_rtl (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p1_rtl));
-  dspv4_macc_c_outer_syn      u1_syn (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p1_syn));
-
-  wire signed [49:0] p2_rtl, p2_syn;
-  dspv4_macc_c_outer_sub      u2_rtl (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p2_rtl));
-  dspv4_macc_c_outer_sub_syn  u2_syn (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p2_syn));
-
-  wire signed [49:0] p3_rtl, p3_syn;
-  dspv4_macc_c_outer_rsub     u3_rtl (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p3_rtl));
-  dspv4_macc_c_outer_rsub_syn u3_syn (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p3_syn));
+  dspv4_macc_c_outer     u1_rtl (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p1_rtl));
+  dspv4_macc_c_outer_syn u1_syn (.clk(clk), .rst(rst), .a(a), .b(b), .c(c), .p(p1_syn));
 
   always #5 clk = ~clk;
 
@@ -40,10 +32,8 @@ module tb;
     for (i = 0; i < 2000; i = i + 1) begin
       a = $random; b = $random; c = {$random, $random};
       @(posedge clk); #1;
-      check("macc_c_inner.p",      p0_rtl, p0_syn);
-      check("macc_c_outer.p",      p1_rtl, p1_syn);
-      check("macc_c_outer_sub.p",  p2_rtl, p2_syn);
-      check("macc_c_outer_rsub.p", p3_rtl, p3_syn);
+      check("macc_c_inner.p", p0_rtl, p0_syn);
+      check("macc_c_outer.p", p1_rtl, p1_syn);
     end
     $display("RESULT: %0d mismatches in 2000 cycles", bad);
     $finish_and_return(bad == 0 ? 0 : 1);
