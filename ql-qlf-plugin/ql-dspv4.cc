@@ -1407,6 +1407,50 @@ struct QlDspV4Pass : public Pass {
             }
         }
 
+        // Can the pre-adder's output register go in the AD bank? Decided here,
+        // before any port is wired, because refusing means dropping the whole
+        // cell -- and by the time the ports are set we have already made a
+        // wire for P and inverters for the enables, which would be left behind
+        // as orphans. opt_clean sweeps them, but -no_opt does not.
+        //
+        // QL_DSP4_AD_DFFR_32 is (D, R, clk): R is the cell-wide RSTN rather
+        // than a pin of its own, and there is no enable. So an RSTN another
+        // absorbed register has already pinned would reset a flop the RTL
+        // never resets -- silently, since the netlist still packs and routes.
+        // Refusing costs the pre-adder, not the register: the matcher then
+        // offers the same multiply without this flop, and the flop is absorbed
+        // as an ordinary operand register instead.
+        if (ad_flop_cell != nullptr) {
+            bool any_chain = na > 0 || nb > 0 || nc > 0 || nd > 0;
+            const FlopChain &any = na > 0 ? ca : (nb > 0 ? cb : (nc > 0 ? cc : cd));
+            bool rstn_taken = (any_chain && any.arst != SigSpec(State::S1)) || (mff_cell != nullptr && mff_cell->hasPort(ID(SRST)));
+            SigSpec cell_clk;
+            if (any_chain)
+                cell_clk = any.clk;
+            else if (mff_cell != nullptr)
+                cell_clk = mff_cell->getPort(ID(CLK));
+            else if (ff_cell != nullptr)
+                cell_clk = ff_cell->getPort(ID(CLK));
+
+            const char *refusal = nullptr;
+            if (rstn_taken)
+                refusal = "another absorbed register drives RSTN, which the AD bank shares";
+            else if (GetSize(cell_clk) != 0 && !same(cell_clk, ad_flop_cell->getPort(ID(CLK))))
+                refusal = "its clock differs from the rest of the cell's";
+            else if (dspv4_flop_attrs_block(ad_flop_cell))
+                refusal = "it carries keep or a non-zero init";
+            else if (dspv4_sig_kept(ad_flop_cell->getPort(ID::Q)))
+                refusal = "its output is marked keep";
+            if (refusal != nullptr) {
+                log_debug("  %s: not fused -- the pre-adder's output register "
+                          "cannot go in the AD bank (%s)\n",
+                          log_id(st.mul), refusal);
+                note_stall(st.mul, "pre-adder output register cannot go in the AD bank");
+                module->remove(cell);
+                return false;
+            }
+        }
+
         if (na > 0)
             ma = ca.stage_d[na - 1];
         if (nb > 0)
@@ -1558,26 +1602,8 @@ struct QlDspV4Pass : public Pass {
         // and routes. Refusing costs the pre-adder, not the register: the
         // matcher then offers the same multiply without this flop, and the flop
         // is absorbed as an ordinary operand register instead.
-        if (ad_flop_cell != nullptr) {
-            const char *refusal = nullptr;
-            if (cell->getPort(ID(RSTN)) != SigSpec(State::S1))
-                refusal = "another absorbed register drives RSTN, which the AD bank shares";
-            else if (cell->hasPort(ID(CLK)) && !same(cell->getPort(ID(CLK)), ad_flop_cell->getPort(ID(CLK))))
-                refusal = "its clock differs from the rest of the cell's";
-            else if (dspv4_flop_attrs_block(ad_flop_cell))
-                refusal = "it carries keep or a non-zero init";
-            else if (dspv4_sig_kept(ad_flop_cell->getPort(ID::Q)))
-                refusal = "its output is marked keep";
-            if (refusal != nullptr) {
-                log_debug("  %s: not fused -- the pre-adder's output register "
-                          "cannot go in the AD bank (%s)\n",
-                          log_id(st.mul), refusal);
-                note_stall(st.mul, "pre-adder output register cannot go in the AD bank");
-                module->remove(cell);
-                return false;
-            }
+        if (ad_flop_cell != nullptr)
             cell->setPort(ID(CLK), ad_flop_cell->getPort(ID(CLK)));
-        }
 
         // Counted here rather than where they were decided: everything above
         // can still refuse, and a mode or a register counted for a cell that
