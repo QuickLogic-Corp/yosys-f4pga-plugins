@@ -2384,6 +2384,19 @@ struct QlDspV4Pass : public Pass {
             chain.stage_flops.push_back(stage);
             chain.stage_d.push_back(d);
             chain.source = d;
+
+            // A resettable flop holding an add or subtract is a pre-adder we
+            // could not fold. The AD bank has no reset pin of its own, so the
+            // pattern only matches a plain $dff and this shape never reaches
+            // the refusal above. Say so, or the only symptom is a pre-adder
+            // quietly missing from the summary.
+            for (auto output_flop : stage) {
+                if (output_flop->type.in(ID($dff)))
+                    continue;
+                auto drv = bit_driver.find(sigmapper(output_flop->getPort(ID::D))[0]);
+                if (drv != bit_driver.end() && drv->second->type.in(ID($add), ID($sub)))
+                    absorb_stall["pre-adder output register has a reset, which the AD bank has no pin for"]++;
+            }
         }
         // Only a stall if another full stage was waiting behind the last one.
         // Filling the bank with nothing left in fabric is a complete
