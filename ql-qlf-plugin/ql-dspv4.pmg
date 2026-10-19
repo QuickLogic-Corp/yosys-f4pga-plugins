@@ -187,7 +187,9 @@ match acc
     select acc->type.in($add)
     choice <IdString> AB {\A, \B}
     define <IdString> BA (AB == \A ? \B : \A)
-    index <SigSpec> port(acc, AB) === (add == nullptr ? SigSpec() : port(add, \Y))
+    index <SigBit> port(acc, AB)[0] === (add == nullptr ? SigBit() : port(add, \Y)[0])
+    filter add != nullptr && GetSize(port(acc, AB)) >= GetSize(port(add, \Y))
+    filter port(acc, AB).extract(0, GetSize(port(add, \Y))) == port(add, \Y)
     // No fanout guard here either, for the same reason as `add`: this sum leaves
     // on P. `acc` is only ever absorbed together with `ff` (see ql-dspv4.cc), and
     // `ff`'s own filter guards the net it registers.
@@ -223,10 +225,18 @@ endmatch
 // `always @(negedge clk) p <= a*b` produced a QL_DSP4_ACC_DFFRE_64 clocked on
 // the rising edge. collect_flops() checks CLK_POLARITY for the OPERAND chains;
 // this is the same check for the output flop.
+//
+// D only has to CONTAIN the result in its low bits, with padding above -- the
+// same tolerance `mff` and `add` need, and for the same reason: wreduce visits
+// cells in netlist order, so a flop it reached before the mul keeps its
+// declared width and reads the product sign-extended. ql-dspv4.cc checks the
+// padding really is an extension of the result.
 match ff
     select ff->type.in($dff, $dffe, $sdff, $sdffe)
     select param(ff, \CLK_POLARITY).as_bool()
-    index <SigSpec> port(ff, \D) === (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
+    index <SigBit> port(ff, \D)[0] === (acc != nullptr ? port(acc, \Y)[0] : add != nullptr ? port(add, \Y)[0] : port(mul, \Y)[0])
+    filter GetSize(port(ff, \D)) >= GetSize(acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
+    filter port(ff, \D).extract(0, GetSize(acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))) == (acc != nullptr ? port(acc, \Y) : add != nullptr ? port(add, \Y) : port(mul, \Y))
     // The value this flop registers must have exactly one reader -- this flop.
     // Absorbing it makes the DSP drive Q instead of D, so any other reader of D
     // loses its driver. When `add` or `acc` matched, their own nusers selects
@@ -262,7 +272,9 @@ endmatch
 match ff2
     select ff2->type.in($dff, $sdff)
     select param(ff2, \CLK_POLARITY).as_bool()
-    index <SigSpec> port(ff2, \D) === (ff == nullptr ? SigSpec() : port(ff, \Q))
+    index <SigBit> port(ff2, \D)[0] === (ff == nullptr ? SigBit() : port(ff, \Q)[0])
+    filter ff != nullptr && GetSize(port(ff2, \D)) >= GetSize(port(ff, \Q))
+    filter port(ff2, \D).extract(0, GetSize(port(ff, \Q))) == port(ff, \Q)
     filter nusers(port(ff2, \D)) <= 2
     optional
 endmatch
