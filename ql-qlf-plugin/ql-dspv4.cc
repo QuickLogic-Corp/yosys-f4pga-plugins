@@ -1646,9 +1646,6 @@ struct QlDspV4Pass : public Pass {
 
         if (verbose)
             log("  %s.%s -> %s (%dx%d)\n", log_id(module), log_id(st.mul), mode_name, GetSize(ma), GetSize(mb));
-        // Tallied here, after the last refusal above, so the summary names only
-        // the modes that were actually emitted.
-        mode_count[mode_name]++;
 
         // Absorb the matched cells. pm.autoremove marks them so the matcher
         // does not hand them out again.
