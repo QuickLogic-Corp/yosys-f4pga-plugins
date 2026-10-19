@@ -256,6 +256,7 @@ struct QlDspV4Pass : public Pass {
         left_soft = 0;
         absorbed_regs = 0;
         absorb_stall.clear();
+        mode_count.clear();
         absorb_end_none = 0;
         absorb_end_exhausted = 0;
         shared_replicated = 0;
@@ -385,6 +386,17 @@ struct QlDspV4Pass : public Pass {
         log("ql_dspv4: inferred %d QL_DSP4 cell(s), %d operand register "
             "stage(s) absorbed, %d multiply idiom(s) left soft.\n",
             total, absorbed_regs, left_soft);
+        if (!mode_count.empty()) {
+            // Most used first, so a one-DSP design reads as a single name.
+            std::vector<std::pair<int, std::string>> by_use;
+            for (auto &it : mode_count)
+                by_use.push_back({it.second, it.first});
+            std::sort(by_use.rbegin(), by_use.rend());
+            std::string modes;
+            for (auto &it : by_use)
+                modes += stringf("%s%s x%d", modes.empty() ? "" : ", ", it.second.c_str(), it.first);
+            log("ql_dspv4: modes inferred: %s\n", modes.c_str());
+        }
         if (!absorb_stall.empty()) {
             // Ranked, because the top line is the one worth acting on.
             std::vector<std::pair<int, std::string>> ranked;
@@ -436,8 +448,8 @@ struct QlDspV4Pass : public Pass {
                 // dspv4_apply_mode ties CIN high for.
                 return st.add_mul_port == ID(B) ? "MULT_ACC_SUB" : "MULT_ACC_RSUB";
             }
-            // Two adders: the first took C, the second the feedback, so the DSP
-            // computes A*B + P + C in one cell.
+            // Two adders: one took C and the other the feedback, in either
+            // order, so the DSP computes A*B + P + C in one cell.
             return st.acc != nullptr ? "MULT_ACC_C" : "MULT_ACC";
         }
         if (!st.add_is_sub)
@@ -484,10 +496,17 @@ struct QlDspV4Pass : public Pass {
             }
 
         // A matched flop is an accumulator only when its output comes back
-        // round as the adder's other operand. Otherwise it is an ordinary
+        // round as an adder's other operand. Otherwise it is an ordinary
         // pipeline register on the result, which the DSP's P register can hold
         // just as well -- same register, different mode.
-        bool feedback = st.ff != nullptr && st.add != nullptr && st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
+        //
+        // With two adders the feedback can close on either one: Yosys keeps the
+        // RTL's bracketing, so `(a*b + p) + c` puts p on `add` and
+        // `p + (a*b + c)` puts it on `acc`. Both are A*B + P + C; the C
+        // selection below reads which adder is free from these two flags.
+        bool feedback_on_add = st.ff != nullptr && st.add != nullptr && st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
+        bool feedback_on_acc = st.ff != nullptr && st.acc != nullptr && st.ff->getPort(ID::Q) == st.acc->getPort(st.acc_ba);
+        bool feedback = feedback_on_add || feedback_on_acc;
 
         const char *mode_name = classify(pm, feedback, why);
 
@@ -647,6 +666,21 @@ struct QlDspV4Pass : public Pass {
                       "but reads the %d-bit result above that cut\n",
                       log_id(st.mul), kept, full_product, read);
             return false;
+        }
+        // The same cut one adder later. With `acc` absorbed the first sum is
+        // internal to the DSP and added at full width; an RTL that kept it
+        // narrower wrapped there, then sign-extended. A sum no wider than its
+        // operands plus one bit cannot have wrapped, so only a genuine cut is
+        // refused.
+        if (acc_cell != nullptr) {
+            int full_sum = std::max(st.add->getParam(ID::A_WIDTH).as_int(), st.add->getParam(ID::B_WIDTH).as_int()) + 1;
+            int kept_sum = GetSize(st.add->getPort(ID::Y));
+            if (kept_sum < full_sum && read > kept_sum) {
+                log_debug("  %s: not fused -- the RTL keeps %d of %d first-sum "
+                          "bits but reads the %d-bit result above that cut\n",
+                          log_id(st.mul), kept_sum, full_sum, read);
+                return false;
+            }
         }
 
         // Diagnostic for the case the guards above cannot see: pmgen never
@@ -833,21 +867,26 @@ struct QlDspV4Pass : public Pass {
         RTLIL::Cell *cell = module->addCell(NEW_ID, ID(QL_DSP4));
         dspv4_apply_mode(cell, m);
 
-        // C is the adder operand that is not the product. Present for
-        // MULT_ADD_C / MULT_SUB_C, and for MULT_ACC_C where the first adder
-        // takes C and the second takes the accumulator feedback. Plain MULT_ACC
-        // has one adder whose other operand IS the feedback, so no C.
-        // Where C comes from depends on the shape:
+        // C is the adder operand that is neither the product nor the
+        // accumulator feedback. Where it comes from depends on the shape:
         //   MULT_ADD_C / MULT_SUB_C : `add`'s non-product operand
-        //   MULT_ACC_C              : `acc`'s non-chain operand -- `add` holds
-        //                             the accumulator feedback, not C
-        //   MULT_ACC                : no C at all
+        //   MULT_ACC_C              : the free operand of whichever adder does
+        //                             NOT hold the feedback -- `acc` for
+        //                             `(a*b + p) + c`, `add` for `p + (a*b + c)`
+        //   MULT_ACC                : no C at all; `add`'s other operand IS
+        //                             the feedback
         //
         // Determined here rather than at the point of use because C's register
         // chain takes part in the absorption decision below.
-        bool acc = feedback;
-        RTLIL::Cell *c_cell = acc_cell != nullptr ? acc_cell : (st.add != nullptr && !acc) ? st.add : nullptr;
-        IdString c_port = acc_cell != nullptr ? st.acc_ba : st.add_ba;
+        RTLIL::Cell *c_cell = nullptr;
+        IdString c_port;
+        if (acc_cell != nullptr) {
+            c_cell = feedback_on_add ? acc_cell : st.add;
+            c_port = feedback_on_add ? st.acc_ba : st.add_ba;
+        } else if (st.add != nullptr && !feedback) {
+            c_cell = st.add;
+            c_port = st.add_ba;
+        }
         SigSpec mc;
         bool c_signed = false;
         if (c_cell != nullptr) {
@@ -1185,6 +1224,9 @@ struct QlDspV4Pass : public Pass {
 
         if (verbose)
             log("  %s.%s -> %s (%dx%d)\n", log_id(module), log_id(st.mul), mode_name, GetSize(ma), GetSize(mb));
+        // Tallied here, after the last refusal above, so the summary names only
+        // the modes that were actually emitted.
+        mode_count[mode_name]++;
 
         // Absorb the matched cells. pm.autoremove marks them so the matcher
         // does not hand them out again.
@@ -2064,6 +2106,10 @@ struct QlDspV4Pass : public Pass {
     // reported at the end. Without this the only symptom is flops left in
     // fabric, with nothing in the log to say which guard refused them.
     dict<std::string, int> absorb_stall;
+    // Which modes were inferred, tallied over the whole run. Cell counts alone
+    // cannot tell MULT_ACC_C from MULT_ADD_C with the outer add left in fabric,
+    // so the mode name is the only record of which way the pass actually went.
+    dict<std::string, int> mode_count;
     // A walk that runs out of registers has not refused anything, so it is
     // counted apart from absorb_stall -- see WALK_END.
     int absorb_end_none = 0;
