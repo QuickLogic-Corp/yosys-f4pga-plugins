@@ -56,6 +56,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_widths \
 	qlf_k6n10f/dspv4_preadd_refused \
 	qlf_k6n10f/dspv4_preadd_modes \
+	qlf_k6n10f/dspv4_preadd_sub_fused \
 	qlf_k6n10f/dspv4_preadd_a_macc \
 	qlf_k6n10f/dspv4_preadd_sub_unsigned \
 	qlf_k6n10f/dspv4_mult_reg_pad \
@@ -149,6 +150,15 @@ qlf_k6n10f-dspv4_mult_mreg_add_self_verify = grep -q 'modes inferred: MULT x1' q
 qlf_k6n10f-dspv4_preadd_a_macc_verify = grep -q 'modes inferred:.*PREADD_A_MACC x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
 qlf_k6n10f-dspv4_preadd_a_macc_verify += && grep -q 'modes inferred:.*PREADD_A_MACC_C x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
 qlf_k6n10f-dspv4_preadd_a_macc_verify += && grep -q 'modes inferred:.*PREADD_B_MACC_C x1' qlf_k6n10f/dspv4_preadd_a_macc/dspv4_preadd_a_macc.log
+# Six modes in one design, so the mode line is asserted a name at a time.
+# The counts cannot stand in for this: all six emit one QL_DSP4_PRESUB and
+# one QL_DSP4_MULT, so swapping any two of them is invisible to a count.
+qlf_k6n10f-dspv4_preadd_sub_fused_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_A_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_MACC x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_MACC x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_MACC_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
+qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_MACC_C x1' qlf_k6n10f/dspv4_preadd_sub_fused/dspv4_preadd_sub_fused.log
 # (A - D) * B. Subtract is not commutative, so a swap would compute
 # (D - A) * B. The SUB mode is the evidence the pass did not swap.
 # Two sums, 19-bit and 9-bit. The wider one is on the A port, so taking

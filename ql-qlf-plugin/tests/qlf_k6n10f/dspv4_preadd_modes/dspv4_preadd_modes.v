@@ -11,6 +11,9 @@
 //   order  (A - D) * B, operands the other way round. Subtract does not
 //          commute, so the mode name is the evidence nothing was swapped
 //   addc   c + (a * (d + b))           -> the fused +C form
+//
+// The subtract direction with a fused back-end is covered separately, in
+// dspv4_preadd_sub_fused.
 module dspv4_preadd_modes (
     input signed [15:0] bpath_d, input signed [15:0] bpath_a,
     input signed [31:0] bpath_b, output signed [48:0] bpath_p,
