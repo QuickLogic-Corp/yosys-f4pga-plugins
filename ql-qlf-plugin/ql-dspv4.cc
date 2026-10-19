@@ -526,8 +526,10 @@ struct QlDspV4Pass : public Pass {
         // RTL's bracketing, so `(a*b + p) + c` puts p on `add` and
         // `p + (a*b + c)` puts it on `acc`. Both are A*B + P + C; the C
         // selection below reads which adder is free from these two flags.
-        bool feedback_on_add = st.ff != nullptr && st.add != nullptr && st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
-        bool feedback_on_acc = st.ff != nullptr && st.acc != nullptr && st.ff->getPort(ID::Q) == st.acc->getPort(st.acc_ba);
+        bool feedback_on_add = st.ff != nullptr && st.add != nullptr &&
+                               st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
+        bool feedback_on_acc = st.ff != nullptr && st.acc != nullptr &&
+                               st.ff->getPort(ID::Q) == st.acc->getPort(st.acc_ba);
         bool feedback = feedback_on_add || feedback_on_acc;
 
         const char *mode_name = classify(pm, feedback, why);
