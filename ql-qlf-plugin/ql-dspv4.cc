@@ -537,6 +537,10 @@ struct QlDspV4Pass : public Pass {
     {
         auto &st = pm.st_ql_dspv4;
         std::string why;
+        // Why something this cell could have held stays in fabric. Printed in
+        // the summary only where the fold is certain, beside the mode count:
+        // a refusal before that point means none of it happened.
+        std::vector<std::string> left_in_fabric;
 
         // A flop another DSP has already claimed must not be claimed again.
         // The two removal paths do not know about each other: pmgen's
@@ -1160,7 +1164,11 @@ struct QlDspV4Pass : public Pass {
         if (padd_cell == nullptr && preadd_refusal != nullptr)
             absorb_stall[preadd_refusal]++;
         if (padd_cell != nullptr && chain_kept_on_d != nullptr)
-            note_stall(st.mul, chain_kept_on_d);
+            left_in_fabric.push_back(chain_kept_on_d);
+        // One pre-adder per cell: when both multiply operands are sums, the
+        // one not folded stays in fabric.
+        if (padd_cell != nullptr && GetSize(preadd_candidates) == 2)
+            left_in_fabric.push_back("a second pre-adder sum stays in fabric: the cell has one pre-adder");
 
         bool direct = fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) && fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
         bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) && fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
@@ -1339,18 +1347,25 @@ struct QlDspV4Pass : public Pass {
             auto agrees = [&](const FlopChain &x, const FlopChain &y) {
                 return same(x.clk, y.clk) && same(x.arst, y.arst) && x.arst_inv == y.arst_inv;
             };
+            auto give_up = [&](int &n, const char *port, const char *other) {
+                log_debug("  %s: %s registers left in fabric -- their clock or "
+                          "reset differs from the %s chain's\n",
+                          log_id(st.mul), port, other);
+                left_in_fabric.push_back(stringf("%s register chain given up: its clock or reset differs from the %s chain's", port, other));
+                n = 0;
+            };
             if (na > 0 && nb > 0 && !agrees(ca, cb))
-                nb = 0;
+                give_up(nb, "B", "A");
             if (nc > 0 && na > 0 && !agrees(ca, cc))
-                nc = 0;
+                give_up(nc, "C", "A");
             if (nc > 0 && nb > 0 && !agrees(cb, cc))
-                nc = 0;
+                give_up(nc, "C", "B");
             if (nd > 0 && na > 0 && !agrees(ca, cd))
-                nd = 0;
+                give_up(nd, "D", "A");
             if (nd > 0 && nb > 0 && !agrees(cb, cd))
-                nd = 0;
+                give_up(nd, "D", "B");
             if (nd > 0 && nc > 0 && !agrees(cc, cd))
-                nd = 0;
+                give_up(nd, "D", "C");
 
             // M shares CLK and RSTN with the operand banks, so it has to agree
             // with whichever chains survived. It seeded them, so this only fires
@@ -1433,6 +1448,7 @@ struct QlDspV4Pass : public Pass {
                           "need more than %d distinct clock enables, and %s is "
                           "the narrowest port at %d bits\n",
                           log_id(st.mul), e.name, DSPV4_MAX_CE_SIGNALS, e.name, e.width);
+                left_in_fabric.push_back(stringf("%s register chain given up: the cell would need more than %d clock enables", e.name, DSPV4_MAX_CE_SIGNALS));
                 *e.n = 0;
             }
         }
@@ -1485,11 +1501,14 @@ struct QlDspV4Pass : public Pass {
             if (refusal == nullptr)
                 for (auto *n : {&na, &nb, &nc, &nd}) {
                     const FlopChain &c = n == &na ? ca : (n == &nb ? cb : (n == &nc ? cc : cd));
+                    const char *port = n == &na ? "A" : (n == &nb ? "B" : (n == &nc ? "C" : "D"));
                     if (*n > 0 && !resets_like_ad(c.arst, c.arst_inv)) {
-                        log_debug("  %s: giving up a register chain so the "
+                        log_debug("  %s: giving up the %s register chain so the "
                                   "pre-adder can keep the AD bank -- it resets "
                                   "differently, and both take RSTN\n",
-                                  log_id(st.mul));
+                                  log_id(st.mul), port);
+                        left_in_fabric.push_back(
+                          stringf("%s register chain given up: it resets differently from the AD register, and both take RSTN", port));
                         *n = 0;
                     }
                 }
@@ -1682,6 +1701,8 @@ struct QlDspV4Pass : public Pass {
         // happened. The tests assert those lines, so they have to mean what
         // they say.
         mode_count[mode_name]++;
+        for (auto &reason : left_in_fabric)
+            note_stall(st.mul, reason);
         // Every register this cell took, not just the operand ones: M, AD and
         // the P stages are absorbed the same way and belong in the same total.
         absorbed_regs += na + nb + nc + nd + (mff_cell != nullptr ? 1 : 0) + (ad_flop_cell != nullptr ? 1 : 0) + (ff_cell != nullptr ? 1 : 0) +

@@ -14,6 +14,9 @@
 //   mr   AD and M registers on different resets: both banks take RSTN, so
 //        they cannot share a cell, and the M register cannot be given up
 //   ck   AD register on clk2, B register on clk: one cell has one clock
+//   ki   AD register powers up at 1: the bank powers up at 0. Each AD offer
+//        gives up the resetless B chain, then is refused, so the summary
+//        must not report that chain as given up
 //
 // The registers before the pre-adder. D holds one stage and A two, so an add
 // swaps its operands to put a two-deep chain on A. These three cannot:
@@ -31,11 +34,13 @@ module dspv4_preadd_regs_refused (
     input signed [15:0] sub_d, sub_a, sub_b, output signed [32:0] sub_p,
     input signed [15:0] wd_d, input signed [27:0] wd_a, input signed [15:0] wd_b, output signed [44:0] wd_p,
     input signed [15:0] ck_d, ck_a, ck_b, output signed [32:0] ck_p,
-    input me_en0, me_en1, input signed [15:0] me_d, me_a, me_b, output signed [32:0] me_p
+    input me_en0, me_en1, input signed [15:0] me_d, me_a, me_b, output signed [32:0] me_p,
+    input signed [15:0] ki_d, ki_a, ki_b, output signed [32:0] ki_p
 );
   reg signed [16:0] en_ad, re_ad, nz_ad, as_ad, mr_ad, ck_ad;
+  reg signed [16:0] ki_ad = 17'sd1;
   reg signed [32:0] mr_m;
-  reg signed [15:0] sub_q0, sub_q1, wd_q0, wd_q1, ck_bq, me_q0, me_q1;
+  reg signed [15:0] sub_q0, sub_q1, wd_q0, wd_q1, ck_bq, me_q0, me_q1, ki_bq;
 
   assign en_p  = en_ad * en_b;
   assign re_p  = re_ad * re_b;
@@ -46,6 +51,7 @@ module dspv4_preadd_regs_refused (
   assign wd_p  = (wd_q1 + wd_a) * wd_b;
   assign ck_p  = ck_ad * ck_bq;
   assign me_p  = (me_q1 + me_a) * me_b;
+  assign ki_p  = ki_ad * ki_bq;
 
   always @(posedge clk) begin
     if (en_en) en_ad <= en_d + en_a;
@@ -65,6 +71,9 @@ module dspv4_preadd_regs_refused (
     else       ck_bq <= ck_b;
     if (me_en0) me_q0 <= me_d;
     if (me_en1) me_q1 <= me_q0;
+    if (!rstn) ki_ad <= 0;
+    else       ki_ad <= ki_d + ki_a;
+    ki_bq <= ki_b;
   end
 
   always @(posedge clk2)

@@ -169,6 +169,8 @@ qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_
 # Two sums, 19-bit and 9-bit. The wider one is on the A port, so taking
 # the A side is the rule 'absorb the wider' working.
 qlf_k6n10f-dspv4_preadd_both_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
+# The sum left behind is named, not just absent from the cell.
+qlf_k6n10f-dspv4_preadd_both_verify += && grep -q '1 x  a second pre-adder sum stays in fabric: the cell has one pre-adder' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
 qlf_k6n10f-dspv4_preadd_shared_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_shared/dspv4_preadd_shared.log
 # Squaring is refused, so no pre-adder mode at all.
 qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
@@ -186,19 +188,25 @@ qlf_k6n10f-dspv4_preadd_preg_wrap_verify = grep -q 'modes inferred: PREADD_A_MUL
 # Resettable AD registers fold: four PREADD words. MULT would mean refused.
 qlf_k6n10f-dspv4_preadd_adreg_rst_verify = grep -q 'modes inferred: PREADD_A_MULT_B x4' qlf_k6n10f/dspv4_preadd_adreg_rst/dspv4_preadd_adreg_rst.log
 # The pre-adder survives: the cell gave up a register chain instead of
-# giving up the fold. MULT would mean we refused. The eviction itself
-# is log_debug, so the mode is what we can assert here.
+# giving up the fold. MULT would mean we refused. The summary names each
+# chain it gave up, one per cell.
 qlf_k6n10f-dspv4_preadd_adreg_evict_verify = grep -q 'modes inferred: PREADD_A_MULT_B x4' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
+qlf_k6n10f-dspv4_preadd_adreg_evict_verify += && grep -q '4 x  B register chain given up: it resets differently from the AD register, and both take RSTN' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
 # Each refusal by its own reason, so one block that starts folding cannot
 # hide behind another that stops.
-qlf_k6n10f-dspv4_preadd_regs_refused_verify = grep -q 'modes inferred: MULT x5, PREADD_A_MULT_B x3, PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
+qlf_k6n10f-dspv4_preadd_regs_refused_verify = grep -q 'modes inferred: MULT x6, PREADD_A_MULT_B x3, PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q '2 x  pre-adder output register has a clock enable, which the AD bank does not have' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: it resets to a non-zero value' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: the M register resets differently' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: its clock differs from the rest of the cell' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
+qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: it carries keep or a non-zero init' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  driver is an async-reset flop' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  a subtract cannot swap its two-deep register chain off D' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  the two-deep register chain stays on D: the other operand does not fit the port it would move to' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
+# ck's cell gives up its B chain for the other clock, and says so. ki's AD
+# offers gave up a chain and were then refused, so no eviction line may appear.
+qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q '1 x  B register chain given up: its clock or reset differs from the A chain' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
+qlf_k6n10f-dspv4_preadd_regs_refused_verify += && ! grep -q 'resets differently from the AD register' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
@@ -247,3 +255,5 @@ qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x1' q
 # Thirteen shapes, two paths. Counts cannot tell PREADD_A from PREADD_B; the
 # swap onto B1/B2 is the second B-path word.
 qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x11, PREADD_B_MULT_A x2' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
+# The two four-enable cells name the B chain they give up.
+qlf_k6n10f-dspv4_preadd_regs_verify += && grep -q '2 x  B register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
