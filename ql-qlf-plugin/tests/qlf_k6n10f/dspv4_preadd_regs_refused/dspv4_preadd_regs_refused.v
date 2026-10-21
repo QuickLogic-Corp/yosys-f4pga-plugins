@@ -19,6 +19,10 @@
 //        must not report that chain as given up
 //   np   AD and result registers both reset to non-zero values: neither goes
 //        in, and the result register's reason is its own reset value
+//   sp   result register on clk2 resetting to 7, operand register on clk. The
+//        offer with the result register stalls the operand chain on the clock,
+//        then is refused for the reset; the offer that wins takes the chain.
+//        The stall belongs to the refused offer, so the summary must not show it
 //
 // The registers before the pre-adder. D holds one stage and A two, so an add
 // swaps its operands to put a two-deep chain on A. These three cannot:
@@ -38,11 +42,13 @@ module dspv4_preadd_regs_refused (
     input signed [15:0] ck_d, ck_a, ck_b, output signed [32:0] ck_p,
     input me_en0, me_en1, input signed [15:0] me_d, me_a, me_b, output signed [32:0] me_p,
     input signed [15:0] ki_d, ki_a, ki_b, output signed [32:0] ki_p,
-    input signed [15:0] np_d, np_a, np_b, output reg signed [32:0] np_p
+    input signed [15:0] np_d, np_a, np_b, output reg signed [32:0] np_p,
+    input signed [15:0] sp_a, sp_b, output reg signed [31:0] sp_p
 );
   reg signed [16:0] en_ad, re_ad, nz_ad, as_ad, mr_ad, ck_ad;
   reg signed [16:0] ki_ad = 17'sd1;
   reg signed [16:0] np_ad;
+  reg signed [15:0] sp_aq;
   reg signed [32:0] mr_m;
   reg signed [15:0] sub_q0, sub_q1, wd_q0, wd_q1, ck_bq, me_q0, me_q1, ki_bq;
 
@@ -82,7 +88,12 @@ module dspv4_preadd_regs_refused (
     else       np_ad <= np_d + np_a;
     if (!rstn) np_p <= 33'sd7;
     else       np_p <= np_ad * np_b;
+    sp_aq <= sp_a;
   end
+
+  always @(posedge clk2)
+    if (!rstn) sp_p <= 32'sd7;
+    else       sp_p <= sp_aq * sp_b;
 
   always @(posedge clk2)
     if (!rstn) ck_ad <= 0;
