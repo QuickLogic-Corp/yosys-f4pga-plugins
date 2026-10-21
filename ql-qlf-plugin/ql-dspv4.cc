@@ -425,10 +425,19 @@ struct QlDspV4Pass : public Pass {
                 auto it = refused_output_reg.find(cell);
                 if (it == refused_output_reg.end())
                     continue;
-                output_reg_stall[it->second]++;
-                log_debug("  %s.%s: output register left in fabric -- %s\n", log_id(module), log_id(cell), it->second.c_str());
+                std::string reason = it->second;
+                if (ad_rival.count(cell) && ad_reg_taken.count(ad_rival.at(cell)))
+                    reason = "the cell took a pre-adder output register instead";
+                output_reg_stall[reason]++;
+                log_debug("  %s.%s: output register left in fabric -- %s\n", log_id(module), log_id(cell), reason.c_str());
             }
             refused_output_reg.clear();
+            for (auto &it : refused_ad_reg)
+                if (!ad_reg_taken.count(it.first))
+                    absorb_stall["pre-adder output register cannot go in the AD bank: " + it.second]++;
+            refused_ad_reg.clear();
+            ad_reg_taken.clear();
+            ad_rival.clear();
 
             // IN-7: name every multiply that ended up in fabric.
             //
@@ -1368,10 +1377,15 @@ struct QlDspV4Pass : public Pass {
                 give_up(nd, "D", "C");
 
             // M shares CLK and RSTN with the operand banks, so it has to agree
-            // with whichever chains survived. It seeded them, so this only fires
-            // when a chain was evicted for disagreeing with another chain and the
-            // survivor is the one that differs from M. Dropping M rather than the
-            // chains costs one flop instead of several.
+            // with whichever chains survived. Every chain is seeded from M, so
+            // one that disagrees stalls in collect_flops and never gets here --
+            // this is the guard for when that stops being true.
+            //
+            // M cannot be dropped on its own: the adder (or, in the two-stage
+            // output shape, the P register) reads its Q, so the cell would
+            // compute the unregistered product one cycle early. Refuse the fold
+            // instead, as for any M register that cannot go in; the matcher
+            // then offers a shape without M.
             if (mff_cell != nullptr && (na > 0 || nb > 0 || nc > 0 || nd > 0)) {
                 const FlopChain &any = na > 0 ? ca : (nb > 0 ? cb : (nc > 0 ? cc : cd));
                 SigSpec m_rst(State::S1);
@@ -1381,10 +1395,12 @@ struct QlDspV4Pass : public Pass {
                     m_rst_inv = mff_cell->getParam(ID(SRST_POLARITY)).as_bool();
                 }
                 if (!same(any.clk, mff_cell->getPort(ID(CLK))) || !same(any.arst, m_rst) || any.arst_inv != m_rst_inv) {
-                    log_debug("  %s: M register not absorbed -- clock or reset "
-                              "differs from the operand chains'\n",
+                    log_debug("  %s: not fused -- the M register's clock or reset "
+                              "differs from an operand chain's, and the next "
+                              "stage reads the M register\n",
                               log_id(st.mul));
-                    mff_cell = nullptr;
+                    module->remove(cell);
+                    return false;
                 }
             }
         }
@@ -1448,7 +1464,8 @@ struct QlDspV4Pass : public Pass {
                           "need more than %d distinct clock enables, and %s is "
                           "the narrowest port at %d bits\n",
                           log_id(st.mul), e.name, DSPV4_MAX_CE_SIGNALS, e.name, e.width);
-                left_in_fabric.push_back(stringf("%s register chain given up: the cell would need more than %d clock enables", e.name, DSPV4_MAX_CE_SIGNALS));
+                left_in_fabric.push_back(
+                  stringf("%s register chain given up: the cell would need more than %d clock enables", e.name, DSPV4_MAX_CE_SIGNALS));
                 *e.n = 0;
             }
         }
@@ -1467,9 +1484,12 @@ struct QlDspV4Pass : public Pass {
         // a level, its RTL never asked for -- silently, since the netlist still
         // packs and routes. The P bank is not on RSTN; it has ACCRSTN.
         //
-        // Refusing costs the pre-adder, not the register: the matcher then
-        // offers the same multiply without this flop, and the flop is absorbed
-        // as an ordinary operand register instead.
+        // Refusing drops this offer, not necessarily this flop. pmgen varies
+        // its last optional match first, so when the clash is with the result
+        // register's clock, the next offer keeps this flop and drops the result
+        // register -- 49 fabric cells against 51 the other way on the `cr`
+        // shape in dspv4_preadd_adreg_evict. When every offer with this flop is
+        // refused, it ends up an ordinary operand register, or in fabric.
         if (ad_flop_cell != nullptr) {
             SigSpec ad_rst(State::S1);
             bool ad_rst_inv = false;
@@ -1531,7 +1551,10 @@ struct QlDspV4Pass : public Pass {
                 log_debug("  %s: not fused -- the pre-adder's output register "
                           "cannot go in the AD bank (%s)\n",
                           log_id(st.mul), refusal);
-                note_stall(st.mul, std::string("pre-adder output register cannot go in the AD bank: ") + refusal);
+                if (!refused_ad_reg.count(ad_flop_cell))
+                    refused_ad_reg[ad_flop_cell] = refusal;
+                if (ff_cell != nullptr)
+                    ad_rival[ff_cell] = ad_flop_cell;
                 module->remove(cell);
                 return false;
             }
@@ -1703,6 +1726,8 @@ struct QlDspV4Pass : public Pass {
         mode_count[mode_name]++;
         for (auto &reason : left_in_fabric)
             note_stall(st.mul, reason);
+        if (ad_flop_cell != nullptr)
+            ad_reg_taken.insert(ad_flop_cell);
         // Every register this cell took, not just the operand ones: M, AD and
         // the P stages are absorbed the same way and belong in the same total.
         absorbed_regs += na + nb + nc + nd + (mff_cell != nullptr ? 1 : 0) + (ad_flop_cell != nullptr ? 1 : 0) + (ff_cell != nullptr ? 1 : 0) +
@@ -2645,6 +2670,9 @@ struct QlDspV4Pass : public Pass {
             return "it is clocked on the falling edge";
         if (dspv4_flop_attrs_block(reg))
             return "it carries keep or a non-zero init";
+        // Not a pattern guard but emit()'s, which refuses the offer.
+        if (reg->hasPort(ID(SRST)) && !reg->getParam(ID(SRST_VALUE)).is_fully_zero())
+            return "it resets to a non-zero value, and the P bank resets to zero";
         SigSpec res = sigmapper(result);
         pool<SigBit> res_bits;
         for (auto bit : res)
@@ -2680,6 +2708,9 @@ struct QlDspV4Pass : public Pass {
         flop_bit.clear();
         register_on_bit.clear();
         refused_output_reg.clear();
+        refused_ad_reg.clear();
+        ad_reg_taken.clear();
+        ad_rival.clear();
         bit_users.clear();
         bit_driver.clear();
         absorbed.clear();
@@ -2772,6 +2803,15 @@ struct QlDspV4Pass : public Pass {
     // Result registers emit() declined, and why. Drained per module once the
     // matcher has finished, so only the ones still in fabric are reported.
     dict<RTLIL::Cell *, std::string> refused_output_reg;
+    // The same for AD registers. A refusal belongs to one offer, and a later
+    // offer can still put the register in an AD bank, so a reason is reported
+    // only for a register that never got there.
+    dict<RTLIL::Cell *, std::string> refused_ad_reg;
+    pool<RTLIL::Cell *> ad_reg_taken;
+    // A result register offered beside an AD register in an offer that was
+    // refused. When a later offer takes the AD register without it, that is
+    // why the result register stays in fabric.
+    dict<RTLIL::Cell *, RTLIL::Cell *> ad_rival;
     pool<RTLIL::Cell *> absorbed;
     // Operand flops copied into a bank rather than moved into one, because they
     // have other readers. Never removed directly -- swept once userless.
