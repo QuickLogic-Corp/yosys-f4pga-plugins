@@ -123,7 +123,8 @@ POST_SYNTH_SIM_TESTS = \
      qlf_k6n10f/bram_asymmetric_wider_read \
      qlf_k6n10f/dspv4_port_reg_post_synth_sim \
      qlf_k6n10f/dspv4_macc_c_order_post_synth_sim \
-     qlf_k6n10f/dspv4_macc_c_refused_post_synth_sim
+     qlf_k6n10f/dspv4_macc_c_refused_post_synth_sim \
+     qlf_k6n10f/dspv4_mreg_rst_post_synth_sim
 
 # Synthesis-side copies of cells that dspv2_sim.v and dspv4_leaves_sim.v already model.
 SIM_LIBS_EXCLUDE = QL_DSPV2.v QL_DSP4_leaves.v
@@ -189,15 +190,25 @@ qlf_k6n10f-dspv4_preadd_preg_wrap_verify = grep -q 'modes inferred: PREADD_A_MUL
 qlf_k6n10f-dspv4_preadd_adreg_rst_verify = grep -q 'modes inferred: PREADD_A_MULT_B x4' qlf_k6n10f/dspv4_preadd_adreg_rst/dspv4_preadd_adreg_rst.log
 # The pre-adder survives: the cell gave up a register chain instead of
 # giving up the fold. MULT would mean we refused. The summary names each
-# chain it gave up, one per cell.
-qlf_k6n10f-dspv4_preadd_adreg_evict_verify = grep -q 'modes inferred: PREADD_A_MULT_B x4' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
-qlf_k6n10f-dspv4_preadd_adreg_evict_verify += && grep -q '4 x  B register chain given up: it resets differently from the AD register, and both take RSTN' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
+# chain it gave up, one per cell, and cr's result register with its reason.
+# Every AD register here ends in an AD bank, so no line may say otherwise:
+# that line used to come from the refused offer that lost.
+qlf_k6n10f-dspv4_preadd_adreg_evict_verify = grep -q 'modes inferred: PREADD_A_MULT_B x5' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
+qlf_k6n10f-dspv4_preadd_adreg_evict_verify += && grep -q '5 x  B register chain given up: it resets differently from the AD register, and both take RSTN' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
+qlf_k6n10f-dspv4_preadd_adreg_evict_verify += && grep -q '1 x  the cell took a pre-adder output register instead' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
+qlf_k6n10f-dspv4_preadd_adreg_evict_verify += && ! grep -q 'cannot go in the AD bank' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
 # Each refusal by its own reason, so one block that starts folding cannot
 # hide behind another that stops.
-qlf_k6n10f-dspv4_preadd_regs_refused_verify = grep -q 'modes inferred: MULT x6, PREADD_A_MULT_B x3, PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
+qlf_k6n10f-dspv4_preadd_regs_refused_verify = grep -q 'modes inferred: MULT x7, PREADD_A_MULT_B x3, PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q '2 x  pre-adder output register has a clock enable, which the AD bank does not have' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: it resets to a non-zero value' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: the M register resets differently' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
+# mr's AD register does go in the AD bank -- the offer with M was refused, the
+# one without M folded -- so its refusal must not reach the summary.
+qlf_k6n10f-dspv4_preadd_regs_refused_verify += && ! grep -q 'cannot go in the AD bank: the M register resets differently' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
+# np's result register stays out for its own reset value, not for an AD
+# register the cell never took.
+qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q '1 x  it resets to a non-zero value, and the P bank resets to zero' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
+qlf_k6n10f-dspv4_preadd_regs_refused_verify += && ! grep -q 'the cell took a pre-adder output register instead' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: its clock differs from the rest of the cell' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: it carries keep or a non-zero init' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  driver is an async-reset flop' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log

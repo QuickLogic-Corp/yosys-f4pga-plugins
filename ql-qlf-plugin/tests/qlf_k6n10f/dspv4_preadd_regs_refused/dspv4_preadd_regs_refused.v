@@ -17,6 +17,8 @@
 //   ki   AD register powers up at 1: the bank powers up at 0. Each AD offer
 //        gives up the resetless B chain, then is refused, so the summary
 //        must not report that chain as given up
+//   np   AD and result registers both reset to non-zero values: neither goes
+//        in, and the result register's reason is its own reset value
 //
 // The registers before the pre-adder. D holds one stage and A two, so an add
 // swaps its operands to put a two-deep chain on A. These three cannot:
@@ -35,10 +37,12 @@ module dspv4_preadd_regs_refused (
     input signed [15:0] wd_d, input signed [27:0] wd_a, input signed [15:0] wd_b, output signed [44:0] wd_p,
     input signed [15:0] ck_d, ck_a, ck_b, output signed [32:0] ck_p,
     input me_en0, me_en1, input signed [15:0] me_d, me_a, me_b, output signed [32:0] me_p,
-    input signed [15:0] ki_d, ki_a, ki_b, output signed [32:0] ki_p
+    input signed [15:0] ki_d, ki_a, ki_b, output signed [32:0] ki_p,
+    input signed [15:0] np_d, np_a, np_b, output reg signed [32:0] np_p
 );
   reg signed [16:0] en_ad, re_ad, nz_ad, as_ad, mr_ad, ck_ad;
   reg signed [16:0] ki_ad = 17'sd1;
+  reg signed [16:0] np_ad;
   reg signed [32:0] mr_m;
   reg signed [15:0] sub_q0, sub_q1, wd_q0, wd_q1, ck_bq, me_q0, me_q1, ki_bq;
 
@@ -74,6 +78,10 @@ module dspv4_preadd_regs_refused (
     if (!rstn) ki_ad <= 0;
     else       ki_ad <= ki_d + ki_a;
     ki_bq <= ki_b;
+    if (!rstn) np_ad <= 17'sd5;
+    else       np_ad <= np_d + np_a;
+    if (!rstn) np_p <= 33'sd7;
+    else       np_p <= np_ad * np_b;
   end
 
   always @(posedge clk2)

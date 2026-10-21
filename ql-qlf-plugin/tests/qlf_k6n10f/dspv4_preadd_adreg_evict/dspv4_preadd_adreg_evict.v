@@ -12,13 +12,18 @@
 //   nr  AD resets on rstn, B has no reset: RSTN would clear it anyway
 //   dr  AD resets on rstn, B on rst2n: a different signal
 //   po  AD resets on rstn low, B on rstn high: same signal, other polarity
-module dspv4_preadd_adreg_evict (input clk, rstn, rst2n,
+//   cr  AD on clk2, B and the result register on clk: one cell has one clock.
+//       The cell keeps the pre-adder and AD bank; the B chain and the result
+//       register go to fabric. 49 fabric cells, against 51 (17 flops, 17
+//       LUTs, 17 carries) for giving up the AD register instead.
+module dspv4_preadd_adreg_evict (input clk, clk2, rstn, rst2n,
                                    input signed [15:0] rb_d, rb_a, rb_b, output signed [32:0] rb_p,
                                    input signed [15:0] nr_d, nr_a, nr_b, output signed [32:0] nr_p,
                                    input signed [15:0] dr_d, dr_a, dr_b, output signed [32:0] dr_p,
-                                   input signed [15:0] po_d, po_a, po_b, output signed [32:0] po_p);
-  reg signed [16:0] rb_ad, nr_ad, dr_ad, po_ad;
-  reg signed [15:0] rb_bq, nr_bq, dr_bq, po_bq;
+                                   input signed [15:0] po_d, po_a, po_b, output signed [32:0] po_p,
+                                   input signed [15:0] cr_d, cr_a, cr_b, output reg signed [32:0] cr_p);
+  reg signed [16:0] rb_ad, nr_ad, dr_ad, po_ad, cr_ad;
+  reg signed [15:0] rb_bq, nr_bq, dr_bq, po_bq, cr_bq;
   assign rb_p = rb_ad * rb_bq;
   assign nr_p = nr_ad * nr_bq;
   assign dr_p = dr_ad * dr_bq;
@@ -41,5 +46,12 @@ module dspv4_preadd_adreg_evict (input clk, rstn, rst2n,
     else       po_ad <= po_d + po_a;
     if (rstn)  po_bq <= 0;
     else       po_bq <= po_b;
+
+    cr_bq <= cr_b;
+    cr_p  <= cr_ad * cr_bq;
   end
+
+  always @(posedge clk2)
+    if (!rstn) cr_ad <= 0;
+    else       cr_ad <= cr_d + cr_a;
 endmodule
