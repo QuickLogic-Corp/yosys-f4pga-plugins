@@ -1331,32 +1331,34 @@ struct QlDspV4Pass : public Pass {
         int na = 0, nb = 0, nc = 0, nd = 0;
         FlopChain ca, cb, cc, cd;
         {
-            // The M bank shares RSTN with the operand banks, so when an M
-            // register is being absorbed it -- not the output flop, whose reset
-            // goes to its own ACCRSTN pin -- is the authoritative seed for the
-            // agreement below. Falls back to ff_cell exactly as before when no M
-            // register is in play.
-            RTLIL::Cell *seed_ff = mff_cell != nullptr ? mff_cell : ff_cell;
-            bool seeded = seed_ff != nullptr;
-            SigSpec seed_clk, seed_rst(State::S1);
-            bool seed_rst_inv = false;
-            if (seeded) {
-                seed_clk = seed_ff->getPort(ID(CLK));
-                if (seed_ff->hasPort(ID(SRST))) {
-                    seed_rst = seed_ff->getPort(ID(SRST));
-                    seed_rst_inv = seed_ff->getParam(ID(SRST_POLARITY)).as_bool();
+            // CLK is shared by every bank, so the chains take the clock of the
+            // register that already pins it: M, else the result register. RSTN
+            // is shared with M but not with the result register -- the P bank
+            // resets on ACCRSTN alone (ffb dsp4_top.v:399-414, and the arch's
+            // lr_ff_acc) -- so only M seeds the chains' reset.
+            RTLIL::Cell *clk_from = mff_cell != nullptr ? mff_cell : ff_cell;
+            Seed seed;
+            if (clk_from != nullptr) {
+                seed.clk = clk_from->getPort(ID(CLK));
+                seed.has_clk = true;
+            }
+            if (mff_cell != nullptr) {
+                seed.has_rst = true;
+                if (mff_cell->hasPort(ID(SRST))) {
+                    seed.rst = mff_cell->getPort(ID(SRST));
+                    seed.rst_inv = mff_cell->getParam(ID(SRST_POLARITY)).as_bool();
                 }
             }
-            ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "A", st.mul);
-            cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "B", st.mul);
+            ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed, "A", st.mul);
+            cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed, "B", st.mul);
             // The D port exists only when the pre-adder folded. Its bank is one
             // stage deep. An add has already swapped a deeper chain onto the
             // two-stage side; what is still deeper here keeps the surplus in
             // fabric -- the same rule C already follows.
             if (padd_cell != nullptr)
-                cd = collect_flops(module, md, DSPV4_MAX_D_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "D", st.mul);
+                cd = collect_flops(module, md, DSPV4_MAX_D_STAGES, seed, "D", st.mul);
             if (c_cell != nullptr) {
-                cc = collect_flops(module, mc, DSPV4_MAX_C_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "C", st.mul);
+                cc = collect_flops(module, mc, DSPV4_MAX_C_STAGES, seed, "C", st.mul);
                 // A flop on the C path whose D is this shape's OWN result is
                 // the accumulator feedback, not an independent C operand.
                 // pmgen offers the match without the output flop too, and on
@@ -2349,24 +2351,28 @@ struct QlDspV4Pass : public Pass {
         // CLK is shared by every leaf, so it is pinned as soon as anything is
         // absorbed -- including by the output flop, which seeds it.
         //
-        // The RESET is treated as shared, even though the accumulator has its
-        // own ACCRSTN pin and the techmap drives it from there. Underneath,
-        // dsp4_top.v clears the P register on `RSTN & ACCRSTN` -- an AND the
-        // hardware team places inside the physical mode, below the interface,
-        // so a consumer only ever drives ACCRSTN.
-        //
-        // That is fine as long as one net reaches both pins. It stops being
-        // fine if a design gives the accumulator a different reset from the
-        // operand registers: the netlist would then say the P register clears
-        // on ACCRSTN while the silicon clears it on either. Seeding the reset
-        // from the output flop keeps the two nets identical and makes the
-        // distinction unobservable.
+        // The RESET is shared with the M bank, which seeds it, but not with the
+        // P bank: P resets on ACCRSTN alone (ffb dsp4_top.v:399-414 since
+        // 6f731b2, and the arch's lr_ff_acc in both modes). Until 2026-10-21 the
+        // output flop seeded the reset too, on the belief that the silicon ANDs
+        // RSTN into P's reset; that kept operand chains on another reset out of
+        // the cell for nothing.
         //
         // The ENABLE is genuinely per-port: CEA, CEB and CEP are separate and
         // nothing ANDs them, so it is pinned only once a flop joins this chain.
         bool have_clk = false;
         bool have_rst = false;
         bool have_en = false;
+    };
+
+    // The controls a chain must agree with before its first stage: the clock,
+    // and -- only when an M register is absorbed -- the reset. S1 means none.
+    struct Seed {
+        SigSpec clk;
+        SigSpec rst = SigSpec(State::S1);
+        bool rst_inv = false;
+        bool has_clk = false;
+        bool has_rst = false;
     };
 
     // Resolve a chain's control to a wire, inverting once if the source was the
@@ -2403,8 +2409,7 @@ struct QlDspV4Pass : public Pass {
     // can say which one stalled. Absorption failures used to be entirely silent:
     // the walk just stopped, and the only visible effect was extra flops in
     // fabric -- the same class of invisible QoR loss IN-7 exists to prevent.
-    FlopChain collect_flops(RTLIL::Module *, SigSpec sig, int max_depth, const SigSpec &clk_seed, const SigSpec &rst_seed, bool rst_seed_inv,
-                            bool seeded, const char *port = "?", RTLIL::Cell *why_mul = nullptr)
+    FlopChain collect_flops(RTLIL::Module *, SigSpec sig, int max_depth, const Seed &seed, const char *port = "?", RTLIL::Cell *why_mul = nullptr)
     {
 #define STALL(key, reason, ...)                                                                                                                      \
     do {                                                                                                                                             \
@@ -2434,14 +2439,16 @@ struct QlDspV4Pass : public Pass {
     } while (0)
         FlopChain chain;
         chain.source = sig;
-        // Seeding pins the clock and the reset from the absorbed output flop --
-        // see FlopChain on why the accumulator's reset is not independent. The
-        // enable is left free: CEP does not constrain CEA/CEB.
-        if (seeded) {
-            chain.clk = clk_seed;
-            chain.arst = rst_seed;
-            chain.arst_inv = rst_seed_inv;
+        // Seeding pins what this cell has already fixed: the clock, and the
+        // reset when M is absorbed -- see FlopChain. The enable is left free:
+        // CEP does not constrain CEA/CEB.
+        if (seed.has_clk) {
+            chain.clk = seed.clk;
             chain.have_clk = true;
+        }
+        if (seed.has_rst) {
+            chain.arst = seed.rst;
+            chain.arst_inv = seed.rst_inv;
             chain.have_rst = true;
         }
         while (GetSize(chain.stage_flops) < max_depth) {
