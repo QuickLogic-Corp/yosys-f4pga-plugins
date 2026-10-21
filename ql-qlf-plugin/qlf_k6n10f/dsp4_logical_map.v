@@ -339,11 +339,10 @@ module QL_DSP4 #(
     // and, for MULTACC, the ALU Z operand (P feedback). ALU_OUT / acc feedback
     // are declared first.
     //
-    // This bank takes .R(ACCRSTN), not RSTN like the others. dsp4_top.v shows
-    // the P register clearing on `RSTN & ACCRSTN`, but per the hardware team
-    // that AND sits inside the physical mode and is not part of the interface
-    // the operating mode presents: ACCRSTN alone is what a consumer drives, and
-    // it is what the arch wires to this leaf. Do not add RSTN here.
+    // This bank takes .R(ACCRSTN), not RSTN like the others. dsp4_top.v clears
+    // the P register on ACCRSTN alone (l_rst_n_acc = ACCRSTN since ffb 6f731b2,
+    // matching the turnkey netlist), and the arch wires ph_ff_acc.LR from
+    // accrstn alone in the physical mode as well. Do not add RSTN here.
     // =======================================================================
     wire [63:0] alu_out;
     wire [3:0]  alu_co;
