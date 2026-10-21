@@ -1,14 +1,11 @@
-# dspv4_preadd_adreg_rst -- a RESETTABLE AD register must NOT be absorbed.
+# dspv4_preadd_adreg_rst -- AD registers with a reset are ABSORBED.
 #
-# This is a guard test. It fails if the AD match is widened back to $sdff, or
-# if the RSTN check in emit() is dropped. The AD bank resets from the cell-wide
-# RSTN, which this path never wires, so absorbing a resettable flop loses the
-# reset and computes wrong values after it -- while synthesising, packing and
-# routing perfectly. The only visible symptom is the value, which is why the
-# structure is pinned here.
+# The AD bank resets from the cell-wide RSTN, like every operand bank, so a
+# resettable pre-adder register belongs inside. The checks below pin both the
+# cells and the reset wiring: an AD bank whose R is tied off still counts as
+# one QL_DSP4_AD_DFFR_32, and only the R connection shows the reset survived.
 #
-# The log assertion in tests/Makefile is the other half: the mode must be plain
-# MULT, not any PREADD_* word.
+# The log assertion in tests/Makefile is the other half: four PREADD words.
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
@@ -24,18 +21,24 @@ $PASS_NAME -family qlf_k6n10f -top dspv4_preadd_adreg_rst -dspv4 -no_abc9 -lib_p
 
 yosys cd dspv4_preadd_adreg_rst
 check -assert
-# The multiply still reaches a DSP: the refusal degrades to the next smaller
-# shape, it does not push the whole thing into soft logic.
-select -assert-count 1 t:QL_DSP4_MULT
-# The AD bank is NOT used. That is the refusal this test exists to pin.
-select -assert-count 0 t:QL_DSP4_AD_DFFR_32
-# With the AD register left outside the pre-adder cannot be inferred either,
-# so the addition stays in fabric.
-select -assert-count 0 t:QL_DSP4_PREADD
-select -assert-min 1 t:adder_carry
-# The flop is then an ordinary operand register, and the A bank CAN hold it
-# because it has a reset. So it still moves inside -- the refusal costs the
-# pre-adder, not the register.
-select -assert-count 1 t:QL_DSP4_A2_DFFRE_32
-select -assert-count 0 t:dffre
+# Four pre-adders, four AD banks, and no carry chain left in fabric.
+select -assert-count 4 t:QL_DSP4_PREADD
+select -assert-count 4 t:QL_DSP4_MULT
+select -assert-count 4 t:QL_DSP4_AD_DFFR_32
+select -assert-count 0 t:adder_carry
+# ch's D and B registers share the AD register's reset, so they come inside.
+select -assert-count 1 t:QL_DSP4_D_DFFRE_27
+select -assert-count 1 t:QL_DSP4_B2_DFFRE_18
+select -assert-count 1 t:QL_DSP4_ACC_DFFRE_64
 select -assert-count 0 t:sdffre
+select -assert-count 0 t:dffre
+# The reset reached the banks. lo, ch and pr reset on rstn directly.
+select -assert-count 3 w:rstn %co:+\[R\] t:QL_DSP4_AD_DFFR_32 %i
+select -assert-count 1 w:rstn %co:+\[R\] t:QL_DSP4_D_DFFRE_27 %i
+select -assert-count 1 w:rstn %co:+\[R\] t:QL_DSP4_B2_DFFRE_18 %i
+# hi resets on rst, active high, so its AD bank reads rst through one
+# inverter: never rst itself, which would reset on the wrong level.
+select -assert-count 0 w:rst %co:+\[R\] t:QL_DSP4_AD_DFFR_32 %i
+select -assert-count 1 w:rst %co:+\[A\] t:\$lut %i %co:+\[Y\] w:* %i %co:+\[R\] t:QL_DSP4_AD_DFFR_32 %i
+# pr's P register keeps its own reset on ACCRSTN, apart from RSTN.
+select -assert-count 1 w:rst2n %co:+\[R\] t:QL_DSP4_ACC_DFFRE_64 %i

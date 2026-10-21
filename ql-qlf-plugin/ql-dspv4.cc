@@ -978,6 +978,8 @@ struct QlDspV4Pass : public Pass {
                          });
 
         const char *preadd_refusal = nullptr;
+        // Why a two-deep chain stayed on the one-stage D side, when it did.
+        const char *chain_kept_on_d = nullptr;
         for (auto &candidate : preadd_candidates) {
             RTLIL::Cell *preadd = candidate.first;
             bool sum_on_a = candidate.second;
@@ -1057,20 +1059,45 @@ struct QlDspV4Pass : public Pass {
                 int sum_width = preadder_sum_width(preadd);
 
                 // $add is commutative, so either operand can take the D port.
-                // Port widths differ per path, so the orientation is chosen.
+                // The two sides differ in width and in depth -- D is 27 bits
+                // and one register stage, X is the A or B path with two -- so
+                // the orientation is chosen: the one that fits, and of two that
+                // fit, the one that absorbs more register stages. A tie keeps
+                // the RTL's order.
+                //
+                // A subtract never swaps. The hardware computes D - X and has
+                // no X - D (ffb preadder.v:21), so a swap would flip the sign.
                 SigSpec d_operand, x_operand;
                 bool d_operand_signed = false, x_operand_signed = false;
                 auto orient = [&](int x_port) {
-                    d_operand = first_addend;
-                    d_operand_signed = first_addend_signed;
-                    x_operand = second_addend;
-                    x_operand_signed = second_addend_signed;
-                    if (!preadd_is_sub &&
-                        (!fits(GetSize(x_operand), x_operand_signed, x_port) || !fits(GetSize(d_operand), d_operand_signed, DSPV4_D_WIDTH))) {
-                        std::swap(d_operand, x_operand);
-                        std::swap(d_operand_signed, x_operand_signed);
-                    }
-                    return fits(GetSize(x_operand), x_operand_signed, x_port) && fits(GetSize(d_operand), d_operand_signed, DSPV4_D_WIDTH);
+                    auto sides_fit = [&](const SigSpec &d, bool d_sgn, const SigSpec &x, bool x_sgn) {
+                        return fits(GetSize(d), d_sgn, DSPV4_D_WIDTH) && fits(GetSize(x), x_sgn, x_port);
+                    };
+                    auto stages_absorbed = [&](const SigSpec &d, bool d_sgn, const SigSpec &x, bool x_sgn) {
+                        return register_stages(d, d_sgn, DSPV4_MAX_D_STAGES) + register_stages(x, x_sgn, DSPV4_MAX_OPERAND_STAGES);
+                    };
+                    bool written_fits = sides_fit(first_addend, first_addend_signed, second_addend, second_addend_signed);
+                    bool swapped_fits = sides_fit(second_addend, second_addend_signed, first_addend, first_addend_signed);
+                    bool swapped_absorbs_more = stages_absorbed(second_addend, second_addend_signed, first_addend, first_addend_signed) >
+                                                stages_absorbed(first_addend, first_addend_signed, second_addend, second_addend_signed);
+                    bool swap = !preadd_is_sub && swapped_fits && (!written_fits || swapped_absorbs_more);
+
+                    chain_kept_on_d = nullptr;
+                    if (written_fits && !swap && swapped_absorbs_more)
+                        chain_kept_on_d = preadd_is_sub ? "a subtract cannot swap its two-deep register chain off D, "
+                                                          "which holds one stage (the DSP has D - X, not X - D)"
+                                                        : "the two-deep register chain stays on D: the other operand "
+                                                          "does not fit the port it would move to";
+                    if (written_fits && swap)
+                        log_debug("  %s: pre-adder operands swapped -- the deeper register chain goes on the side with two "
+                                  "stages, D has one\n",
+                                  log_id(st.mul));
+
+                    d_operand = swap ? second_addend : first_addend;
+                    d_operand_signed = swap ? second_addend_signed : first_addend_signed;
+                    x_operand = swap ? first_addend : second_addend;
+                    x_operand_signed = swap ? first_addend_signed : second_addend_signed;
+                    return swap ? swapped_fits : written_fits;
                 };
 
                 // The mode name is (path, direction, back-end). The back-end is
@@ -1132,6 +1159,8 @@ struct QlDspV4Pass : public Pass {
         }
         if (padd_cell == nullptr && preadd_refusal != nullptr)
             absorb_stall[preadd_refusal]++;
+        if (padd_cell != nullptr && chain_kept_on_d != nullptr)
+            note_stall(st.mul, chain_kept_on_d);
 
         bool direct = fits(GetSize(ma), a_signed, DSPV4_A_WIDTH) && fits(GetSize(mb), b_signed, DSPV4_B_WIDTH);
         bool swapped = fits(GetSize(mb), b_signed, DSPV4_A_WIDTH) && fits(GetSize(ma), a_signed, DSPV4_B_WIDTH);
@@ -1271,8 +1300,9 @@ struct QlDspV4Pass : public Pass {
             ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "A", st.mul);
             cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "B", st.mul);
             // The D port exists only when the pre-adder folded. Its bank is one
-            // stage deep, so a design that registers D more deeply keeps the
-            // surplus in fabric -- the same rule C already follows.
+            // stage deep. An add has already swapped a deeper chain onto the
+            // two-stage side; what is still deeper here keeps the surplus in
+            // fabric -- the same rule C already follows.
             if (padd_cell != nullptr)
                 cd = collect_flops(module, md, DSPV4_MAX_D_STAGES, seed_clk, seed_rst, seed_rst_inv, seeded, "D", st.mul);
             if (c_cell != nullptr) {
@@ -1413,67 +1443,76 @@ struct QlDspV4Pass : public Pass {
         // wire for P and inverters for the enables, which would be left behind
         // as orphans. opt_clean sweeps them, but -no_opt does not.
         //
-        // QL_DSP4_AD_DFFR_32 is (D, R, clk): R is the cell-wide RSTN rather
-        // than a pin of its own, and there is no enable. So an RSTN another
-        // absorbed register has already pinned would reset a flop the RTL
-        // never resets -- silently, since the netlist still packs and routes.
+        // QL_DSP4_AD_DFFR_32 is (D, R, clk): R is the cell-wide sync reset
+        // RSTN, shared with the A, B, C, D and M banks (ffb preadd_path.v:123),
+        // and there is no enable. So the AD flop's reset -- or its lack of one
+        // -- is RSTN for the whole cell, and every other register on RSTN has to
+        // reset the same way. One that does not would be reset on a signal, or
+        // a level, its RTL never asked for -- silently, since the netlist still
+        // packs and routes. The P bank is not on RSTN; it has ACCRSTN.
+        //
         // Refusing costs the pre-adder, not the register: the matcher then
         // offers the same multiply without this flop, and the flop is absorbed
         // as an ordinary operand register instead.
         if (ad_flop_cell != nullptr) {
-            bool any_chain = na > 0 || nb > 0 || nc > 0 || nd > 0;
-            const FlopChain &any = na > 0 ? ca : (nb > 0 ? cb : (nc > 0 ? cc : cd));
-            bool rstn_taken = (any_chain && any.arst != SigSpec(State::S1)) || (mff_cell != nullptr && mff_cell->hasPort(ID(SRST)));
+            SigSpec ad_rst(State::S1);
+            bool ad_rst_inv = false;
+            if (ad_flop_cell->hasPort(ID(SRST))) {
+                ad_rst = ad_flop_cell->getPort(ID(SRST));
+                ad_rst_inv = ad_flop_cell->getParam(ID(SRST_POLARITY)).as_bool();
+            }
+            auto resets_like_ad = [&](const SigSpec &rst, bool rst_inv) { return same(rst, ad_rst) && rst_inv == ad_rst_inv; };
+
+            SigSpec m_rst(State::S1);
+            bool m_rst_inv = false;
+            if (mff_cell != nullptr && mff_cell->hasPort(ID(SRST))) {
+                m_rst = mff_cell->getPort(ID(SRST));
+                m_rst_inv = mff_cell->getParam(ID(SRST_POLARITY)).as_bool();
+            }
+
+            const char *refusal = nullptr;
+            if (ad_flop_cell->hasPort(ID(SRST)) && !ad_flop_cell->getParam(ID(SRST_VALUE)).is_fully_zero())
+                refusal = "it resets to a non-zero value, and the bank resets to zero";
+            // The M register cannot be given up the way a chain can: the adder
+            // reads its Q, so leaving it behind refuses the whole fusion.
+            else if (mff_cell != nullptr && !resets_like_ad(m_rst, m_rst_inv))
+                refusal = "the M register resets differently, and both banks take RSTN";
+
+            // A chain that resets differently can be given up instead. Those
+            // registers go back to fabric, which is where they end up anyway
+            // when we refuse the pre-adder and the matcher re-offers without
+            // it -- so this costs no flops and keeps the adder out of fabric.
+            if (refusal == nullptr)
+                for (auto *n : {&na, &nb, &nc, &nd}) {
+                    const FlopChain &c = n == &na ? ca : (n == &nb ? cb : (n == &nc ? cc : cd));
+                    if (*n > 0 && !resets_like_ad(c.arst, c.arst_inv)) {
+                        log_debug("  %s: giving up a register chain so the "
+                                  "pre-adder can keep the AD bank -- it resets "
+                                  "differently, and both take RSTN\n",
+                                  log_id(st.mul));
+                        *n = 0;
+                    }
+                }
+
             SigSpec cell_clk;
-            if (any_chain)
-                cell_clk = any.clk;
+            if (na > 0 || nb > 0 || nc > 0 || nd > 0)
+                cell_clk = na > 0 ? ca.clk : (nb > 0 ? cb.clk : (nc > 0 ? cc.clk : cd.clk));
             else if (mff_cell != nullptr)
                 cell_clk = mff_cell->getPort(ID(CLK));
             else if (ff_cell != nullptr)
                 cell_clk = ff_cell->getPort(ID(CLK));
 
-            // A chain holding RSTN can be given up instead. Those registers
-            // go back to fabric, which is where they end up anyway when we
-            // refuse the pre-adder and the matcher re-offers without it -- so
-            // this costs no flops and keeps the adder out of fabric. The M
-            // register's reset cannot be given up the same way, because it is
-            // not a chain we can empty.
-            bool mff_holds_rstn = mff_cell != nullptr && mff_cell->hasPort(ID(SRST));
-            if (rstn_taken && !mff_holds_rstn) {
-                for (auto *n : {&na, &nb, &nc, &nd}) {
-                    const FlopChain &c = n == &na ? ca : (n == &nb ? cb : (n == &nc ? cc : cd));
-                    if (*n > 0 && c.arst != SigSpec(State::S1)) {
-                        log_debug("  %s: giving up a register chain so the "
-                                  "pre-adder can keep the AD bank -- it held "
-                                  "RSTN, which the AD bank shares\n",
-                                  log_id(st.mul));
-                        *n = 0;
-                    }
-                }
-                any_chain = na > 0 || nb > 0 || nc > 0 || nd > 0;
-                rstn_taken = false;
-                if (any_chain) {
-                    const FlopChain &now = na > 0 ? ca : (nb > 0 ? cb : (nc > 0 ? cc : cd));
-                    cell_clk = now.clk;
-                } else if (mff_cell == nullptr && ff_cell == nullptr) {
-                    cell_clk = SigSpec();
-                }
-            }
-
-            const char *refusal = nullptr;
-            if (rstn_taken)
-                refusal = "another absorbed register drives RSTN, which the AD bank shares";
-            else if (GetSize(cell_clk) != 0 && !same(cell_clk, ad_flop_cell->getPort(ID(CLK))))
+            if (refusal == nullptr && GetSize(cell_clk) != 0 && !same(cell_clk, ad_flop_cell->getPort(ID(CLK))))
                 refusal = "its clock differs from the rest of the cell's";
-            else if (dspv4_flop_attrs_block(ad_flop_cell))
+            if (refusal == nullptr && dspv4_flop_attrs_block(ad_flop_cell))
                 refusal = "it carries keep or a non-zero init";
-            else if (dspv4_sig_kept(ad_flop_cell->getPort(ID::Q)))
+            if (refusal == nullptr && dspv4_sig_kept(ad_flop_cell->getPort(ID::Q)))
                 refusal = "its output is marked keep";
             if (refusal != nullptr) {
                 log_debug("  %s: not fused -- the pre-adder's output register "
                           "cannot go in the AD bank (%s)\n",
                           log_id(st.mul), refusal);
-                note_stall(st.mul, "pre-adder output register cannot go in the AD bank");
+                note_stall(st.mul, std::string("pre-adder output register cannot go in the AD bank: ") + refusal);
                 module->remove(cell);
                 return false;
             }
@@ -1624,14 +1663,18 @@ struct QlDspV4Pass : public Pass {
 
         // The AD bank, last because it is the one register that cannot bring
         // its own controls. QL_DSP4_AD_DFFR_32 is (D, R, clk): R is the
-        // cell-wide RSTN rather than a pin of its own, and there is no enable.
-        // So an RSTN another absorbed register has already pinned would reset a
-        // flop the RTL never resets -- silently, since the netlist still packs
-        // and routes. Refusing costs the pre-adder, not the register: the
-        // matcher then offers the same multiply without this flop, and the flop
-        // is absorbed as an ordinary operand register instead.
-        if (ad_flop_cell != nullptr)
+        // cell-wide RSTN, and there is no enable. Every chain and the M
+        // register were made to reset the same way above, so RSTN is still
+        // tied off here only when the AD flop is the one register on it.
+        if (ad_flop_cell != nullptr) {
             cell->setPort(ID(CLK), ad_flop_cell->getPort(ID(CLK)));
+            if (ad_flop_cell->hasPort(ID(SRST)) && cell->getPort(ID(RSTN)) == SigSpec(State::S1)) {
+                SigSpec srst = ad_flop_cell->getPort(ID(SRST));
+                // RSTN is active-low; $sdff's polarity says how SRST reads.
+                bool active_high = ad_flop_cell->getParam(ID(SRST_POLARITY)).as_bool();
+                cell->setPort(ID(RSTN), resolve(module, srst, active_high));
+            }
+        }
 
         // Counted here rather than where they were decided: everything above
         // can still refuse, and a mode or a register counted for a cell that
@@ -2473,17 +2516,17 @@ struct QlDspV4Pass : public Pass {
             chain.stage_d.push_back(d);
             chain.source = d;
 
-            // A resettable flop holding an add or subtract is a pre-adder we
-            // could not fold. The AD bank has no reset pin of its own, so the
-            // pattern only matches a plain $dff and this shape never reaches
-            // the refusal above. Say so, or the only symptom is a pre-adder
-            // quietly missing from the summary.
+            // An enabled flop holding an add or subtract is a pre-adder we
+            // could not fold. The AD bank has no enable (ffb preadd_path.v
+            // ties E to 1), so the pattern only matches $dff and $sdff and
+            // this shape never reaches the AD refusals in emit(). Say so, or
+            // the only symptom is a pre-adder quietly missing from the summary.
             for (auto ff : stage) {
-                if (ff->type.in(ID($dff)))
+                if (ff->type.in(ID($dff), ID($sdff)))
                     continue;
                 auto drv = bit_driver.find(sigmapper(ff->getPort(ID::D))[0]);
                 if (drv != bit_driver.end() && drv->second->type.in(ID($add), ID($sub)))
-                    absorb_stall["pre-adder output register has a reset, which the AD bank has no pin for"]++;
+                    absorb_stall["pre-adder output register has a clock enable, which the AD bank does not have"]++;
             }
         }
         // Only a stall if another full stage was waiting behind the last one.
@@ -2502,6 +2545,47 @@ struct QlDspV4Pass : public Pass {
 #undef STALL
 #undef WALK_END
         return chain;
+    }
+
+    // Register stages behind an operand, up to `limit`: every bit from a
+    // rising-edge flop, and every flop in the chain on one clock, enable and
+    // reset -- the rules collect_flops walks by. Only used to choose which
+    // pre-adder input an operand takes; collect_flops still decides what is
+    // absorbed, with all of its checks.
+    int register_stages(SigSpec sig, bool is_signed, int limit)
+    {
+        sig = dspv4_strip_extension(sig, is_signed);
+        RTLIL::Cell *first = nullptr;
+        int stages = 0;
+        while (stages < limit) {
+            SigSpec d;
+            for (auto bit : sigmapper(sig)) {
+                auto it = flop_bit.find(bit);
+                if (it == flop_bit.end())
+                    return stages;
+                RTLIL::Cell *ff = it->second.first;
+                if (first == nullptr)
+                    first = ff;
+                if (!ff->getParam(ID(CLK_POLARITY)).as_bool() || !same_controls(first, ff))
+                    return stages;
+                d.append(ff->getPort(ID::D)[it->second.second]);
+            }
+            stages++;
+            sig = d;
+        }
+        return stages;
+    }
+
+    // Two flops share a clock, an enable and a reset, with the same polarities.
+    static bool same_controls(RTLIL::Cell *a, RTLIL::Cell *b)
+    {
+        for (auto port : {ID(CLK), ID(EN), ID(SRST)})
+            if (a->hasPort(port) != b->hasPort(port) || (a->hasPort(port) && a->getPort(port) != b->getPort(port)))
+                return false;
+        for (auto param : {ID(EN_POLARITY), ID(SRST_POLARITY)})
+            if (a->hasParam(param) != b->hasParam(param) || (a->hasParam(param) && a->getParam(param) != b->getParam(param)))
+                return false;
+        return true;
     }
 
     // Readers of a signal, from the per-module tally built in index_module().
