@@ -608,10 +608,8 @@ struct QlDspV4Pass : public Pass {
         // RTL's bracketing, so `(a*b + p) + c` puts p on `add` and
         // `p + (a*b + c)` puts it on `acc`. Both are A*B + P + C; the C
         // selection below reads which adder is free from these two flags.
-        bool feedback_on_add = st.ff != nullptr && st.add != nullptr &&
-                               st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
-        bool feedback_on_acc = st.ff != nullptr && st.acc != nullptr &&
-                               st.ff->getPort(ID::Q) == st.acc->getPort(st.acc_ba);
+        bool feedback_on_add = st.ff != nullptr && st.add != nullptr && st.ff->getPort(ID::Q) == st.add->getPort(st.add_ba);
+        bool feedback_on_acc = st.ff != nullptr && st.acc != nullptr && st.ff->getPort(ID::Q) == st.acc->getPort(st.acc_ba);
         bool feedback = feedback_on_add || feedback_on_acc;
 
         const char *mode_name = classify(pm, feedback, why);
@@ -737,9 +735,7 @@ struct QlDspV4Pass : public Pass {
         //
         // Only without an adder: with one, both stages sit downstream of the ALU
         // and M is upstream of it, so only P is reachable.
-        RTLIL::Cell *ff2_cell = (st.add == nullptr && acc_cell == nullptr && ff_cell != nullptr && st.ff2 != nullptr)
-                                  ? st.ff2
-                                  : nullptr;
+        RTLIL::Cell *ff2_cell = (st.add == nullptr && acc_cell == nullptr && ff_cell != nullptr && st.ff2 != nullptr) ? st.ff2 : nullptr;
         if (ff2_cell != nullptr) {
             bool q_signed = out_cell->getParam(ID::A_SIGNED).as_bool() && out_cell->getParam(ID::B_SIGNED).as_bool();
             if (!dspv4_extends_cleanly(sigmapper(ff2_cell->getPort(ID::D)), sigmapper(ff_cell->getPort(ID::Q)), q_signed)) {
@@ -906,8 +902,7 @@ struct QlDspV4Pass : public Pass {
         // 64 bits and sign-extends, so the padding is what it would add itself.
         if (st.add != nullptr) {
             SigSpec op = sigmapper(st.add->getPort(st.add_mul_port));
-            SigSpec src =
-              sigmapper(st.mff != nullptr && mff_cell != nullptr ? mff_cell->getPort(ID::Q) : st.mul->getPort(ID::Y));
+            SigSpec src = sigmapper(st.mff != nullptr && mff_cell != nullptr ? mff_cell->getPort(ID::Q) : st.mul->getPort(ID::Y));
             bool sgn = st.mul->getParam(ID::A_SIGNED).as_bool() && st.mul->getParam(ID::B_SIGNED).as_bool();
             SigBit pad = sgn ? src[GetSize(src) - 1] : SigBit(State::S0);
             for (int i = GetSize(src); i < GetSize(op); i++)
@@ -1063,8 +1058,7 @@ struct QlDspV4Pass : public Pass {
             // declared at: a 32-bit flop holding the sum of two 16-bit numbers
             // still only carries 17 bits of value, and a port that reads all
             // 17 loses nothing.
-            else if (ad_flop != nullptr &&
-                     GetSize(sum_on_a ? ma : mb) < std::max(signed_width(first_addend), signed_width(second_addend)) + 1)
+            else if (ad_flop != nullptr && GetSize(sum_on_a ? ma : mb) < std::max(signed_width(first_addend), signed_width(second_addend)) + 1)
                 unsafe = "the multiply reads fewer bits of its registered sum than it produces";
 
             // An unsigned subtract wraps at its own width where the DSP's
@@ -1223,8 +1217,8 @@ struct QlDspV4Pass : public Pass {
             bool unsigned_operand = !a_signed || !b_signed;
             log_debug("  %s: left soft -- %dx%d (%s x %s) does not fit the "
                       "%dx%d ports%s\n",
-                      log_id(st.mul), GetSize(ma), GetSize(mb), a_signed ? "signed" : "unsigned",
-                      b_signed ? "signed" : "unsigned", DSPV4_A_WIDTH, DSPV4_B_WIDTH,
+                      log_id(st.mul), GetSize(ma), GetSize(mb), a_signed ? "signed" : "unsigned", b_signed ? "signed" : "unsigned", DSPV4_A_WIDTH,
+                      DSPV4_B_WIDTH,
                       unsigned_operand ? "; the multiplier is signed, so an unsigned operand "
                                          "needs a spare bit"
                                        : "");
