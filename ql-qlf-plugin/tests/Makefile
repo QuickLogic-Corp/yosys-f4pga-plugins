@@ -70,7 +70,6 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_regs \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
-	qlf_k6n10f/dspv4_preadd_regs_refused \
 	qlf_k6n10f/dspv4_leftover_reasons \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
@@ -203,32 +202,6 @@ qlf_k6n10f-dspv4_preadd_adreg_evict_verify = grep -q 'modes inferred: PREADD_A_M
 qlf_k6n10f-dspv4_preadd_adreg_evict_verify += && grep -q '5 x  B register chain given up: it resets differently from the AD register, and both take RSTN' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
 qlf_k6n10f-dspv4_preadd_adreg_evict_verify += && grep -q '1 x  the cell took a pre-adder output register instead' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
 qlf_k6n10f-dspv4_preadd_adreg_evict_verify += && ! grep -q 'cannot go in the AD bank' qlf_k6n10f/dspv4_preadd_adreg_evict/dspv4_preadd_adreg_evict.log
-# Each refusal by its own reason, so one block that starts folding cannot
-# hide behind another that stops.
-qlf_k6n10f-dspv4_preadd_regs_refused_verify = grep -q 'modes inferred: MULT x8, PREADD_A_MULT_B x3, PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q '2 x  pre-adder output register has a clock enable, which the AD bank does not have' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: it resets to a non-zero value' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-# mr's AD register does go in the AD bank -- the offer with M was refused, the
-# one without M folded -- so its refusal must not reach the summary.
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && ! grep -q 'cannot go in the AD bank: the M register resets differently' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-# np's and sp's result registers stay out for their own reset values, not for
-# an AD register the cell never took.
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q '2 x  it resets to a non-zero value, and the P bank resets to zero' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && ! grep -q 'the cell took a pre-adder output register instead' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-# Summary lines come from the folds that happened, not from refused offers:
-# sp's refused offer stalled its operand chain, and the walk counts are
-# the winning folds' own.
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && ! grep -q 'clock/reset/enable disagree with the rest of the cell' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'walks that ended with nothing left to take (not stalls): 15 with no register on the operand, 6 having absorbed every stage present' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: its clock differs from the rest of the cell' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  pre-adder output register cannot go in the AD bank: it carries keep or a non-zero init' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  driver is an async-reset flop' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  a subtract cannot swap its two-deep register chain off D' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q 'x  the two-deep register chain stays on D: the other operand does not fit the port it would move to' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-# ck's cell gives up its B chain for the other clock, and says so. ki's AD
-# offers gave up a chain and were then refused, so no eviction line may appear.
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && grep -q '1 x  B register chain given up: its clock or reset differs from the A chain' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
-qlf_k6n10f-dspv4_preadd_regs_refused_verify += && ! grep -q 'resets differently from the AD register' qlf_k6n10f/dspv4_preadd_regs_refused/dspv4_preadd_regs_refused.log
 
 # Every cell a refusal leaves in fabric is named, once, with its reason --
 # counted after the run, so a cell a later offer absorbed is never named.

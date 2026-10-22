@@ -10,8 +10,9 @@
 //   ch  D and B registers on the same reset join it in the cell
 //   pr  a P register on a different reset: P is on ACCRSTN, not RSTN
 //
-// The shapes that must be refused are in dspv4_preadd_regs_refused, and the
-// chains that are given up are in dspv4_preadd_adreg_evict.
+// The shapes that must be refused are in the preadd_regs_refused module of
+// dspv4_leftover_reasons, and the chains that are given up are in
+// dspv4_preadd_adreg_evict.
 module dspv4_preadd_adreg_rst (input clk, rstn, rst, rst2n,
                                input signed [15:0] lo_d, lo_a, lo_b, output signed [32:0] lo_p,
                                input signed [15:0] hi_d, hi_a, hi_b, output signed [32:0] hi_p,
