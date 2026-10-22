@@ -1,8 +1,8 @@
 # dspv4_leftover_reasons -- every cell the DSP cannot take is named in the
 # summary with the true reason, and only if it stayed in fabric.
 #
-# Ten shapes, synthesised one at a time so each line is checked on its own
-# log. A refusal belongs to one offer; a later offer can still absorb the cell
+# Ten shapes and one twelve-block design, synthesised one at a time so each
+# line is checked on its own log. A refusal belongs to one offer; a later offer can still absorb the cell
 # it named, so each shape asserts both the cells left and the line.
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
@@ -96,3 +96,71 @@ synth_one pd
 log_has pd "modes inferred: MULT_SUB_C x1"
 select -assert-count 17 t:adder_carry
 log_has pd "1 x  pre-adder: no control word for it with this ALU direction"
+
+# preadd_regs_refused -- twelve pre-adder register refusals in one design.
+# Counts are totals over the twelve blocks. The log checks name each
+# refusal, so a block that starts folding cannot hide behind another that
+# stops.
+synth_one preadd_regs_refused
+# Every block still multiplies in a DSP.
+select -assert-count 12 t:QL_DSP4_MULT
+# en, re, nz, as, ck, ki and np keep their pre-adder in fabric, 17 carries each.
+# mr folds its pre-adder but not its final 34-bit add. sub, wd and me fold
+# theirs.
+select -assert-count 3 t:QL_DSP4_PREADD
+select -assert-count 1 t:QL_DSP4_PRESUB
+select -assert-count 153 t:adder_carry
+# Only mr fills an AD bank, and then without its M register: the two reset
+# differently and both take RSTN. Its product register goes to P instead,
+# whose ACCRSTN is a pin of its own.
+select -assert-count 1 t:QL_DSP4_AD_DFFR_32
+select -assert-count 0 t:QL_DSP4_M_DFFR_50
+select -assert-count 1 t:QL_DSP4_ACC_DFFRE_64
+select -assert-count 1 w:rstn %co:+\[R\] t:QL_DSP4_AD_DFFR_32 %i
+select -assert-count 1 w:rst2n %co:+\[R\] t:QL_DSP4_ACC_DFFRE_64 %i
+# en and re's registers have an enable, so they land in A2 as ordinary
+# operand registers, with the enable on CEA. ck's lands there too, once the
+# cell gives up the B register on the other clock.
+select -assert-count 4 t:QL_DSP4_A2_DFFRE_32
+select -assert-count 1 w:en_en %co:+\[E\] t:QL_DSP4_A2_DFFRE_32 %i
+select -assert-count 1 w:re_en %co:+\[E\] t:QL_DSP4_A2_DFFRE_32 %i
+# ki's B register is in its cell's B bank: the AD offers that gave it up were
+# refused, and the plain multiply that folded kept it.
+select -assert-count 1 t:QL_DSP4_B2_DFFRE_18
+# sub, wd and me keep their chain on D: one stage in, the outer one outside.
+select -assert-count 3 t:QL_DSP4_D_DFFRE_27
+select -assert-count 1 w:me_en1 %co:+\[E\] t:QL_DSP4_D_DFFRE_27 %i
+select -assert-count 0 t:QL_DSP4_A1_DFFRE_32
+# Fabric flops: nz (17, resets to 5), the outer stages of sub, wd and me
+# (16 each), ck's B register (16), ki's AD register (17, powers up at 1),
+# np's AD and result registers (17 and 33, reset to 5 and 7), sp's result
+# register (32, reset to 7), and as (17, async reset). sp's operand register
+# goes to A2, one of the four above.
+select -assert-count 180 t:sdffre
+select -assert-count 17 t:dffre
+# Each refusal by its own reason, so one block that starts folding cannot
+# hide behind another that stops.
+log_has preadd_regs_refused "modes inferred: MULT x8, PREADD_A_MULT_B x3, PREADD_A_SUB_B x1"
+log_has preadd_regs_refused "2 x  pre-adder output register has a clock enable, which the AD bank does not have"
+log_has preadd_regs_refused "x  pre-adder output register cannot go in the AD bank: it resets to a non-zero value"
+# mr's AD register does go in the AD bank -- the offer with M was refused, the
+# one without M folded -- so its refusal must not reach the summary.
+log_lacks preadd_regs_refused "cannot go in the AD bank: the M register resets differently"
+# np's and sp's result registers stay out for their own reset values, not for
+# an AD register the cell never took.
+log_has preadd_regs_refused "2 x  it resets to a non-zero value, and the P bank resets to zero"
+log_lacks preadd_regs_refused "the cell took a pre-adder output register instead"
+# Summary lines come from the folds that happened, not from refused offers:
+# sp's refused offer stalled its operand chain, and the walk counts are
+# the winning folds' own.
+log_lacks preadd_regs_refused "clock/reset/enable disagree with the rest of the cell"
+log_has preadd_regs_refused "walks that ended with nothing left to take (not stalls): 15 with no register on the operand, 6 having absorbed every stage present"
+log_has preadd_regs_refused "x  pre-adder output register cannot go in the AD bank: its clock differs from the rest of the cell"
+log_has preadd_regs_refused "x  pre-adder output register cannot go in the AD bank: it carries keep or a non-zero init"
+log_has preadd_regs_refused "x  driver is an async-reset flop"
+log_has preadd_regs_refused "x  a subtract cannot swap its two-deep register chain off D"
+log_has preadd_regs_refused "x  the two-deep register chain stays on D: the other operand does not fit the port it would move to"
+# ck's cell gives up its B chain for the other clock, and says so. ki's AD
+# offers gave up a chain and were then refused, so no eviction line may appear.
+log_has preadd_regs_refused "1 x  B register chain given up: its clock or reset differs from the A chain"
+log_lacks preadd_regs_refused "resets differently from the AD register"
