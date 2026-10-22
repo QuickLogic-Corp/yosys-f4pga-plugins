@@ -1270,7 +1270,7 @@ module dsp4_top #(
   // The accumulator's local sync reset folds in the dedicated ACCRSTN: the P
   // register clears on either the local sync reset (RSTN) or ACCRSTN.
   wire l_rst_n_acc;
-  assign l_rst_n_acc = l_rst_n & ACCRSTN;
+  assign l_rst_n_acc = ACCRSTN;
 
   // P accumulator register — DFFE_SNR_ANR flop bank, gated by CEP.
   dff_bank #(
