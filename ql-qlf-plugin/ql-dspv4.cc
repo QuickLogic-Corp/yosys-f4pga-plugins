@@ -427,7 +427,9 @@ struct QlDspV4Pass : public Pass {
                 if (it == refused_output_reg.end())
                     continue;
                 std::string reason = it->second;
-                if (ad_rival.count(cell) && ad_reg_taken.count(ad_rival.at(cell)))
+                // A register with a blocker of its own keeps it; only the generic
+                // reason gives way to the AD register the cell took instead.
+                if (reason == NOT_OFFERED && ad_rival.count(cell) && ad_reg_taken.count(ad_rival.at(cell)))
                     reason = "the cell took a pre-adder output register instead";
                 output_reg_stall[reason]++;
                 log_debug("  %s.%s: output register left in fabric -- %s\n", log_id(module), log_id(cell), reason.c_str());
@@ -1556,8 +1558,11 @@ struct QlDspV4Pass : public Pass {
             else if (ff_cell != nullptr)
                 cell_clk = ff_cell->getPort(ID(CLK));
 
-            if (refusal == nullptr && GetSize(cell_clk) != 0 && !same(cell_clk, ad_flop_cell->getPort(ID(CLK))))
+            bool clock_clash = false;
+            if (refusal == nullptr && GetSize(cell_clk) != 0 && !same(cell_clk, ad_flop_cell->getPort(ID(CLK)))) {
                 refusal = "its clock differs from the rest of the cell's";
+                clock_clash = true;
+            }
             if (refusal == nullptr && dspv4_flop_attrs_block(ad_flop_cell))
                 refusal = "it carries keep or a non-zero init";
             if (refusal == nullptr && dspv4_sig_kept(ad_flop_cell->getPort(ID::Q)))
@@ -1568,7 +1573,10 @@ struct QlDspV4Pass : public Pass {
                           log_id(st.mul), refusal);
                 if (!refused_ad_reg.count(ad_flop_cell))
                     refused_ad_reg[ad_flop_cell] = refusal;
-                if (ff_cell != nullptr)
+                // Only a clock clash with the result register is solved by
+                // leaving that register out; the next offer then takes the AD
+                // register without it.
+                if (clock_clash && ff_cell != nullptr && !same(ff_cell->getPort(ID(CLK)), ad_flop_cell->getPort(ID(CLK))))
                     ad_rival[ff_cell] = ad_flop_cell;
                 module->remove(cell);
                 return false;
@@ -2709,6 +2717,10 @@ struct QlDspV4Pass : public Pass {
 
     // Why the P bank cannot hold the register on `result`. Each branch mirrors
     // one guard in the pattern, which drops a candidate without a word.
+    // The reason a result register gets when nothing about the register itself
+    // kept it out.
+    static constexpr const char *NOT_OFFERED = "the pattern did not offer it";
+
     std::string why_not_in_p(RTLIL::Cell *reg, const SigSpec &result)
     {
         if (!reg->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe)))
@@ -2745,7 +2757,7 @@ struct QlDspV4Pass : public Pass {
         SigSpec d = sigmapper(reg->getPort(ID::D));
         if (GetSize(d) < GetSize(res) || d.extract(0, GetSize(res)) != res)
             return "it registers the result mixed with other data";
-        return "the pattern did not offer it";
+        return NOT_OFFERED;
     }
 
     // Index a module once: which flop drives which value, and how many places
