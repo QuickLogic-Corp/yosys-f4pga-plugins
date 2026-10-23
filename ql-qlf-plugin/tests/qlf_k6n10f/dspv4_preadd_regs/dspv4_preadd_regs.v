@@ -1,6 +1,6 @@
 // Every pre-adder shape whose registers the DSP is expected to ABSORB.
 //
-// Four groups, folded into one design because they all assert the same
+// Six groups, folded into one design because they all assert the same
 // outcome: the pre-adder survives and no carry chain is left in fabric. The
 // shapes that must be REFUSED live in their own tests -- mixing the two here
 // would mean asserting totals, and a total cannot tell a fold that happened
@@ -8,8 +8,18 @@
 //
 //   ad_*  the pre-adder's output register, narrow and wide operands
 //   dr_*  D and AD banks at every depth from 0 to 2
-//   as_*  D deeper than A, so the banks absorb different amounts
+//   as_*  D deeper than A: the operands swap, so the two-deep chain takes A1
+//         and A2 and the one-deep one takes D
 //   en_*  clock enables, including one cell wanting more than the DSP routes
+//   bs_*  the swap on the B path: the two-deep chain takes B1 and B2
+//   ce_*  the swap with enables: the moved chain brings its enable to CEA,
+//         in a cell that still wants one enable more than the DSP routes
+//   ic_*  two two-deep chains, but ic_x's outer stage powers up at 5, which
+//         no bank holds: the order is chosen by what is really absorbed, so
+//         ic_y's chain takes A1 and A2
+//
+// D holds one stage and A or B hold two, so an add whose two-deep chain
+// arrives on D swaps its operands. dr_p2, dr_p5, as_p, bs_p, ce_p and ic_p do.
 module dspv4_preadd_regs (
     input clk,
     // AD register alone, narrow and wide.
@@ -30,12 +40,24 @@ module dspv4_preadd_regs (
     input en0, input signed [15:0] en_d0, en_a0, en_b0, output signed [32:0] en_p0,
     // Four distinct enables: one more than the DSP routes, so B is evicted.
     input en_d, input en_a, input en_b, input en_p,
-    input signed [15:0] en_d1, en_a1, en_b1, output reg signed [32:0] en_p1
+    input signed [15:0] en_d1, en_a1, en_b1, output reg signed [32:0] en_p1,
+    // Two-deep chain on the B-path pre-adder: the 24-bit multiplicand
+    // does not fit B, so the sum goes there.
+    input signed [7:0] bs_d, bs_a, input signed [23:0] bs_w, output signed [32:0] bs_p,
+    // Two-deep chain with its own enable, in a cell with four enables.
+    input ce_en_d, input ce_en_a, input ce_en_b, input ce_en_p,
+    input signed [15:0] ce_d, ce_a, ce_b, output reg signed [32:0] ce_p,
+    // Two-deep chains on both addends; ic_x's outer stage cannot go in.
+    input signed [15:0] ic_y, ic_x, ic_b, output signed [32:0] ic_p
 );
   reg signed [16:0] ad_ad, ad_wad, dr_ad3, dr_ad4, dr_ad5;
   reg signed [15:0] dr_d1s0, dr_d2s0, dr_d2s1, dr_d4s0, dr_d5s0, dr_d5s1;
   reg signed [15:0] as_ds0, as_ds1, as_as0;
   reg signed [15:0] en_d0q, en_d1q, en_a1q, en_b1q;
+  reg signed [7:0]  bs_q0, bs_q1;
+  reg signed [15:0] ce_dq0, ce_dq1, ce_aq, ce_bq;
+  reg signed [15:0] ic_y0, ic_y1, ic_x1;
+  reg signed [15:0] ic_x0 = 16'sd5;
 
   assign ad_p  = ad_ad * ad_b;
   assign ad_wp = ad_wad * ad_wb;
@@ -47,6 +69,8 @@ module dspv4_preadd_regs (
   assign dr_p5 = dr_ad5 * dr_b5;
   assign as_p  = (as_ds1 + as_as0) * as_b;
   assign en_p0 = (en_d0q + en_a0) * en_b0;
+  assign bs_p  = (bs_q1 + bs_a) * bs_w;
+  assign ic_p  = (ic_y1 + ic_x1) * ic_b;
 
   always @(posedge clk) begin
     ad_ad   <= ad_d + ad_a;
@@ -68,5 +92,16 @@ module dspv4_preadd_regs (
     if (en_a) en_a1q <= en_a1;
     if (en_b) en_b1q <= en_b1;
     if (en_p) en_p1  <= (en_d1q + en_a1q) * en_b1q;
+    bs_q0   <= bs_d;
+    bs_q1   <= bs_q0;
+    if (ce_en_d) ce_dq0 <= ce_d;
+    if (ce_en_d) ce_dq1 <= ce_dq0;
+    if (ce_en_a) ce_aq  <= ce_a;
+    if (ce_en_b) ce_bq  <= ce_b;
+    if (ce_en_p) ce_p   <= (ce_dq1 + ce_aq) * ce_bq;
+    ic_y0   <= ic_y;
+    ic_y1   <= ic_y0;
+    ic_x0   <= ic_x;
+    ic_x1   <= ic_x0;
   end
 endmodule

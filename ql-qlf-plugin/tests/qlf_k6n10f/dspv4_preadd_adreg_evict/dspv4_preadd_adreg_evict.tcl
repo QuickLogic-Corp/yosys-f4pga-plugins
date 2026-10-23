@@ -1,14 +1,10 @@
-# dspv4_preadd_adreg_evict -- the AD register is refused because ANOTHER
-# absorbed register drives the cell-wide RSTN.
+# dspv4_preadd_adreg_evict -- the AD register and another register in the cell
+# cannot share it, so that register is given up and the pre-adder kept.
 #
-# The $dff restriction in the pattern only covers a flop carrying its own
-# reset. RSTN is shared with the operand banks, so an operand register with a
-# reset would reset the AD bank as well -- and this RTL never asks for that.
-# Without the check the design synthesises, packs and routes, and only the
-# values after a reset pulse are wrong.
-#
-# The log line names the refusal, so a future change that removes the check
-# fails here loudly.
+# RSTN is shared by the AD and operand banks. Absorbing both registers would
+# reset one of them on a signal, or a level, its RTL never asked for. Without
+# the check the design synthesises, packs and routes, and only the values
+# after a reset pulse are wrong.
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
@@ -24,17 +20,21 @@ $PASS_NAME -family qlf_k6n10f -top dspv4_preadd_adreg_evict -dspv4 -no_abc9 -lib
 
 yosys cd dspv4_preadd_adreg_evict
 check -assert
-# The AD flop is then an ordinary A-operand register and still moves inside.
-# The resettable B register is what loses out: with A resetless the two chains
-# disagree, and B is the narrower port, so B is the one left outside.
-# The cell gives up the B register chain so the pre-adder can keep the AD
-# bank. Those 16 flops go to fabric -- which is where they ended up anyway
-# when we refused the pre-adder and the matcher re-offered without it.
-select -assert-count 1 t:QL_DSP4_PREADD
-select -assert-count 1 t:QL_DSP4_MULT
-select -assert-count 1 t:QL_DSP4_AD_DFFR_32
-# Keeping the pre-adder is what removes the carry chain: 17 before.
+# Every block keeps its pre-adder and its AD register.
+select -assert-count 6 t:QL_DSP4_PREADD
+select -assert-count 6 t:QL_DSP4_MULT
+select -assert-count 6 t:QL_DSP4_AD_DFFR_32
+# Keeping the pre-adder is what removes the carry chain: 17 per block before.
 select -assert-count 0 t:adder_carry
-# The evicted chain, now in fabric.
-select -assert-count 16 t:sdffre
+# The five evicted B chains (16 each), and cr's and cn's result registers
+# (33 each), now in fabric. None reached a B or P bank.
+select -assert-count 146 t:sdffre
+select -assert-count 0 t:QL_DSP4_B1_DFFRE_18
+select -assert-count 0 t:QL_DSP4_B2_DFFRE_18
 select -assert-count 0 t:QL_DSP4_A2_DFFRE_32
+select -assert-count 0 t:QL_DSP4_ACC_DFFRE_64
+# rb's AD register is resetless, so its cell's RSTN stays tied off; the
+# other five reset their AD bank on rstn.
+select -assert-count 5 w:rstn %co:+\[R\] t:QL_DSP4_AD_DFFR_32 %i
+# cr's and cn's AD banks run on clk2, their own clock.
+select -assert-count 2 w:clk2 %co:+\[clk\] t:QL_DSP4_AD_DFFR_32 %i

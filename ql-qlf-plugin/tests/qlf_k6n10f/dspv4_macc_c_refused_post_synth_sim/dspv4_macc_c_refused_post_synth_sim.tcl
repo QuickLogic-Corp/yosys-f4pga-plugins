@@ -102,3 +102,17 @@ select -assert-count 37 t:sdffre
 select -assert-count 0 t:\$mul
 select -assert-count 0 t:\$add
 write_syn dspv4_macc_c_narrow_inner
+
+# Each cell a refusal left in fabric is named with its reason, counted after
+# the run: a cell that a later offer absorbed must not be named.
+# outer_sub and outer_rsub each record both adders against this reason; only
+# the one left in fabric counts, so each says 1, never 2.
+if { [catch { exec grep -c {1 x  adder: accumulate with a subtract and a C term has no control word} synth.log } n] || $n != 2 } {
+    error "expected the subtract line once in each of 2 modules, found $n"
+}
+if { ![catch { exec grep -c {2 x  adder: accumulate with a subtract} synth.log }] } {
+    error "an adder absorbed by a later offer was counted as left in fabric"
+}
+if { [catch { exec grep -c {adder: the RTL cuts the first sum to 36 bits and reads above the cut} synth.log } n] || $n < 1 } {
+    error "synth.log does not name: adder: the RTL cuts the first sum to 36 bits and reads above the cut"
+}
