@@ -1110,13 +1110,16 @@ struct QlDspV4Pass : public Pass {
                     auto sides_fit = [&](const SigSpec &d, bool d_sgn, const SigSpec &x, bool x_sgn) {
                         return fits(GetSize(d), d_sgn, DSPV4_D_WIDTH) && fits(GetSize(x), x_sgn, x_port);
                     };
-                    auto stages_absorbed = [&](const SigSpec &d, bool d_sgn, const SigSpec &x, bool x_sgn) {
-                        return register_stages(d, d_sgn, DSPV4_MAX_D_STAGES) + register_stages(x, x_sgn, DSPV4_MAX_OPERAND_STAGES);
+                    // Asked of collect_flops itself, with this cell's seed, so the
+                    // order is chosen by what would really be absorbed.
+                    Seed seed = cell_seed(mff_cell, ff_cell);
+                    auto stages_absorbed = [&](const SigSpec &d, const SigSpec &x) {
+                        return GetSize(collect_flops(module, d, DSPV4_MAX_D_STAGES, seed, "D (order check)", st.mul).stage_flops) +
+                               GetSize(collect_flops(module, x, DSPV4_MAX_OPERAND_STAGES, seed, "X (order check)", st.mul).stage_flops);
                     };
                     bool written_fits = sides_fit(first_addend, first_addend_signed, second_addend, second_addend_signed);
                     bool swapped_fits = sides_fit(second_addend, second_addend_signed, first_addend, first_addend_signed);
-                    bool swapped_absorbs_more = stages_absorbed(second_addend, second_addend_signed, first_addend, first_addend_signed) >
-                                                stages_absorbed(first_addend, first_addend_signed, second_addend, second_addend_signed);
+                    bool swapped_absorbs_more = stages_absorbed(second_addend, first_addend) > stages_absorbed(first_addend, second_addend);
                     bool swap = !preadd_is_sub && swapped_fits && (!written_fits || swapped_absorbs_more);
 
                     chain_kept_on_d = nullptr;
@@ -1333,28 +1336,22 @@ struct QlDspV4Pass : public Pass {
             // is shared with M but not with the result register -- the P bank
             // resets on ACCRSTN alone (ffb dsp4_top.v:399-414, and the arch's
             // lr_ff_acc) -- so only M seeds the chains' reset.
-            RTLIL::Cell *clk_from = mff_cell != nullptr ? mff_cell : ff_cell;
-            Seed seed;
-            if (clk_from != nullptr) {
-                seed.clk = clk_from->getPort(ID(CLK));
-                seed.has_clk = true;
-            }
-            if (mff_cell != nullptr) {
-                seed.has_rst = true;
-                FlopReset m_reset = flop_reset(mff_cell);
-                seed.rst = m_reset.signal;
-                seed.rst_inv = m_reset.active_high;
-            }
+            Seed seed = cell_seed(mff_cell, ff_cell);
             ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed, "A", st.mul);
+            record_walk(ca);
             cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed, "B", st.mul);
+            record_walk(cb);
             // The D port exists only when the pre-adder folded. Its bank is one
             // stage deep. An add has already swapped a deeper chain onto the
             // two-stage side; what is still deeper here keeps the surplus in
             // fabric -- the same rule C already follows.
-            if (padd_cell != nullptr)
+            if (padd_cell != nullptr) {
                 cd = collect_flops(module, md, DSPV4_MAX_D_STAGES, seed, "D", st.mul);
+                record_walk(cd);
+            }
             if (c_cell != nullptr) {
                 cc = collect_flops(module, mc, DSPV4_MAX_C_STAGES, seed, "C", st.mul);
+                record_walk(cc);
                 // A flop on the C path whose D is this shape's OWN result is
                 // the accumulator feedback, not an independent C operand.
                 // pmgen offers the match without the output flop too, and on
@@ -2316,6 +2313,13 @@ struct QlDspV4Pass : public Pass {
     }
 
     struct FlopChain {
+        // What the walk found, for emit() to record when this walk is the real
+        // one: why a stage stayed in fabric, notes for the walk summary, and how
+        // many walks ended with no register or with every stage taken.
+        std::vector<std::string> stall_reasons;
+        std::vector<std::string> walk_notes;
+        int ended_empty = 0;
+        int ended_full = 0;
         // One entry per REGISTER STAGE, nearest the operand first. A stage is a
         // set of flops rather than a single one: a 32-bit operand is routinely
         // driven by several narrower registers side by side, and the DSP's bank
@@ -2407,17 +2411,46 @@ struct QlDspV4Pass : public Pass {
     // can say which one stalled. Absorption failures used to be entirely silent:
     // the walk just stopped, and the only visible effect was extra flops in
     // fabric -- the same class of invisible QoR loss IN-7 exists to prevent.
-    FlopChain collect_flops(RTLIL::Module *, SigSpec sig, int max_depth, const Seed &seed, const char *port = "?", RTLIL::Cell *why_mul = nullptr)
+    // What every operand chain must agree with before its first stage. CLK is
+    // shared by every bank, so the clock comes from the register that already
+    // pins it: M, else the result register. RSTN is shared with M but not with
+    // the result register -- the P bank resets on ACCRSTN alone (ffb
+    // dsp4_top.v:399-414, and the arch's lr_ff_acc) -- so only M seeds the reset.
+    static Seed cell_seed(RTLIL::Cell *mff, RTLIL::Cell *ff)
+    {
+        Seed seed;
+        RTLIL::Cell *clk_from = mff != nullptr ? mff : ff;
+        if (clk_from != nullptr) {
+            seed.clk = clk_from->getPort(ID(CLK));
+            seed.has_clk = true;
+        }
+        if (mff != nullptr) {
+            seed.has_rst = true;
+            FlopReset m_reset = flop_reset(mff);
+            seed.rst = m_reset.signal;
+            seed.rst_inv = m_reset.active_high;
+        }
+        return seed;
+    }
+
+    // Records what a real walk found. A walk run only to compare two operand
+    // orders is not recorded: it decided nothing.
+    void record_walk(const FlopChain &chain)
+    {
+        left_in_fabric.insert(left_in_fabric.end(), chain.stall_reasons.begin(), chain.stall_reasons.end());
+        walk_counts.insert(walk_counts.end(), chain.walk_notes.begin(), chain.walk_notes.end());
+        walk_end_none += chain.ended_empty;
+        walk_end_exhausted += chain.ended_full;
+    }
+
+    FlopChain collect_flops(RTLIL::Module *, SigSpec sig, int max_depth, const Seed &seed, const char *port, RTLIL::Cell *mul)
     {
 #define STALL(key, reason, ...)                                                                                                                      \
     do {                                                                                                                                             \
-        if (why_mul != nullptr)                                                                                                                      \
-            left_in_fabric.push_back(key);                                                                                                           \
-        else                                                                                                                                         \
-            absorb_stall[key]++;                                                                                                                     \
+        chain.stall_reasons.push_back(key);                                                                                                          \
         log_debug("  %s: %s operand register not absorbed after %d stage(s)"                                                                         \
                   " -- " reason "\n",                                                                                                                \
-                  why_mul ? log_id(why_mul) : "?", port, GetSize(chain.stage_flops), ##__VA_ARGS__);                                                 \
+                  log_id(mul), port, GetSize(chain.stage_flops), ##__VA_ARGS__);                                                                     \
     } while (0)
         // The walk has to stop somewhere, and stopping is not a refusal: an
         // operand that never had a register, or one whose every stage is already
@@ -2428,12 +2461,12 @@ struct QlDspV4Pass : public Pass {
 #define WALK_END(reason, ...)                                                                                                                        \
     do {                                                                                                                                             \
         if (GetSize(chain.stage_flops) == 0)                                                                                                         \
-            walk_end_none++;                                                                                                                         \
+            chain.ended_empty++;                                                                                                                     \
         else                                                                                                                                         \
-            walk_end_exhausted++;                                                                                                                    \
+            chain.ended_full++;                                                                                                                      \
         log_debug("  %s: %s operand register walk ended after %d stage(s)"                                                                           \
                   " -- " reason "\n",                                                                                                                \
-                  why_mul ? log_id(why_mul) : "?", port, GetSize(chain.stage_flops), ##__VA_ARGS__);                                                 \
+                  log_id(mul), port, GetSize(chain.stage_flops), ##__VA_ARGS__);                                                                     \
     } while (0)
         FlopChain chain;
         chain.source = sig;
@@ -2627,7 +2660,7 @@ struct QlDspV4Pass : public Pass {
                     continue;
                 auto drv = bit_driver.find(sigmapper(ff->getPort(ID::D))[0]);
                 if (drv != bit_driver.end() && drv->second->type.in(ID($add), ID($sub)))
-                    walk_counts.push_back("pre-adder output register has a clock enable, which the AD bank does not have");
+                    chain.walk_notes.push_back("pre-adder output register has a clock enable, which the AD bank does not have");
             }
         }
         // Only a stall if another full stage was waiting behind the last one.
@@ -2641,52 +2674,11 @@ struct QlDspV4Pass : public Pass {
                     break;
                 }
             if (stage_left_behind)
-                walk_counts.push_back("reached the bank depth limit");
+                chain.walk_notes.push_back("reached the bank depth limit");
         }
 #undef STALL
 #undef WALK_END
         return chain;
-    }
-
-    // Register stages behind an operand, up to `limit`: every bit from a
-    // rising-edge flop, and every flop in the chain on one clock, enable and
-    // reset -- the rules collect_flops walks by. Only used to choose which
-    // pre-adder input an operand takes; collect_flops still decides what is
-    // absorbed, with all of its checks.
-    int register_stages(SigSpec sig, bool is_signed, int limit)
-    {
-        sig = dspv4_strip_extension(sig, is_signed);
-        RTLIL::Cell *first = nullptr;
-        int stages = 0;
-        while (stages < limit) {
-            SigSpec d;
-            for (auto bit : sigmapper(sig)) {
-                auto it = flop_bit.find(bit);
-                if (it == flop_bit.end())
-                    return stages;
-                RTLIL::Cell *ff = it->second.first;
-                if (first == nullptr)
-                    first = ff;
-                if (!ff->getParam(ID(CLK_POLARITY)).as_bool() || !same_controls(first, ff))
-                    return stages;
-                d.append(ff->getPort(ID::D)[it->second.second]);
-            }
-            stages++;
-            sig = d;
-        }
-        return stages;
-    }
-
-    // Two flops share a clock, an enable and a reset, with the same polarities.
-    static bool same_controls(RTLIL::Cell *a, RTLIL::Cell *b)
-    {
-        for (auto port : {ID(CLK), ID(EN), ID(SRST)})
-            if (a->hasPort(port) != b->hasPort(port) || (a->hasPort(port) && a->getPort(port) != b->getPort(port)))
-                return false;
-        for (auto param : {ID(EN_POLARITY), ID(SRST_POLARITY)})
-            if (a->hasParam(param) != b->hasParam(param) || (a->hasParam(param) && a->getParam(param) != b->getParam(param)))
-                return false;
-        return true;
     }
 
     // Readers of a signal, from the per-module tally built in index_module().
