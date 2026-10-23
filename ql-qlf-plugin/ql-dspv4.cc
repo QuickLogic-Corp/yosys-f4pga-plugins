@@ -435,10 +435,6 @@ struct QlDspV4Pass : public Pass {
                 log_debug("  %s.%s: output register left in fabric -- %s\n", log_id(module), log_id(cell), reason.c_str());
             }
             refused_output_reg.clear();
-            for (auto &it : refused_ad_reg)
-                if (!ad_reg_taken.count(it.first))
-                    absorb_stall["pre-adder output register cannot go in the AD bank: " + it.second]++;
-            refused_ad_reg.clear();
             ad_reg_taken.clear();
             ad_rival.clear();
             for (auto cell : module->cells()) {
@@ -1571,8 +1567,7 @@ struct QlDspV4Pass : public Pass {
                 log_debug("  %s: not fused -- the pre-adder's output register "
                           "cannot go in the AD bank (%s)\n",
                           log_id(st.mul), refusal);
-                if (!refused_ad_reg.count(ad_flop_cell))
-                    refused_ad_reg[ad_flop_cell] = refusal;
+                refuse(padd_cell, std::string("pre-adder: its output register cannot go in the AD bank: ") + refusal);
                 // Only a clock clash with the result register is solved by
                 // leaving that register out; the next offer then takes the AD
                 // register without it.
@@ -2322,10 +2317,12 @@ struct QlDspV4Pass : public Pass {
 
     struct FlopChain {
         // What the walk found, for emit() to record when this walk is the real
-        // one: why a stage stayed in fabric, notes for the walk summary, and how
+        // one: why a stage stayed in fabric, notes for the walk summary, pre-
+        // adders left in fabric behind a register no AD bank holds, and how
         // many walks ended with no register or with every stage taken.
         std::vector<std::string> stall_reasons;
         std::vector<std::string> walk_notes;
+        std::vector<std::pair<RTLIL::Cell *, std::string>> preadders_left;
         int ended_empty = 0;
         int ended_full = 0;
         // One entry per REGISTER STAGE, nearest the operand first. A stage is a
@@ -2447,6 +2444,8 @@ struct QlDspV4Pass : public Pass {
     {
         left_in_fabric.insert(left_in_fabric.end(), chain.stall_reasons.begin(), chain.stall_reasons.end());
         walk_counts.insert(walk_counts.end(), chain.walk_notes.begin(), chain.walk_notes.end());
+        for (auto &left : chain.preadders_left)
+            refuse(left.first, left.second);
         walk_end_none += chain.ended_empty;
         walk_end_exhausted += chain.ended_full;
     }
@@ -2520,9 +2519,15 @@ struct QlDspV4Pass : public Pass {
                         continue;
                     }
                     RTLIL::Cell *dc = d->second;
-                    if (dc->type.in(ID($adff), ID($adffe), ID($adffsr), ID($aldff), ID($aldffe)))
+                    if (dc->type.in(ID($adff), ID($adffe), ID($adffsr), ID($aldff), ID($aldffe))) {
                         nasync++;
-                    else if (dc->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe), ID($sdffce)))
+                        // An async flop holding an add or subtract is a pre-adder
+                        // the pattern never offered; name it, as for an enable.
+                        auto drv = bit_driver.find(sigmapper(dc->getPort(ID::D))[0]);
+                        if (drv != bit_driver.end() && drv->second->type.in(ID($add), ID($sub)))
+                            chain.preadders_left.push_back(
+                              {drv->second, "pre-adder: its output register has an async reset, which no bank can hold"});
+                    } else if (dc->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe), ID($sdffce)))
                         nff++;
                     else
                         ncomb++;
@@ -2661,14 +2666,15 @@ struct QlDspV4Pass : public Pass {
             // An enabled flop holding an add or subtract is a pre-adder we
             // could not fold. The AD bank has no enable (ffb preadd_path.v
             // ties E to 1), so the pattern only matches $dff and $sdff and
-            // this shape never reaches the AD refusals in emit(). Say so, or
-            // the only symptom is a pre-adder quietly missing from the summary.
+            // this shape never reaches the AD refusals in emit(). Name the
+            // pre-adder, or it sits in fabric with no line in the summary.
             for (auto ff : stage) {
                 if (ff->type.in(ID($dff), ID($sdff)))
                     continue;
                 auto drv = bit_driver.find(sigmapper(ff->getPort(ID::D))[0]);
                 if (drv != bit_driver.end() && drv->second->type.in(ID($add), ID($sub)))
-                    chain.walk_notes.push_back("pre-adder output register has a clock enable, which the AD bank does not have");
+                    chain.preadders_left.push_back(
+                      {drv->second, "pre-adder: its output register has a clock enable, which the AD bank does not have"});
             }
         }
         // Only a stall if another full stage was waiting behind the last one.
@@ -2767,7 +2773,6 @@ struct QlDspV4Pass : public Pass {
         flop_bit.clear();
         register_on_bit.clear();
         refused_output_reg.clear();
-        refused_ad_reg.clear();
         ad_reg_taken.clear();
         ad_rival.clear();
         refused_cell.clear();
@@ -2889,10 +2894,7 @@ struct QlDspV4Pass : public Pass {
         if (reg != nullptr && !refused_output_reg.count(reg))
             refused_output_reg[reg] = reason;
     }
-    // The same for AD registers. A refusal belongs to one offer, and a later
-    // offer can still put the register in an AD bank, so a reason is reported
-    // only for a register that never got there.
-    dict<RTLIL::Cell *, std::string> refused_ad_reg;
+    // AD registers some cell took, for the result-register report above.
     pool<RTLIL::Cell *> ad_reg_taken;
     // A result register offered beside an AD register in an offer that was
     // refused. When a later offer takes the AD register without it, that is

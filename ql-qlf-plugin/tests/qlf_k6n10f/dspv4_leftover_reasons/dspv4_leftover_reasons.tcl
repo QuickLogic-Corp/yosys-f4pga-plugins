@@ -141,10 +141,19 @@ select -assert-count 17 t:dffre
 # Each refusal by its own reason, so one block that starts folding cannot
 # hide behind another that stops.
 log_has preadd_regs_refused "modes inferred: MULT x8, PREADD_A_MULT_B x3, PREADD_A_SUB_B x1"
-log_has preadd_regs_refused "2 x  pre-adder output register has a clock enable, which the AD bank does not have"
-log_has preadd_regs_refused "x  pre-adder output register cannot go in the AD bank: it resets to a non-zero value"
-# mr's AD register does go in the AD bank -- the offer with M was refused, the
-# one without M folded -- so its refusal must not reach the summary.
+# Seven pre-adders stay in fabric, each named with why its output register
+# could not go in the AD bank: en and re (enable), nz and np (reset value),
+# ck (clock), ki (power-up value), as (async reset). The AD registers
+# themselves get no AD line: en's, re's and ck's went to A2, and the ones
+# still in fabric are named once, by the operand walk below.
+log_has preadd_regs_refused "2 x  pre-adder: its output register has a clock enable, which the AD bank does not have"
+log_has preadd_regs_refused "2 x  pre-adder: its output register cannot go in the AD bank: it resets to a non-zero value"
+log_has preadd_regs_refused "1 x  pre-adder: its output register cannot go in the AD bank: its clock differs from the rest of the cell"
+log_has preadd_regs_refused "1 x  pre-adder: its output register cannot go in the AD bank: it carries keep or a non-zero init"
+log_has preadd_regs_refused "1 x  pre-adder: its output register has an async reset, which no bank can hold"
+log_lacks preadd_regs_refused "pre-adder output register cannot go in the AD bank"
+# mr's pre-adder does fold -- the offer with M was refused, the one without M
+# took the AD register -- so its refusal must not reach the summary.
 log_lacks preadd_regs_refused "cannot go in the AD bank: the M register resets differently"
 # np's and sp's result registers stay out for their own reset values, not for
 # an AD register the cell never took.
@@ -155,8 +164,6 @@ log_lacks preadd_regs_refused "the cell took a pre-adder output register instead
 # the winning folds' own.
 log_lacks preadd_regs_refused "clock/reset/enable disagree with the rest of the cell"
 log_has preadd_regs_refused "walks that ended with nothing left to take (not stalls): 15 with no register on the operand, 6 having absorbed every stage present"
-log_has preadd_regs_refused "x  pre-adder output register cannot go in the AD bank: its clock differs from the rest of the cell"
-log_has preadd_regs_refused "x  pre-adder output register cannot go in the AD bank: it carries keep or a non-zero init"
 log_has preadd_regs_refused "x  driver is an async-reset flop"
 log_has preadd_regs_refused "x  a subtract cannot swap its two-deep register chain off D"
 log_has preadd_regs_refused "x  the two-deep register chain stays on D: the other operand does not fit the port it would move to"
