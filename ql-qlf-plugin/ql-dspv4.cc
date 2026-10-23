@@ -1324,6 +1324,9 @@ struct QlDspV4Pass : public Pass {
         // the cell, see the eviction loop below.
         int na = 0, nb = 0, nc = 0, nd = 0;
         FlopChain ca, cb, cc, cd;
+        // The first chain that absorbed a stage, in port order. Only asked once
+        // at least one has.
+        auto first_absorbed_chain = [&]() -> const FlopChain & { return na > 0 ? ca : (nb > 0 ? cb : (nc > 0 ? cc : cd)); };
         {
             // CLK is shared by every bank, so the chains take the clock of the
             // register that already pins it: M, else the result register. RSTN
@@ -1338,10 +1341,9 @@ struct QlDspV4Pass : public Pass {
             }
             if (mff_cell != nullptr) {
                 seed.has_rst = true;
-                if (mff_cell->hasPort(ID(SRST))) {
-                    seed.rst = mff_cell->getPort(ID(SRST));
-                    seed.rst_inv = mff_cell->getParam(ID(SRST_POLARITY)).as_bool();
-                }
+                FlopReset m_reset = flop_reset(mff_cell);
+                seed.rst = m_reset.signal;
+                seed.rst_inv = m_reset.active_high;
             }
             ca = collect_flops(module, ma, DSPV4_MAX_OPERAND_STAGES, seed, "A", st.mul);
             cb = collect_flops(module, mb, DSPV4_MAX_OPERAND_STAGES, seed, "B", st.mul);
@@ -1416,14 +1418,9 @@ struct QlDspV4Pass : public Pass {
             // instead, as for any M register that cannot go in; the matcher
             // then offers a shape without M.
             if (mff_cell != nullptr && (na > 0 || nb > 0 || nc > 0 || nd > 0)) {
-                const FlopChain &any = na > 0 ? ca : (nb > 0 ? cb : (nc > 0 ? cc : cd));
-                SigSpec m_rst(State::S1);
-                bool m_rst_inv = false;
-                if (mff_cell->hasPort(ID(SRST))) {
-                    m_rst = mff_cell->getPort(ID(SRST));
-                    m_rst_inv = mff_cell->getParam(ID(SRST_POLARITY)).as_bool();
-                }
-                if (!same(any.clk, mff_cell->getPort(ID(CLK))) || !same(any.arst, m_rst) || any.arst_inv != m_rst_inv) {
+                const FlopChain &any = first_absorbed_chain();
+                FlopReset m_reset = flop_reset(mff_cell);
+                if (!same(any.clk, mff_cell->getPort(ID(CLK))) || !same(any.arst, m_reset.signal) || any.arst_inv != m_reset.active_high) {
                     log_debug("  %s: not fused -- the M register's clock or reset "
                               "differs from an operand chain's, and the next "
                               "stage reads the M register\n",
@@ -1522,27 +1519,17 @@ struct QlDspV4Pass : public Pass {
         // shape in dspv4_preadd_adreg_evict. When every offer with this flop is
         // refused, it ends up an ordinary operand register, or in fabric.
         if (ad_flop_cell != nullptr) {
-            SigSpec ad_rst(State::S1);
-            bool ad_rst_inv = false;
-            if (ad_flop_cell->hasPort(ID(SRST))) {
-                ad_rst = ad_flop_cell->getPort(ID(SRST));
-                ad_rst_inv = ad_flop_cell->getParam(ID(SRST_POLARITY)).as_bool();
-            }
-            auto resets_like_ad = [&](const SigSpec &rst, bool rst_inv) { return same(rst, ad_rst) && rst_inv == ad_rst_inv; };
+            FlopReset ad_reset = flop_reset(ad_flop_cell);
+            auto resets_like_ad = [&](const SigSpec &rst, bool rst_inv) { return same(rst, ad_reset.signal) && rst_inv == ad_reset.active_high; };
 
-            SigSpec m_rst(State::S1);
-            bool m_rst_inv = false;
-            if (mff_cell != nullptr && mff_cell->hasPort(ID(SRST))) {
-                m_rst = mff_cell->getPort(ID(SRST));
-                m_rst_inv = mff_cell->getParam(ID(SRST_POLARITY)).as_bool();
-            }
+            FlopReset m_reset = flop_reset(mff_cell);
 
             const char *refusal = nullptr;
             if (ad_flop_cell->hasPort(ID(SRST)) && !ad_flop_cell->getParam(ID(SRST_VALUE)).is_fully_zero())
                 refusal = "it resets to a non-zero value, and the bank resets to zero";
             // The M register cannot be given up the way a chain can: the adder
             // reads its Q, so leaving it behind refuses the whole fusion.
-            else if (mff_cell != nullptr && !resets_like_ad(m_rst, m_rst_inv))
+            else if (mff_cell != nullptr && !resets_like_ad(m_reset.signal, m_reset.active_high))
                 refusal = "the M register resets differently, and both banks take RSTN";
 
             // A chain that resets differently can be given up instead. Those
@@ -1566,7 +1553,7 @@ struct QlDspV4Pass : public Pass {
 
             SigSpec cell_clk;
             if (na > 0 || nb > 0 || nc > 0 || nd > 0)
-                cell_clk = na > 0 ? ca.clk : (nb > 0 ? cb.clk : (nc > 0 ? cc.clk : cd.clk));
+                cell_clk = first_absorbed_chain().clk;
             else if (mff_cell != nullptr)
                 cell_clk = mff_cell->getPort(ID(CLK));
             else if (ff_cell != nullptr)
@@ -1667,7 +1654,7 @@ struct QlDspV4Pass : public Pass {
         // moved in. RSTN is shared, so it comes from whichever absorbed chain
         // is present -- they were required to agree above.
         if (na > 0 || nb > 0 || nc > 0 || nd > 0) {
-            const FlopChain &any = na > 0 ? ca : (nb > 0 ? cb : (nc > 0 ? cc : cd));
+            const FlopChain &any = first_absorbed_chain();
             cell->setPort(ID(CLK), any.clk);
             if (na > 0)
                 cell->setPort(ID(CEA), resolve(module, ca.en, ca.en_inv));
@@ -1689,9 +1676,10 @@ struct QlDspV4Pass : public Pass {
         if (mff_cell != nullptr) {
             cell->setPort(ID(CLK), mff_cell->getPort(ID(CLK)));
             if (mff_cell->hasPort(ID(SRST))) {
-                SigSpec srst = mff_cell->getPort(ID(SRST));
-                // RSTN is active-low; $sdff's polarity says how SRST reads.
-                if (mff_cell->getParam(ID(SRST_POLARITY)).as_bool())
+                FlopReset m_reset = flop_reset(mff_cell);
+                SigSpec srst = m_reset.signal;
+                // RSTN is active-low.
+                if (m_reset.active_high)
                     srst = module->Not(NEW_ID, srst);
                 cell->setPort(ID(RSTN), srst);
             }
@@ -1727,9 +1715,10 @@ struct QlDspV4Pass : public Pass {
                     module->remove(cell);
                     return false;
                 }
-                SigSpec srst = ff_cell->getPort(ID(SRST));
-                // ACCRSTN is active-low; $sdff's polarity says how SRST reads.
-                if (ff_cell->getParam(ID(SRST_POLARITY)).as_bool())
+                FlopReset p_reset = flop_reset(ff_cell);
+                SigSpec srst = p_reset.signal;
+                // ACCRSTN is active-low.
+                if (p_reset.active_high)
                     srst = module->Not(NEW_ID, srst);
                 cell->setPort(ID(ACCRSTN), srst);
             }
@@ -1743,10 +1732,9 @@ struct QlDspV4Pass : public Pass {
         if (ad_flop_cell != nullptr) {
             cell->setPort(ID(CLK), ad_flop_cell->getPort(ID(CLK)));
             if (ad_flop_cell->hasPort(ID(SRST)) && cell->getPort(ID(RSTN)) == SigSpec(State::S1)) {
-                SigSpec srst = ad_flop_cell->getPort(ID(SRST));
-                // RSTN is active-low; $sdff's polarity says how SRST reads.
-                bool active_high = ad_flop_cell->getParam(ID(SRST_POLARITY)).as_bool();
-                cell->setPort(ID(RSTN), resolve(module, srst, active_high));
+                FlopReset ad_reset = flop_reset(ad_flop_cell);
+                // RSTN is active-low.
+                cell->setPort(ID(RSTN), resolve(module, ad_reset.signal, ad_reset.active_high));
             }
         }
 
@@ -2311,6 +2299,22 @@ struct QlDspV4Pass : public Pass {
     //
     // A chain of design flops walked back from a multiply operand, plus the
     // control signals every flop in it agreed on.
+    // A flop's synchronous reset and whether it is active high. A flop with no
+    // reset gives constant 1, active low: never asserted, like a tied-off RSTN.
+    struct FlopReset {
+        SigSpec signal = SigSpec(State::S1);
+        bool active_high = false;
+    };
+    static FlopReset flop_reset(RTLIL::Cell *ff)
+    {
+        FlopReset reset;
+        if (ff != nullptr && ff->hasPort(ID(SRST))) {
+            reset.signal = ff->getPort(ID(SRST));
+            reset.active_high = ff->getParam(ID(SRST_POLARITY)).as_bool();
+        }
+        return reset;
+    }
+
     struct FlopChain {
         // One entry per REGISTER STAGE, nearest the operand first. A stage is a
         // set of flops rather than a single one: a 32-bit operand is routinely
@@ -2571,10 +2575,9 @@ struct QlDspV4Pass : public Pass {
                     en = ff->getPort(ID(EN));
                     en_inv = !ff->getParam(ID(EN_POLARITY)).as_bool();
                 }
-                if (ff->hasPort(ID(SRST))) {
-                    arst = ff->getPort(ID(SRST));
-                    arst_inv = ff->getParam(ID(SRST_POLARITY)).as_bool();
-                }
+                FlopReset reset = flop_reset(ff);
+                arst = reset.signal;
+                arst_inv = reset.active_high;
                 SigSpec clk = ff->getPort(ID(CLK));
                 if (first) {
                     s_clk = clk;
