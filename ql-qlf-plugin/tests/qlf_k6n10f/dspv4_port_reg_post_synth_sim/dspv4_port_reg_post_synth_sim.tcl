@@ -98,3 +98,12 @@ write_syn dspv4_mult_regin_port
 if { [catch { exec grep -c {shared operand register(s) copied into a bank} synth.log } copies] || $copies != 3 } {
     error "expected 3 copied-register summaries in synth.log, found: $copies"
 }
+
+# Each cell a refusal left in fabric is named with its reason, counted after
+# the run: a cell that a later offer absorbed must not be named.
+if { [catch { exec grep -c {adder: it reads the multiply's value on both operands, leaving nothing for C} synth.log } n] || $n < 1 } {
+    error "synth.log does not name: adder: it reads the multiply's value on both operands, leaving nothing for C"
+}
+if { [catch { exec grep -c {adder: the first sum has other readers, so this adder cannot join the cell} synth.log } n] || $n < 1 } {
+    error "synth.log does not name: adder: the first sum has other readers, so this adder cannot join the cell"
+}
