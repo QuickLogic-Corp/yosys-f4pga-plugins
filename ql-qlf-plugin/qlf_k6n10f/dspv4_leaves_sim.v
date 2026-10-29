@@ -234,69 +234,81 @@ module qldsp4_alu_core #(
 endmodule
 
 module QL_DSP4_ALU_ADD (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-  // One combined word, matching the arch's four reserved mode bits:
-  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+  // One combined word. dsp4_logical_map.v writes it bit-reversed:
+  //   MODE_BITS   = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
+  // Reversed once, it has the QL_DSPPHY_ALU mode layout (ql_dsp_phy_cells.v):
+  //   MODE_FIELDS = {USE_SIMD[1:0], ALUMODE[1:0]}
   // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
   // read here. Declared and forwarded: a parameter left unconnected silently
   // takes the default, which is the bug class this DSP keeps producing.
   parameter [3:0] MODE_BITS = 4'b0000;
-  wire [1:0] USE_SIMD = MODE_BITS[3:2];
+  localparam [3:0] MODE_FIELDS = {MODE_BITS[0], MODE_BITS[1], MODE_BITS[2], MODE_BITS[3]};
+  wire [1:0] USE_SIMD = MODE_FIELDS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b00), .USE_SIMD(MODE_BITS[3:2])) u (
+  qldsp4_alu_core #(.MODE(2'b00), .USE_SIMD(MODE_FIELDS[3:2])) u (
       .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
       .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
 endmodule
 
 module QL_DSP4_ALU_REV_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-  // One combined word, matching the arch's four reserved mode bits:
-  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+  // One combined word. dsp4_logical_map.v writes it bit-reversed:
+  //   MODE_BITS   = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
+  // Reversed once, it has the QL_DSPPHY_ALU mode layout (ql_dsp_phy_cells.v):
+  //   MODE_FIELDS = {USE_SIMD[1:0], ALUMODE[1:0]}
   // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
   // read here. Declared and forwarded: a parameter left unconnected silently
   // takes the default, which is the bug class this DSP keeps producing.
   parameter [3:0] MODE_BITS = 4'b0000;
-  wire [1:0] USE_SIMD = MODE_BITS[3:2];
+  localparam [3:0] MODE_FIELDS = {MODE_BITS[0], MODE_BITS[1], MODE_BITS[2], MODE_BITS[3]};
+  wire [1:0] USE_SIMD = MODE_FIELDS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b01), .USE_SIMD(MODE_BITS[3:2])) u (
+  qldsp4_alu_core #(.MODE(2'b01), .USE_SIMD(MODE_FIELDS[3:2])) u (
       .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
       .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
 endmodule
 
 module QL_DSP4_ALU_NOT_SUM (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-  // One combined word, matching the arch's four reserved mode bits:
-  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+  // One combined word. dsp4_logical_map.v writes it bit-reversed:
+  //   MODE_BITS   = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
+  // Reversed once, it has the QL_DSPPHY_ALU mode layout (ql_dsp_phy_cells.v):
+  //   MODE_FIELDS = {USE_SIMD[1:0], ALUMODE[1:0]}
   // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
   // read here. Declared and forwarded: a parameter left unconnected silently
   // takes the default, which is the bug class this DSP keeps producing.
   parameter [3:0] MODE_BITS = 4'b0000;
-  wire [1:0] USE_SIMD = MODE_BITS[3:2];
+  localparam [3:0] MODE_FIELDS = {MODE_BITS[0], MODE_BITS[1], MODE_BITS[2], MODE_BITS[3]};
+  wire [1:0] USE_SIMD = MODE_FIELDS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b10), .USE_SIMD(MODE_BITS[3:2])) u (
+  qldsp4_alu_core #(.MODE(2'b10), .USE_SIMD(MODE_FIELDS[3:2])) u (
       .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
       .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
 endmodule
 
 module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-  // One combined word, matching the arch's four reserved mode bits:
-  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+  // One combined word. dsp4_logical_map.v writes it bit-reversed:
+  //   MODE_BITS   = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
+  // Reversed once, it has the QL_DSPPHY_ALU mode layout (ql_dsp_phy_cells.v):
+  //   MODE_FIELDS = {USE_SIMD[1:0], ALUMODE[1:0]}
   // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
   // read here. Declared and forwarded: a parameter left unconnected silently
   // takes the default, which is the bug class this DSP keeps producing.
   parameter [3:0] MODE_BITS = 4'b0000;
-  wire [1:0] USE_SIMD = MODE_BITS[3:2];
+  localparam [3:0] MODE_FIELDS = {MODE_BITS[0], MODE_BITS[1], MODE_BITS[2], MODE_BITS[3]};
+  wire [1:0] USE_SIMD = MODE_FIELDS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b11), .USE_SIMD(MODE_BITS[3:2])) u (
+  qldsp4_alu_core #(.MODE(2'b11), .USE_SIMD(MODE_FIELDS[3:2])) u (
       .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
       .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
 endmodule
@@ -399,12 +411,17 @@ endmodule
 // and named here matches QL_DSP4's own parameter names and stays readable in
 // the BLIF, and that packing is then one documented rule for the FASM side.
 module QL_DSP4_RSS (ACC_IN, ACC_OUT);
-  // One combined config word; see QL_DSP4_leaves.v for the packing.
-  //   MODE_BITS[2:0] ROUND   MODE_BITS[8:3] SHIFT   MODE_BITS[9] SATURATE
+  // One combined config word. dsp4_logical_map.v writes it bit-reversed:
+  //   MODE_BITS   = {ROUND[0], ROUND[1], ROUND[2], SHIFT[0], ..., SHIFT[5], SATURATE}
+  // Reversed once, it has the QL_DSPPHY_RSS mode layout (ql_dsp_phy_cells.v):
+  //   MODE_FIELDS = {SATURATE, SHIFT[5:0], ROUND[2:0]}
   parameter [9:0] MODE_BITS = 10'b0;
-  wire [2:0] ROUND    = MODE_BITS[2:0];
-  wire [5:0] SHIFT    = MODE_BITS[8:3];
-  wire       SATURATE = MODE_BITS[9];
+  localparam [9:0] MODE_FIELDS = {MODE_BITS[0], MODE_BITS[1], MODE_BITS[2], MODE_BITS[3],
+                                  MODE_BITS[4], MODE_BITS[5], MODE_BITS[6], MODE_BITS[7],
+                                  MODE_BITS[8], MODE_BITS[9]};
+  wire [2:0] ROUND    = MODE_FIELDS[2:0];
+  wire [5:0] SHIFT    = MODE_FIELDS[8:3];
+  wire       SATURATE = MODE_FIELDS[9];
 
   input  wire [63:0] ACC_IN;
   output wire [49:0] ACC_OUT;
@@ -440,7 +457,7 @@ module QL_DSP4_RSS (ACC_IN, ACC_OUT);
     end
   end
 
-  // dsp4_top takes P from rss_block's low 50 bits.
+  // ql_dsp4_top takes P from ql_rss_block's low 50 bits.
   assign ACC_OUT = acc_saturate[49:0];
 endmodule
 
