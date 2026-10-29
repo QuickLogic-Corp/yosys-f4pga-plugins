@@ -3,7 +3,8 @@
 // Regenerate:  aurora2/scripts/dspv4/gen_dspv4_macros.py
 // Check:       aurora2/scripts/dspv4/gen_dspv4_macros.py --check
 //
-// Instantiable wrappers around QL_DSP4, one per DSP-V4 building block. Each is a
+// Instantiable wrappers around QL_DSP4: one per DSP-V4 building block, and the
+// two-cell continuous 100-bit MACC. Each is a
 // real module, NOT a blackbox: it elaborates into a QL_DSP4 cell with its
 // parameters already set and lowers through dsp4_logical_map.v, so it exercises
 // the same path Yosys inference, Synplify and the V2 bridge all converge on.
@@ -64,7 +65,7 @@ module ql_dsp4_alu #(
     output wire [49:0] P
 );
   QL_DSP4 #(
-      .OPMODE(9'b000110011), .ALUMODE(ALUMODE), .ALUMODE(ALUMODE), .PREG(PREG)
+      .OPMODE(9'b000110011), .ALUMODE(ALUMODE), .PREG(PREG)
   ) u_dsp (
       .A(A), .B(B), .C(C), .D(27'd0),
       .CIN(1'b0), .ACIN(32'd0), .BCIN(18'd0), .PCIN(50'd0), .CCIN(1'b0),
@@ -103,5 +104,55 @@ module ql_dsp4_mult_pipelined (
       .CLK(CLK), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1),
       .CEP(CEP), .ARSTN(1'b1),
       .RSTN(RSTN), .ACCRSTN(RSTN)
+  );
+endmodule
+
+// ---------------------------------------------------------------------------
+// Continuous 100-bit MACC (two slices)
+//
+// {P[99:50], P[49:0]} += A * B on every clock with CEP high, mod 2^100. The flow cannot infer a two-cell macro, so this is the supported route. The low slice accumulates and exports the limb carry (CCOUT) and the product sign (SIGNCOUT); the high slice adds CCIN - SIGNCIN to its own P. COUTREG = 1 registers the carry and sign, so P[99:50] lags P[49:0] by one enabled clock. To clear the pair, hold ACCRSTN low for two clocks with A = 0 and CEP high. RSTN clears the carry and sign registers, not P.
+//
+// Lowers to: QL_DSP4_MULT, QL_DSP4_ALU_ADD x2, QL_DSP4_ACC_DFFRE_64 x2; with COUTREG also QL_DSP4_CO_DFFRE_4 and QL_DSP4_SCO_DFFRE
+// ---------------------------------------------------------------------------
+module ql_dsp4_macc100 #(
+    parameter COUTREG = 1'b0
+) (
+    input  wire        CLK,
+    input  wire        RSTN,
+    input  wire        ACCRSTN,
+    input  wire        CEP,
+    input  wire [31:0] A,
+    input  wire [17:0] B,
+    output wire [99:0] P
+);
+  wire carry;
+  wire sign;
+  // low slice: P[49:0] += A * B (MACC100_CONT_LO)
+  QL_DSP4 #(
+      .OPMODE(9'b000100101), .ALUMODE(2'b00), .CARRYINSEL(3'b000),
+      .PREG(1'b1), .COUTREG(COUTREG)
+  ) u_lo (
+      .A(A), .B(B), .C(50'd0), .D(27'd0),
+      .CIN(1'b0), .ACIN(32'd0), .BCIN(18'd0), .PCIN(50'd0), .CCIN(1'b0),
+      .SIGNCIN(1'b0),
+      .P(P[49:0]), .ACOUT(), .BCOUT(), .PCOUT(),
+      .CCOUT(carry), .SIGNCOUT(sign), .COUT(),
+      .CLK(CLK), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1),
+      .CEP(CEP), .ARSTN(1'b1),
+      .RSTN(RSTN), .ACCRSTN(ACCRSTN)
+  );
+  // high slice: P[99:50] += {64{SIGNCIN}} + CCIN (MACC100_CONT_HI)
+  QL_DSP4 #(
+      .OPMODE(9'b011000000), .ALUMODE(2'b00), .CARRYINSEL(3'b010),
+      .PREG(1'b1)
+  ) u_hi (
+      .A(32'd0), .B(18'd0), .C(50'd0), .D(27'd0),
+      .CIN(1'b0), .ACIN(32'd0), .BCIN(18'd0), .PCIN(50'd0), .CCIN(carry),
+      .SIGNCIN(sign),
+      .P(P[99:50]), .ACOUT(), .BCOUT(), .PCOUT(),
+      .CCOUT(), .SIGNCOUT(), .COUT(),
+      .CLK(CLK), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1),
+      .CEP(CEP), .ARSTN(1'b1),
+      .RSTN(RSTN), .ACCRSTN(ACCRSTN)
   );
 endmodule
