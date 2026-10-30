@@ -33,11 +33,11 @@
 //
 //   QL_DSP4_MULT                       rtl/pmult.v              sha256:5cf5e388a54660bd
 //   QL_DSP4_MULT                       rtl/multiplier.v         sha256:2774a077899700ff
-//   QL_DSP4_ALU_*                      rtl/alu.v                sha256:900d02ed05cdaa86
+//   QL_DSP4_ALU_*                      rtl/alu.v                sha256:e4321c63e7064ecd
 //   QL_DSP4_PREADD / QL_DSP4_PRESUB    rtl/preadder.v           sha256:3269b4f9ed290fc6
 //   QL_DSP4_RSS                        rtl/rss_block.v          sha256:4934a3f41b91d330
 //   QL_DSP4_RSS                        rtl/round.v              sha256:e5ce9f93518b88d0
-//   QL_DSP4_*_DFFR / _DFFRE            rtl/DFFE_SNR_ANR.v       sha256:c7baf42afdd97f58
+//   QL_DSP4_*_DFFR / _DFFRE            rtl/DFFE_SNR_ANR.v       sha256:57b894d7d4f0f937
 // ===========================================================================
 
 `timescale 1ns / 1ps
@@ -176,7 +176,8 @@ module qldsp4_alu_core #(
     input  wire [63:0] Z,
     input  wire        CIN,
     output wire [63:0] ALU_OUT,
-    output wire [3:0]  CARRYOUT
+    output wire [3:0]  CARRYOUT,
+    output wire        SIGN_M
 );
   // Coerce undriven (open -> z) / x input bits to 0: an unused ALU mux leg is a
   // constant 0 in hardware, but the Phase-2 netlist simply leaves it open.
@@ -200,6 +201,13 @@ module qldsp4_alu_core #(
   wire        cin_eff = MODE[1] ? ~CINc : CINc;
 
   wire [64:0] full_sum = {1'b0, z_eff} + {1'b0, wxy_eff} + cin_eff;
+
+  // Product sign, from alu.v (ffb 4.2.7). In the MACC opmode X[50] is the
+  // multiplier's KN pad and wxy[50] is bit 50 of the U + V pre-sum, before
+  // the ALUMODE inversion; their AND is the sign of A * B. Meaningful only
+  // in that opmode, but driven in every mode, as the RTL does, so the leaf
+  // and the RTL always agree.
+  assign SIGN_M = Xc[50] & wxy[50];
 
   // --- SIMD segmented path (alu.v). Four 12-bit segments; carry is blocked at
   // the segment boundaries per USE_SIMD. TWO24 lets carry cross seg0->seg1 and
@@ -233,72 +241,88 @@ module qldsp4_alu_core #(
                           : {simd_c3, simd_c2, simd_c1, simd_c0};
 endmodule
 
-module QL_DSP4_ALU_ADD (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-  // One combined word, matching the arch's four reserved mode bits:
-  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+module QL_DSP4_ALU_ADD (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT, SIGN_M);
+  // One combined word. dsp4_logical_map.v writes it bit-reversed:
+  //   MODE_BITS   = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
+  // Reversed once, it has the QL_DSPPHY_ALU mode layout (ql_dsp_phy_cells.v):
+  //   MODE_FIELDS = {USE_SIMD[1:0], ALUMODE[1:0]}
   // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
   // read here. Declared and forwarded: a parameter left unconnected silently
   // takes the default, which is the bug class this DSP keeps producing.
   parameter [3:0] MODE_BITS = 4'b0000;
-  wire [1:0] USE_SIMD = MODE_BITS[3:2];
+  localparam [3:0] MODE_FIELDS = {MODE_BITS[0], MODE_BITS[1], MODE_BITS[2], MODE_BITS[3]};
+  wire [1:0] USE_SIMD = MODE_FIELDS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b00), .USE_SIMD(MODE_BITS[3:2])) u (
+  output wire        SIGN_M;
+  qldsp4_alu_core #(.MODE(2'b00), .USE_SIMD(MODE_FIELDS[3:2])) u (
       .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
-      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
+      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT), .SIGN_M(SIGN_M));
 endmodule
 
-module QL_DSP4_ALU_REV_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-  // One combined word, matching the arch's four reserved mode bits:
-  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+module QL_DSP4_ALU_REV_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT, SIGN_M);
+  // One combined word. dsp4_logical_map.v writes it bit-reversed:
+  //   MODE_BITS   = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
+  // Reversed once, it has the QL_DSPPHY_ALU mode layout (ql_dsp_phy_cells.v):
+  //   MODE_FIELDS = {USE_SIMD[1:0], ALUMODE[1:0]}
   // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
   // read here. Declared and forwarded: a parameter left unconnected silently
   // takes the default, which is the bug class this DSP keeps producing.
   parameter [3:0] MODE_BITS = 4'b0000;
-  wire [1:0] USE_SIMD = MODE_BITS[3:2];
+  localparam [3:0] MODE_FIELDS = {MODE_BITS[0], MODE_BITS[1], MODE_BITS[2], MODE_BITS[3]};
+  wire [1:0] USE_SIMD = MODE_FIELDS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b01), .USE_SIMD(MODE_BITS[3:2])) u (
+  output wire        SIGN_M;
+  qldsp4_alu_core #(.MODE(2'b01), .USE_SIMD(MODE_FIELDS[3:2])) u (
       .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
-      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
+      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT), .SIGN_M(SIGN_M));
 endmodule
 
-module QL_DSP4_ALU_NOT_SUM (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-  // One combined word, matching the arch's four reserved mode bits:
-  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+module QL_DSP4_ALU_NOT_SUM (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT, SIGN_M);
+  // One combined word. dsp4_logical_map.v writes it bit-reversed:
+  //   MODE_BITS   = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
+  // Reversed once, it has the QL_DSPPHY_ALU mode layout (ql_dsp_phy_cells.v):
+  //   MODE_FIELDS = {USE_SIMD[1:0], ALUMODE[1:0]}
   // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
   // read here. Declared and forwarded: a parameter left unconnected silently
   // takes the default, which is the bug class this DSP keeps producing.
   parameter [3:0] MODE_BITS = 4'b0000;
-  wire [1:0] USE_SIMD = MODE_BITS[3:2];
+  localparam [3:0] MODE_FIELDS = {MODE_BITS[0], MODE_BITS[1], MODE_BITS[2], MODE_BITS[3]};
+  wire [1:0] USE_SIMD = MODE_FIELDS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b10), .USE_SIMD(MODE_BITS[3:2])) u (
+  output wire        SIGN_M;
+  qldsp4_alu_core #(.MODE(2'b10), .USE_SIMD(MODE_FIELDS[3:2])) u (
       .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
-      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
+      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT), .SIGN_M(SIGN_M));
 endmodule
 
-module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-  // One combined word, matching the arch's four reserved mode bits:
-  //   MODE_BITS[1:0] ALUMODE   MODE_BITS[3:2] USE_SIMD
+module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT, SIGN_M);
+  // One combined word. dsp4_logical_map.v writes it bit-reversed:
+  //   MODE_BITS   = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
+  // Reversed once, it has the QL_DSPPHY_ALU mode layout (ql_dsp_phy_cells.v):
+  //   MODE_FIELDS = {USE_SIMD[1:0], ALUMODE[1:0]}
   // ALUMODE is implied by which leaf this is, so only the USE_SIMD half is
   // read here. Declared and forwarded: a parameter left unconnected silently
   // takes the default, which is the bug class this DSP keeps producing.
   parameter [3:0] MODE_BITS = 4'b0000;
-  wire [1:0] USE_SIMD = MODE_BITS[3:2];
+  localparam [3:0] MODE_FIELDS = {MODE_BITS[0], MODE_BITS[1], MODE_BITS[2], MODE_BITS[3]};
+  wire [1:0] USE_SIMD = MODE_FIELDS[3:2];
   input  wire [63:0] W, X, Y, Z;
   input  wire        CIN;
   output wire [63:0] ALU_OUT;
   output wire [3:0]  CARRYOUT;
-  qldsp4_alu_core #(.MODE(2'b11), .USE_SIMD(MODE_BITS[3:2])) u (
+  output wire        SIGN_M;
+  qldsp4_alu_core #(.MODE(2'b11), .USE_SIMD(MODE_FIELDS[3:2])) u (
       .W(W), .X(X), .Y(Y), .Z(Z), .CIN(CIN),
-      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT));
+      .ALU_OUT(ALU_OUT), .CARRYOUT(CARRYOUT), .SIGN_M(SIGN_M));
 endmodule
 
 // Pre-adder, from ffb/rtl/preadder.v: AD is the two's-complement low 32 bits
@@ -399,12 +423,17 @@ endmodule
 // and named here matches QL_DSP4's own parameter names and stays readable in
 // the BLIF, and that packing is then one documented rule for the FASM side.
 module QL_DSP4_RSS (ACC_IN, ACC_OUT);
-  // One combined config word; see QL_DSP4_leaves.v for the packing.
-  //   MODE_BITS[2:0] ROUND   MODE_BITS[8:3] SHIFT   MODE_BITS[9] SATURATE
+  // One combined config word. dsp4_logical_map.v writes it bit-reversed:
+  //   MODE_BITS   = {ROUND[0], ROUND[1], ROUND[2], SHIFT[0], ..., SHIFT[5], SATURATE}
+  // Reversed once, it has the QL_DSPPHY_RSS mode layout (ql_dsp_phy_cells.v):
+  //   MODE_FIELDS = {SATURATE, SHIFT[5:0], ROUND[2:0]}
   parameter [9:0] MODE_BITS = 10'b0;
-  wire [2:0] ROUND    = MODE_BITS[2:0];
-  wire [5:0] SHIFT    = MODE_BITS[8:3];
-  wire       SATURATE = MODE_BITS[9];
+  localparam [9:0] MODE_FIELDS = {MODE_BITS[0], MODE_BITS[1], MODE_BITS[2], MODE_BITS[3],
+                                  MODE_BITS[4], MODE_BITS[5], MODE_BITS[6], MODE_BITS[7],
+                                  MODE_BITS[8], MODE_BITS[9]};
+  wire [2:0] ROUND    = MODE_FIELDS[2:0];
+  wire [5:0] SHIFT    = MODE_FIELDS[8:3];
+  wire       SATURATE = MODE_FIELDS[9];
 
   input  wire [63:0] ACC_IN;
   output wire [49:0] ACC_OUT;
@@ -440,7 +469,7 @@ module QL_DSP4_RSS (ACC_IN, ACC_OUT);
     end
   end
 
-  // dsp4_top takes P from rss_block's low 50 bits.
+  // ql_dsp4_top takes P from ql_rss_block's low 50 bits.
   assign ACC_OUT = acc_saturate[49:0];
 endmodule
 
@@ -490,6 +519,16 @@ module NAME (D, R, clk, Q);         \
     else    Q <= D;                 \
 endmodule
 
+`define QL_DSP4_DFFRE(NAME) \
+module NAME (D, E, R, clk, Q);      \
+  input  wire D, E, R, clk;         \
+  output reg  Q;                    \
+  initial Q = 1'b0;                 \
+  always @(posedge clk)             \
+    if (!R)     Q <= 1'b0;          \
+    else if (E) Q <= D;             \
+endmodule
+
 `QL_DSP4_DFFRE_W(QL_DSP4_A1_DFFRE_32, 32)
 `QL_DSP4_DFFRE_W(QL_DSP4_A2_DFFRE_32, 32)
 `QL_DSP4_DFFRE_W(QL_DSP4_B1_DFFRE_18, 18)
@@ -497,11 +536,12 @@ endmodule
 `QL_DSP4_DFFRE_W(QL_DSP4_D_DFFRE_27, 27)
 `QL_DSP4_DFFRE_W(QL_DSP4_C_DFFRE_50, 50)
 `QL_DSP4_DFFRE_W(QL_DSP4_ACC_DFFRE_64, 64)
+`QL_DSP4_DFFRE_W(QL_DSP4_CO_DFFRE_4, 4)
 
 `QL_DSP4_DFFR_W(QL_DSP4_AD_DFFR_32, 32)
 `QL_DSP4_DFFR_W(QL_DSP4_M_DFFR_50, 50)
 // 43 bits: V[6:0] are structurally zero, so the bank covers V[49:7] only.
 `QL_DSP4_DFFR_W(QL_DSP4_MV_DFFR_43, 43)
-`QL_DSP4_DFFR_W(QL_DSP4_CO_DFFR_4, 4)
 
 `QL_DSP4_DFFR(QL_DSP4_MK_DFFR)
+`QL_DSP4_DFFRE(QL_DSP4_SCO_DFFRE)

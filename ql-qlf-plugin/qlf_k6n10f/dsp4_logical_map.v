@@ -152,16 +152,46 @@ module QL_DSP4 #(
     // MREG and PREG each add one cycle between multiplier and P. A lone MREG can
     // be realised on the ACC/P register instead -- same latency, one bank, and a
     // shorter critical path -- but only when the ALU sees nothing but the
-    // multiplier's own U/V. The fold puts the ALU inside the registered path,
-    // which reschedules any other ALU input by a cycle (C(t) becomes C(t-1)), and
-    // nothing compensates for it.
+    // multiplier's own U/V and only adds. The fold puts the ALU inside the
+    // registered path, which reschedules any other ALU input by a cycle (C(t)
+    // becomes C(t-1)), and nothing compensates for it. A subtracting ALU has a
+    // live carry-out (1 when the product is 0), which the fold would also
+    // move a cycle early; an adding one's carry is always 0.
+    // The carry-in is an ALU input too: a live one would be stored with the
+    // product and reach P a cycle late. So it must be tied to 0.
+    parameter _TECHMAP_CONSTMSK_CIN_  = 1'b0;
+    parameter _TECHMAP_CONSTVAL_CIN_  = 1'bx;
+    parameter _TECHMAP_CONSTMSK_CCIN_ = 1'b0;
+    parameter _TECHMAP_CONSTVAL_CCIN_ = 1'bx;
+    localparam CARRY_IN_ZERO = (CARRYINSEL == 3'b010)
+        ? (_TECHMAP_CONSTMSK_CCIN_ == 1'b1 && _TECHMAP_CONSTVAL_CCIN_ === 1'b0)
+        : (_TECHMAP_CONSTMSK_CIN_  == 1'b1 && _TECHMAP_CONSTVAL_CIN_  === 1'b0);
     localparam ALU_MULT_ONLY = (X_SEL == 2'b01)                    // X = U
                             && (Y_SEL == 2'b01 || Y_SEL == 2'b00)  // Y = V or 0, not C
-                            && !W_CONN && !Z_CONN;                 // no C, no PCIN, no P
+                            && !W_CONN && !Z_CONN                  // no C, no PCIN, no P
+                            && (ALUMODE == 2'b00)                  // add only
+                            && CARRY_IN_ZERO;                      // carry-in tied to 0
 
-    // Both requested means two pipeline stages, so both banks exist regardless.
-    localparam USE_MREG = MREG && (PREG || !ALU_MULT_ONLY);
-    localparam USE_PREG = PREG || (MREG && ALU_MULT_ONLY);
+    // The folded register must behave like the M bank it stands for: it loads
+    // every cycle (dsp4_top.v ties the M banks' enable high) and clears on
+    // RSTN, not ACCRSTN. CEP is one pin shared with the carry-out and sign
+    // registers, so with COUTREG the fold is off and the real M banks stay.
+    localparam FOLD_MREG = MREG && !PREG && ALU_MULT_ONLY && !COUTREG;
+    localparam USE_MREG  = MREG && !FOLD_MREG;
+    localparam USE_PREG  = PREG || FOLD_MREG;
+
+    // We flip the bits for DSP macros s.t. they are in LSB -> MSB order when written to blif.
+    // - OpenFPGA will read them in expecting LSB -> MSB from the blif
+    // QL_DSPPHY_ALU.mode[3:0] = {USE_SIMD[1:0], ALUMODE[1:0]}   (ql_dsp_phy_cells.v)
+    localparam [3:0] ALU_ADD_MODE_BITS  = {1'b0, 1'b0, USE_SIMD[0], USE_SIMD[1]};  // ALUMODE 00
+    localparam [3:0] ALU_SUB_MODE_BITS  = {1'b1, 1'b1, USE_SIMD[0], USE_SIMD[1]};  // ALUMODE 11
+    localparam [3:0] ALU_RSUB_MODE_BITS = {1'b1, 1'b0, USE_SIMD[0], USE_SIMD[1]};  // ALUMODE 01
+    localparam [3:0] ALU_NSUM_MODE_BITS = {1'b0, 1'b1, USE_SIMD[0], USE_SIMD[1]};  // ALUMODE 10
+    // QL_DSPPHY_RSS.mode[9:0] = {SATURATE, SHIFT[5:0], ROUND[2:0]}
+    localparam [0:0] RSS_SATURATE  = SATURATE;
+    localparam [9:0] RSS_MODE_BITS = {ROUND[0], ROUND[1], ROUND[2],
+                                      SHIFT[0], SHIFT[1], SHIFT[2], SHIFT[3], SHIFT[4], SHIFT[5],
+                                      RSS_SATURATE};
 
     // -- configurations this techmap does not implement --------------------
     // Reject rather than mis-map (see the header). Each term is a capability
@@ -346,10 +376,14 @@ module QL_DSP4 #(
     // =======================================================================
     wire [63:0] alu_out;
     wire [3:0]  alu_co;
+    wire        alu_sign;   // product sign, SIGN_M (alu.v, ffb 4.2.7)
     wire [63:0] acc_q;
     wire [63:0] p_node;
     generate
-        if (USE_PREG) begin : g_acc
+        if (FOLD_MREG) begin : g_acc_as_m
+            QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(1'b1), .R(RSTN), .clk(CLK), .Q(acc_q));
+            assign p_node = acc_q;
+        end else if (USE_PREG) begin : g_acc
             QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(CEP), .R(ACCRSTN), .clk(CLK), .Q(acc_q));
             assign p_node = acc_q;
         end else begin : g_acc_byp
@@ -374,10 +408,10 @@ module QL_DSP4 #(
     // p_shift17).
     wire [63:0] pcin_s17 = {{14{PCIN[49]}}, {17{PCIN[49]}}, PCIN[49:17]};
     wire [63:0] p_s17    = {{14{acc_q[49]}}, {17{acc_q[49]}}, acc_q[49:17]};
-    // MACC_EXT is the sign word for the upper limb of a one-shot signed
-    // multi-slice MACC -- SIGNCIN only, no P term. It used to add this slice's
-    // own acc_q[49:17], which made the signed 100-bit compose wrong whenever
-    // the low limb was negative (ffb 4.2.6).
+    // MACC_EXT is the sign word {64{SIGNCIN}}, SIGNCIN only, no P term. Its use
+    // is the high limb of the continuous 100-bit MACC (ffb 4.2.7): with W = P
+    // and CIN = CCIN, the high slice adds carry - sign every cycle. It used to
+    // add this slice's own acc_q[49:17], which was wrong (ffb 4.2.6).
     wire [63:0] macc_ext = {64{SIGNCIN}};
     wire [63:0] ab_ext   = {{14{a_path[31]}}, a_path, b_path};
 
@@ -404,206 +438,206 @@ module QL_DSP4 #(
     generate
     if (ALUMODE == 2'b00) begin : g_add
         if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0000) begin : c0000
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(), .X(), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(), .X(), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0001) begin : c0001
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(), .X(), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(), .X(), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0010) begin : c0010
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(), .X(), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(), .X(), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0011) begin : c0011
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0100) begin : c0100
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(), .X(alu_x), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0101) begin : c0101
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0110) begin : c0110
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0111) begin : c0111
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1000) begin : c1000
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(alu_w), .X(), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1001) begin : c1001
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1010) begin : c1010
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1011) begin : c1011
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1100) begin : c1100
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1101) begin : c1101
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1110) begin : c1110
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1111) begin : c1111
-            QL_DSP4_ALU_ADD #(.MODE_BITS({USE_SIMD, 2'b00})) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_ADD #(.MODE_BITS(ALU_ADD_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end
 
     end else if (ALUMODE == 2'b11) begin : g_sub
         if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0000) begin : c0000
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(), .X(), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(), .X(), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0001) begin : c0001
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(), .X(), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(), .X(), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0010) begin : c0010
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(), .X(), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(), .X(), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0011) begin : c0011
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0100) begin : c0100
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(), .X(alu_x), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0101) begin : c0101
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0110) begin : c0110
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0111) begin : c0111
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1000) begin : c1000
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(alu_w), .X(), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1001) begin : c1001
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1010) begin : c1010
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1011) begin : c1011
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1100) begin : c1100
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1101) begin : c1101
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1110) begin : c1110
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1111) begin : c1111
-            QL_DSP4_ALU_SUB #(.MODE_BITS({USE_SIMD, 2'b11})) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_SUB #(.MODE_BITS(ALU_SUB_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end
 
     end else if (ALUMODE == 2'b01) begin : g_rsub
         if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0000) begin : c0000
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(), .X(), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(), .X(), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0001) begin : c0001
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(), .X(), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(), .X(), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0010) begin : c0010
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(), .X(), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(), .X(), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0011) begin : c0011
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0100) begin : c0100
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(), .X(alu_x), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0101) begin : c0101
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0110) begin : c0110
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0111) begin : c0111
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1000) begin : c1000
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(alu_w), .X(), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1001) begin : c1001
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1010) begin : c1010
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1011) begin : c1011
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1100) begin : c1100
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1101) begin : c1101
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1110) begin : c1110
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1111) begin : c1111
-            QL_DSP4_ALU_REV_SUB #(.MODE_BITS({USE_SIMD, 2'b01})) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_REV_SUB #(.MODE_BITS(ALU_RSUB_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end
 
     end else if (ALUMODE == 2'b10) begin : g_nsum
         if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0000) begin : c0000
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(), .X(), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(), .X(), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0001) begin : c0001
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(), .X(), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(), .X(), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0010) begin : c0010
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(), .X(), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(), .X(), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0011) begin : c0011
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0100) begin : c0100
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(), .X(alu_x), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0101) begin : c0101
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0110) begin : c0110
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b0111) begin : c0111
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1000) begin : c1000
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(alu_w), .X(), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1001) begin : c1001
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1010) begin : c1010
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1011) begin : c1011
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(alu_w), .X(), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1100) begin : c1100
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1101) begin : c1101
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1110) begin : c1110
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end else if ({W_CONN, X_CONN, Y_CONN, Z_CONN} == 4'b1111) begin : c1111
-            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS({USE_SIMD, 2'b10})) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
-                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co));
+            QL_DSP4_ALU_NOT_SUM #(.MODE_BITS(ALU_NSUM_MODE_BITS)) u_alu (.W(alu_w), .X(alu_x), .Y(alu_y), .Z(alu_z),
+                                   .CIN(alu_cin), .ALU_OUT(alu_out), .CARRYOUT(alu_co), .SIGN_M(alu_sign));
         end
 
     end
@@ -619,7 +653,7 @@ module QL_DSP4 #(
             // route ports from. {SATURATE, SHIFT[5:0], ROUND[2:0]} is the packing
             // QL_DSPPHY_RSS defines.
             QL_DSP4_RSS #(
-                .MODE_BITS({SATURATE, SHIFT, ROUND})
+                .MODE_BITS(RSS_MODE_BITS)
             ) u_rss (.ACC_IN(p_node), .ACC_OUT(p_out));
         end else begin : g_rss_byp
             assign p_out = p_node[49:0];
@@ -628,22 +662,31 @@ module QL_DSP4 #(
     assign P     = p_out;
     assign PCOUT = p_out;
 
-    // Carry-out (COUTREG optional; Phase-1 leaves it combinational).
+    // Carry-out and product-sign registers. One COUTREG select, one CEP
+    // enable, two banks (dsp4_top.v 4.2.7).
     wire [3:0] cout_w;
+    wire       sco_w;
     generate
         if (COUTREG) begin : g_co
-            QL_DSP4_CO_DFFR_4 ff (.D(alu_co), .R(RSTN), .clk(CLK), .Q(cout_w));
+            QL_DSP4_CO_DFFRE_4 ff     (.D(alu_co),   .E(CEP), .R(RSTN), .clk(CLK), .Q(cout_w));
+            QL_DSP4_SCO_DFFRE  ff_sco (.D(alu_sign), .E(CEP), .R(RSTN), .clk(CLK), .Q(sco_w));
+        end else if (FOLD_MREG) begin : g_co_fold
+            // The folded M register sits after the ALU, so the ALU's sign comes
+            // out a clock early. This register puts it back in step with P. It
+            // loads every clock and clears on RSTN, like the M register. The
+            // carry is always 0 here (only an adding ALU folds), but it is
+            // registered too: the arch picks the carry and the sign with one
+            // COUTREG select (cout_sel), so both take the register leg.
+            QL_DSP4_CO_DFFRE_4 ff     (.D(alu_co),   .E(1'b1), .R(RSTN), .clk(CLK), .Q(cout_w));
+            QL_DSP4_SCO_DFFRE  ff_sco (.D(alu_sign), .E(1'b1), .R(RSTN), .clk(CLK), .Q(sco_w));
         end else begin : g_co_byp
             assign cout_w = alu_co;
+            assign sco_w  = alu_sign;
         end
     endgenerate
-    assign COUT  = cout_w;
-    // Cascade carry is a TAP of COUT[3], not a separate register: dsp4_top.v
-    // has one carry-out bank (COUTREG) serving both COUT and CCOUT.
-    assign CCOUT = cout_w[3];
-    // Sign cascade is the ACCUMULATOR sign, not the product sign
-    // (dsp4_top.v: SIGNCOUT = p_acc[MULT_P_WIDTH-1]).
-    assign SIGNCOUT = p_node[49];
+    assign COUT     = cout_w;
+    assign CCOUT    = cout_w[3];     // a tap, not a register
+    assign SIGNCOUT = sco_w;         // product sign, per alu.v SIGN_M
 
     // A/B cascade outputs (registered path taps). Unused in Phase-1 designs
     // (dropped by `clean`), driven here to match the operating-mode taps.

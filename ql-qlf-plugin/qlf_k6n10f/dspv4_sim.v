@@ -6,10 +6,10 @@
 //   LR        : local  synchronous  reset, active low   (disabled in scan)
 //   E         : clock enable (recirculates Q when low)
 //   D         : data in
-//   SI / SE   : scan-in / scan-enable (only used under SCAN_VERIFICATION)
+//   SI / SE   : scan-in / scan-enable (only used under QL_SCAN_VERIFICATION)
 //   SCAN_MODE : holds the sync reset off during scan shift
 //----------------------------------------------------------------------------
-module DFFE_SNR_ANR (
+module ql_DFFE_SNR_ANR (
     input  D,
     SI,
     SE,
@@ -30,7 +30,7 @@ module DFFE_SNR_ANR (
   wire func_d = E ? D : q_reg;
 
   // Scan mux (behavioral; real mux comes from the mapped cell).
-`ifdef SCAN_VERIFICATION
+`ifdef QL_SCAN_VERIFICATION
   wire d_in = SE ? SI : func_d;
 `else
   wire d_in = func_d;
@@ -44,7 +44,7 @@ module DFFE_SNR_ANR (
 endmodule
 
 
-module dff_bank #(
+module ql_dff_bank #(
     parameter WIDTH = 1
 ) (
     input              CLK,
@@ -57,7 +57,7 @@ module dff_bank #(
   genvar i;
   generate
     for (i = 0; i < WIDTH; i = i + 1) begin : g_dff
-      DFFE_SNR_ANR u_dff (
+      ql_DFFE_SNR_ANR u_dff (
           .D        (D[i]),
           .SI       (1'b0),
           .SE       (1'b0),
@@ -76,7 +76,7 @@ endmodule
 // ===========================================================================
 // BEGIN ../rtl/alu.v
 // --- BEGIN AUTO-GENERATED PORT DEFINITION (do not edit) ---
-module alu #(
+module ql_alu #(
     parameter W_WIDTH = 50,
     parameter X_WIDTH = 50,
     parameter Y_WIDTH = 50,
@@ -92,7 +92,8 @@ module alu #(
     input CIN,
     input [1:0] USE_SIMD,
     output [ALU_OUT_WIDTH-1:0] ALU_OUT,
-    output [CARRYOUT_WIDTH-1:0] CARRYOUT
+    output [CARRYOUT_WIDTH-1:0] CARRYOUT,
+    output SIGN_M
 );
   // --- END AUTO-GENERATED PORT DEFINITION ---
 
@@ -147,6 +148,16 @@ module alu #(
   assign cascade_carry = (USE_SIMD == 2'b00)
                        ? (full_sum[CASC_BIT] ^ z_addend[CASC_BIT] ^ wxy_eff[CASC_BIT])
                        : 1'b0;
+
+  // ------------------------------------------------------------------------
+  // SIGN_M — sign of the multiplier product, cascaded as SIGNCOUT for the
+  // 100-bit MACC.  In MACC opmode X = {KN pads, U}, Y = zero-ext V, W = 0,
+  // so X[50] = KN and wxy[50] = KN ^ e where e = carry of U+V into bit 50.
+  // U + V = product + KN*2^50 gives e = KN - sign, hence
+  // X[50] & wxy[50] = KN & ~e = sign.  Valid only in MACC opmode
+  // (X=U, Y=V, W=0, ALUMODE=00, USE_SIMD=00).
+  // ------------------------------------------------------------------------
+  assign SIGN_M = X[CASC_BIT] & wxy[CASC_BIT];
 
   // --------------------------------------------------------------------
   // SIMD segmented arithmetic datapath (TWO24 / FOUR12)
@@ -249,7 +260,7 @@ endmodule
 // ===========================================================================
 // BEGIN ../rtl/b_path.v
 // --- BEGIN AUTO-GENERATED PORT DEFINITION (do not edit) ---
-module b_path #(
+module ql_b_path #(
     parameter B_WIDTH = 18,
     parameter BCIN_WIDTH = 18,
     parameter AD_DATA_WIDTH = 18,
@@ -296,7 +307,7 @@ module b_path #(
   // Gating is only performed if we select the A input to the preadder
   assign inmode_1_b = PREADDINSEL ? INMODE_1 : 1'b0;
 
-  reg_path #(
+  ql_reg_path #(
       .DATA_WIDTH(B_WIDTH)
   ) u_reg_path (
       .CLK(clk),
@@ -326,7 +337,7 @@ endmodule
 // ===========================================================================
 // BEGIN ../rtl/multiplier.v
 // --- BEGIN AUTO-GENERATED PORT DEFINITION (do not edit) ---
-module multiplier #(
+module ql_multiplier #(
     parameter I0_WIDTH = 18,
     parameter I1_WIDTH = 32,
     parameter U_WIDTH  = 50,
@@ -348,7 +359,7 @@ module multiplier #(
   // the dropped-carry flag K; exported inverted: U + V == product + KN*2^50.
   wire k;
 
-  pmult #(
+  ql_pmult #(
       .I0_WIDTH(I1_WIDTH),  // pmult.I0 = 32-bit  <- multiplier.I1
       .I1_WIDTH(I0_WIDTH),  // pmult.I1 = 18-bit  <- multiplier.I0
       .U_WIDTH (U_WIDTH),
@@ -410,7 +421,7 @@ endmodule
 // 2. pad with KN (adds the (1-K)*2^50 term for 64 bit case)
 //
 //----------------------------------------------------------------------------
-module pmult #(
+module ql_pmult #(
     parameter I0_WIDTH = 32,
     parameter I1_WIDTH = 18,
     parameter U_WIDTH  = 50,  // must equal I0_WIDTH + I1_WIDTH
@@ -458,7 +469,7 @@ endmodule
 // ===========================================================================
 // BEGIN ../rtl/preadd_path.v
 // --- BEGIN AUTO-GENERATED PORT DEFINITION (do not edit) ---
-module preadd_path #(
+module ql_preadd_path #(
     parameter A_WIDTH = 32,
     parameter ACIN_WIDTH = 32,
     parameter B_WIDTH = 18,
@@ -516,7 +527,7 @@ module preadd_path #(
   assign inmode_1_a = PREADDINSEL ? 1'b0 : INMODE[1];
 
   // Instantiate module for common reg / mux path
-  reg_path #(
+  ql_reg_path #(
       .DATA_WIDTH(A_WIDTH)
   ) u_reg_path (
       .CLK(clk),
@@ -540,7 +551,7 @@ module preadd_path #(
   assign d_r1_sel = DREG ? d_r1 : D;
 
   // D reg #0 — DFFE_SNR_ANR flop bank, gated by CED.
-  dff_bank #(
+  ql_dff_bank #(
       .WIDTH(D_WIDTH)
   ) u_d_r1 (
       .CLK(clk),
@@ -562,7 +573,7 @@ module preadd_path #(
 
   // Pre-adder core: AD = ( D +/- (A|B) )[AD_WIDTH-1:0],
   // wrapping (two's complement) on overflow.  INMODE[3] selects add/sub.
-  preadder #(
+  ql_preadder #(
       .I0_WIDTH(D_WIDTH),
       .I1_WIDTH(A_WIDTH),
       .AD_WIDTH(A_WIDTH)
@@ -574,7 +585,7 @@ module preadd_path #(
   );
 
   // AD register — DFFE_SNR_ANR flop bank, always enabled (no clock gate).
-  dff_bank #(
+  ql_dff_bank #(
       .WIDTH(A_WIDTH)
   ) u_preadd_sat_r (
       .CLK(clk),
@@ -596,7 +607,7 @@ endmodule
 // ===========================================================================
 // BEGIN ../rtl/preadder.v
 // --- BEGIN AUTO-GENERATED PORT DEFINITION (do not edit) ---
-module preadder #(
+module ql_preadder #(
     parameter I0_WIDTH = 27,
     parameter I1_WIDTH = 32,
     parameter AD_WIDTH = 32
@@ -624,7 +635,7 @@ endmodule
 // ===========================================================================
 // BEGIN ../rtl/reg_path.v
 // --- BEGIN AUTO-GENERATED PORT DEFINITION (do not edit) ---
-module reg_path #(
+module ql_reg_path #(
     parameter DATA_WIDTH = 18
 ) (
     input CLK,
@@ -666,7 +677,7 @@ module reg_path #(
   assign a_r2_sel   = REG1 ? a_r2 : a_acin_sel;
 
   // reg #0 / #1 — DFFE_SNR_ANR flop banks; CE gates both.
-  dff_bank #(
+  ql_dff_bank #(
       .WIDTH(DATA_WIDTH)
   ) u_a_r1 (
       .CLK(clk),
@@ -676,7 +687,7 @@ module reg_path #(
       .D  (a_acin_sel),
       .Q  (a_r1)
   );
-  dff_bank #(
+  ql_dff_bank #(
       .WIDTH(DATA_WIDTH)
   ) u_a_r2 (
       .CLK(clk),
@@ -724,7 +735,7 @@ round half odd                  -1    -1     1     1        // round to nearest 
 
 -----------------------------------------------------------------------------*/
 
-module round #(
+module ql_round #(
     parameter NBITS_A = 64
 ) (
     input  [(NBITS_A-1):0] a_i,
@@ -814,7 +825,7 @@ endmodule
 // =============================================================================
 // RSS (Round / Shift / Saturate) Block
 // =============================================================================
-module rss_block #(
+module ql_rss_block #(
     parameter Z_WIDTH   = 50,
     parameter ACC_WIDTH = 64
 ) (
@@ -835,7 +846,7 @@ module rss_block #(
 
   assign round_in = acc_in;
 
-  round #(
+  ql_round #(
       .NBITS_A(ACC_WIDTH)
   ) round_i0 (
       .a_i         (round_in),
@@ -870,7 +881,7 @@ endmodule
 // ===========================================================================
 // BEGIN ../rtl/dsp4_top.v
 // --- BEGIN AUTO-GENERATED PORT DEFINITION (do not edit) ---
-module dsp4_top #(
+module ql_dsp4_top #(
     parameter A_WIDTH = 32,
     parameter B_WIDTH = 18,
     parameter C_WIDTH = 50,
@@ -970,7 +981,7 @@ module dsp4_top #(
 
   wire [B_WIDTH-1:0]  b_gate;     // B gate out
 
-  preadd_path #(
+  ql_preadd_path #(
       .A_WIDTH    (A_WIDTH),
       .ACIN_WIDTH (ACIN_WIDTH),
       .B_WIDTH    (B_WIDTH),
@@ -1009,7 +1020,7 @@ module dsp4_top #(
   wire [B_WIDTH-1:0]  b_mult;     // B path output to multiplier
   wire [BCOUT_WIDTH-1:0] bcout_int;
 
-  b_path #(
+  ql_b_path #(
       .B_WIDTH      (B_WIDTH),
       .BCIN_WIDTH   (BCIN_WIDTH),
       .AD_DATA_WIDTH(B_WIDTH),
@@ -1044,7 +1055,7 @@ module dsp4_top #(
   wire [C_WIDTH-1:0] c_reg, c_sel;
 
   // C register — DFFE_SNR_ANR flop bank, gated by CEC.
-  dff_bank #(
+  ql_dff_bank #(
       .WIDTH(C_WIDTH)
   ) u_c_reg (
       .CLK(clk),
@@ -1070,8 +1081,9 @@ module dsp4_top #(
   // in carry-save form (U = sum vector, V = carry vector) plus the inverted
   // dropped-carry flag KN:  U + V == product + KN*2^50 as integers.  U + V
   // is resolved by the ALU via the X/Y muxes below; KN pads the X-mux value
-  // so the 64-bit resolution is exact.
-  multiplier #(
+  // so the 64-bit resolution is exact.  The ALU reads the pad (X[50]) to
+  // recover the product sign (SIGN_M -> SIGNCOUT).
+  ql_multiplier #(
       .I0_WIDTH(MULT_B_WIDTH),
       .I1_WIDTH(MULT_A_WIDTH),
       .U_WIDTH (MULT_P_WIDTH),
@@ -1085,7 +1097,7 @@ module dsp4_top #(
   );
 
   // MREG (optional 1-stage pipeline on multiplier output) — DFFE_SNR_ANR banks.
-  dff_bank #(
+  ql_dff_bank #(
       .WIDTH(MULT_P_WIDTH)
   ) u_mult_pp_U_reg (
       .CLK(clk),
@@ -1098,7 +1110,7 @@ module dsp4_top #(
   // V[6:0] is structurally constant 0 (dead low bits of the carry vector),
   // so only the 43 live bits [49:7] get MREG flops; the low bits are tied
   // to 0 after the register so no flops are ever instantiated for them.
-  dff_bank #(
+  ql_dff_bank #(
       .WIDTH(MULT_P_WIDTH - MULT_V_LSB_ZEROS)
   ) u_mult_pp_V_reg (
       .CLK(clk),
@@ -1110,7 +1122,7 @@ module dsp4_top #(
   );
   assign mult_pp_V_reg[MULT_V_LSB_ZEROS-1:0] = {MULT_V_LSB_ZEROS{1'b0}};
   // KN pipelines in lockstep with U/V so the X-mux pad stays aligned.
-  dff_bank #(
+  ql_dff_bank #(
       .WIDTH(1)
   ) u_mult_pp_KN_reg (
       .CLK(clk),
@@ -1188,8 +1200,8 @@ module dsp4_top #(
   // The >>17 paths operate on the low-50 window of the accumulator
   // (P_WIDTH bits) and are sign-extended to ACC_WIDTH.
 
-  // MACC_EXT (100): sign-extension word for the upper limb of a one-shot
-  // signed multi-slice multiply accumulate.
+  // MACC_EXT (100): sign-extension word for the upper limb of the continuous
+  // 100-bit MACC (high slice pairs it with W=P feedback and CIN=CCIN).
   wire [ACC_WIDTH-1:0] macc_ext;
   assign macc_ext = {ACC_WIDTH{SIGNCIN}};
 
@@ -1246,8 +1258,9 @@ module dsp4_top #(
   // ========================================================================
   wire [ ACC_WIDTH-1:0] alu_result;
   wire [COUT_WIDTH-1:0] carryout_int;
+  wire                  alu_sign_m;
 
-  alu #(
+  ql_alu #(
       .W_WIDTH       (ACC_WIDTH),
       .X_WIDTH       (ACC_WIDTH),
       .Y_WIDTH       (ACC_WIDTH),
@@ -1263,7 +1276,8 @@ module dsp4_top #(
       .CIN     (cin_resolved),
       .USE_SIMD(USE_SIMD),
       .ALU_OUT (alu_result),
-      .CARRYOUT(carryout_int)
+      .CARRYOUT(carryout_int),
+      .SIGN_M  (alu_sign_m)
   );
 
 
@@ -1273,7 +1287,7 @@ module dsp4_top #(
   assign l_rst_n_acc = ACCRSTN;
 
   // P accumulator register — DFFE_SNR_ANR flop bank, gated by CEP.
-  dff_bank #(
+  ql_dff_bank #(
       .WIDTH(ACC_WIDTH)
   ) u_p_reg (
       .CLK(clk),
@@ -1288,9 +1302,10 @@ module dsp4_top #(
   assign p_acc = PREG ? p_reg : alu_result;
 
   // Cascade carry: CARRYOUT[3] is the ALU's carry out of bit 49 (the 50-bit P /
-  // PCOUT boundary).  Valid for a 2-operand add; CCOUT is don't-care otherwise
-  // (SIMD / >2-operand ops).  CCOUT is a tap of COUT[3], so the single
-  // carry-out register bank (COUTREG) serves both outputs.
+  // PCOUT boundary).  Valid for 2-operand adds and, as the unsigned limb carry,
+  // in MACC opmode; don't-care otherwise (SIMD).  CCOUT is a tap of COUT[3],
+  // so the carry-out register bank (COUTREG) serves both outputs.  SIGNCOUT
+  // has its own 1-bit bank below, under the same COUTREG select.
 
   // ========================================================================
   // RSS (Round / Shift / Saturate) on the accumulator OUTPUT: windows the 64b
@@ -1298,7 +1313,7 @@ module dsp4_top #(
   // ========================================================================
   wire [ACC_WIDTH-1:0] rss_out;
 
-  rss_block #(
+  ql_rss_block #(
       .Z_WIDTH  (P_WIDTH),
       .ACC_WIDTH(ACC_WIDTH)
   ) u_rss (
@@ -1310,20 +1325,38 @@ module dsp4_top #(
   );
 
   wire [COUT_WIDTH-1:0] carryout_sel;
+  wire                  signcout_reg;
+  wire                  signcout_sel;
 
-  // Carry-out register
-  dff_bank #(
+  // Carry-out register (COUT / CCOUT).  CEP-enabled so a registered carry
+  // stays aligned with the P accumulator it belongs to.
+  ql_dff_bank #(
       .WIDTH(COUT_WIDTH)
   ) u_carryout_reg (
       .CLK(clk),
       .R  (g_arst_n),
       .LR (l_rst_n),
-      .E  (1'b1),
+      .E  (CEP),
       .D  (carryout_int),
       .Q  (carryout_reg)
   );
 
+  // Product-sign register (SIGNCOUT).  Separate bank from the carry-out
+  // register, but the same COUTREG select, CEP enable and resets, so the
+  // (CCOUT, SIGNCOUT) cascade pair is always launched together.
+  ql_dff_bank #(
+      .WIDTH(1)
+  ) u_signcout_reg (
+      .CLK(clk),
+      .R  (g_arst_n),
+      .LR (l_rst_n),
+      .E  (CEP),
+      .D  (alu_sign_m),
+      .Q  (signcout_reg)
+  );
+
   assign carryout_sel = COUTREG ? carryout_reg : carryout_int;
+  assign signcout_sel = COUTREG ? signcout_reg : alu_sign_m;
 
   wire [P_WIDTH-1:0] pout_sel;
 
@@ -1337,8 +1370,7 @@ module dsp4_top #(
   assign BCOUT    = bcout_int;
   assign COUT     = carryout_sel;
   assign CCOUT    = carryout_sel[COUT_WIDTH-1];
-
-  assign SIGNCOUT = p_acc[MULT_P_WIDTH-1];
+  assign SIGNCOUT = signcout_sel;
 
 endmodule
 // END ../rtl/dsp4_top.v
