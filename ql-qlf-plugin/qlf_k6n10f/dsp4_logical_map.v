@@ -674,8 +674,10 @@ module QL_DSP4 #(
             // The folded M register sits after the ALU, so the ALU's sign comes
             // out a clock early. This register puts it back in step with P. It
             // loads every clock and clears on RSTN, like the M register. The
-            // carry needs nothing: only an adding ALU folds, and its carry is 0.
-            assign cout_w = alu_co;
+            // carry is always 0 here (only an adding ALU folds), but it is
+            // registered too: the arch picks the carry and the sign with one
+            // COUTREG select (cout_sel), so both take the register leg.
+            QL_DSP4_CO_DFFRE_4 ff     (.D(alu_co),   .E(1'b1), .R(RSTN), .clk(CLK), .Q(cout_w));
             QL_DSP4_SCO_DFFRE  ff_sco (.D(alu_sign), .E(1'b1), .R(RSTN), .clk(CLK), .Q(sco_w));
         end else begin : g_co_byp
             assign cout_w = alu_co;
