@@ -16,7 +16,8 @@
 // ---------------------------------------------------------------------------
 // RSS block (round / shift / saturate)
 //
-// RSS is parameter-controlled, not a mode. This passes C through the ALU so the only interesting cell is QL_DSP4_RSS.
+// RSS is parameter-controlled, not a mode. This passes C through the ALU so
+// the only interesting cell is QL_DSP4_RSS.
 //
 // Lowers to: QL_DSP4_RSS, QL_DSP4_ALU_ADD, QL_DSP4_ACC_DFFRE
 // ---------------------------------------------------------------------------
@@ -48,7 +49,9 @@ endmodule
 // ---------------------------------------------------------------------------
 // ALU block (all four ALUMODE variants)
 //
-// A:B + C with the multiplier bypassed, so exactly one QL_DSP4_ALU_* leaf is produced and nothing else. ALUMODE is a parameter: 00 add, 01 reverse-subtract, 10 not-sum, 11 subtract.
+// A:B + C with the multiplier bypassed, so exactly one QL_DSP4_ALU_* leaf is
+// produced and nothing else. ALUMODE is a parameter: 00 add, 01
+// reverse-subtract, 10 not-sum, 11 subtract.
 //
 // Lowers to: one of QL_DSP4_ALU_{ADD,REV_SUB,NOT_SUM,SUB}
 // ---------------------------------------------------------------------------
@@ -81,9 +84,12 @@ endmodule
 // ---------------------------------------------------------------------------
 // Pipelined multiplier (M / MV / MK register banks)
 //
-// MULT with MREG set. The techmap folds MREG to require PREG, and the product still leaves through the ALU and accumulator, so those appear too -- there is no datapath to the multiplier that avoids them.
+// MULT with MREG set. The techmap folds MREG to require PREG, and the product
+// still leaves through the ALU and accumulator, so those appear too -- there
+// is no datapath to the multiplier that avoids them.
 //
-// Lowers to: QL_DSP4_MULT, QL_DSP4_M_DFFR x50, QL_DSP4_MV_DFFR x43, QL_DSP4_MK_DFFR x1, QL_DSP4_ALU_ADD, QL_DSP4_ACC_DFFRE
+// Lowers to: QL_DSP4_MULT, QL_DSP4_M_DFFR x50, QL_DSP4_MV_DFFR x43,
+//            QL_DSP4_MK_DFFR x1, QL_DSP4_ALU_ADD, QL_DSP4_ACC_DFFRE
 // ---------------------------------------------------------------------------
 module ql_dsp4_mult_pipelined (
     input  wire        CLK,
@@ -110,9 +116,16 @@ endmodule
 // ---------------------------------------------------------------------------
 // Continuous 100-bit MACC (two slices)
 //
-// {P[99:50], P[49:0]} += A * B on every clock with CEP high, mod 2^100. The flow cannot infer a two-cell macro, so this is the supported route. The low slice accumulates and exports the limb carry (CCOUT) and the product sign (SIGNCOUT); the high slice adds CCIN - SIGNCIN to its own P. COUTREG = 1 registers the carry and sign, so P[99:50] lags P[49:0] by one enabled clock. To clear the pair, hold ACCRSTN low for two clocks with A = 0 and CEP high. RSTN clears the carry and sign registers, not P.
+// {P[99:50], P[49:0]} += A * B on every clock with CEP high, mod 2^100. The
+// flow cannot infer a two-cell macro, so this is the supported route. The low
+// slice accumulates and exports the limb carry (CCOUT) and the product sign
+// (SIGNCOUT); the high slice adds CCIN - SIGNCIN to its own P. COUTREG = 1
+// registers the carry and sign, so P[99:50] lags P[49:0] by one enabled
+// clock. To clear the pair, hold ACCRSTN low for two clocks with A = 0 and
+// CEP high. RSTN clears the carry and sign registers, not P.
 //
-// Lowers to: QL_DSP4_MULT, QL_DSP4_ALU_ADD x2, QL_DSP4_ACC_DFFRE_64 x2; with COUTREG also QL_DSP4_CO_DFFRE_4 and QL_DSP4_SCO_DFFRE
+// Lowers to: QL_DSP4_MULT, QL_DSP4_ALU_ADD x2, QL_DSP4_ACC_DFFRE_64 x2; with
+//            COUTREG also QL_DSP4_CO_DFFRE_4 and QL_DSP4_SCO_DFFRE
 // ---------------------------------------------------------------------------
 module ql_dsp4_macc100 #(
     parameter COUTREG = 1'b0
