@@ -1515,11 +1515,14 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
         if (check_label("blif", "(if -blif)")) {
             if (help_mode || !blif_file.empty()) {
-                // Only the relative-placement flow adds flags: -attr/-iattr keep
-                // the REL_* annotations, -blackbox writes a .model per primitive
-                // (the constraint generator derives VPR atom names from them).
+                // The relative-placement flow: -attr/-iattr keep the REL_*
+                // annotations, -blackbox writes a .model per primitive (the
+                // constraint generator derives VPR atom names from them).
+                // Otherwise -cname makes VPR name each atom after its cell, which
+                // keeps the RTL instance prefix that region constraints match on
+                // (aurora2#2244); the default names it after its first output net.
                 bool rel_flow = !rel_ip_blif_files.empty();
-                const char *blif_flags = rel_flow ? "-param -attr -iattr -blackbox" : "-param";
+                const char *blif_flags = rel_flow ? "-param -attr -iattr -blackbox" : "-param -cname";
                 if (!help_mode && rel_flow) {
                     // Work on a scratch copy: the in-memory netlist is still
                     // needed for -edif and -verilog.
@@ -1527,7 +1530,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                     prepare_rel_blif_scratch();
                 }
                 run(stringf("write_blif %s %s", blif_flags, help_mode ? "<file-name>" : blif_file.c_str()),
-                    "(-attr -iattr -blackbox with -rel_ip_blif)");
+                    "(-cname; -attr -iattr -blackbox instead with -rel_ip_blif)");
                 if (dspv4 && !help_mode && !blif_file.empty()) {
                     // ---------------------------------------------------------------
                     // DSP-V4 BLIF buffer cleanup (round-trip).
