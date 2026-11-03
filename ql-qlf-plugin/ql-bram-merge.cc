@@ -126,9 +126,16 @@ struct QlSDPBramMergeWorker {
             if (!merged->has_attribute(attr.first))
                 merged->attributes.insert(attr);
 
+        // memory_libmap names each BRAM after its memory (core.u_mem.mem.0.0, or
+        // $flatten\core.\u_rom.$...0.0 for a private one); keep it, so synth_ql can still
+        // place the BRAM in the memory's RTL instance.
+        RTLIL::IdString name = bram1->name;
+
         // Remove the old cells
         module->remove(bram1);
         module->remove(bram2);
+
+        module->rename(merged, name);
     }
 
     void merge_bram_groups()
@@ -278,9 +285,16 @@ struct QlTDPBramMergeWorker {
             if (!merged->has_attribute(attr.first))
                 merged->attributes.insert(attr);
 
+        // memory_libmap names each BRAM after its memory (core.u_mem.mem.0.0, or
+        // $flatten\core.\u_rom.$...0.0 for a private one); keep it, so synth_ql can still
+        // place the BRAM in the memory's RTL instance.
+        RTLIL::IdString name = bram1->name;
+
         // Remove the old cells
         module->remove(bram1);
         module->remove(bram2);
+
+        module->rename(merged, name);
     }
 
     void merge_bram_groups()
