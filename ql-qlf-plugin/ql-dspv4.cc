@@ -80,6 +80,23 @@ static void dspv4_apply_mode(RTLIL::Cell *cell, const Dspv4Mode &m)
     cell->setPort(ID(CIN), m.alumode == 1 ? RTLIL::State::S1 : RTLIL::State::S0);
 }
 
+// A flattened cell keeps its instance path only in its private name
+// ($flatten\core.\u_mul0.$mul$...), which autoname later discards. Naming the DSP
+// inside that instance keeps it under core.u_mul0 for region constraints.
+static RTLIL::IdString dspv4_cell_name(RTLIL::Module *module, RTLIL::Cell *mul)
+{
+    static const std::string prefix = "$flatten";
+    const std::string &name = mul->name.str();
+    size_t leaf = name.find(".$");
+    if (name.compare(0, prefix.size(), prefix) != 0 || leaf == std::string::npos)
+        return NEW_ID;
+    std::string scope;
+    for (char c : name.substr(prefix.size(), leaf - prefix.size()))
+        if (c != '\\')
+            scope += c;
+    return module->uniquify("\\" + scope + ".QL_DSP4");
+}
+
 // Port widths on QL_DSP4. A is the 32-bit multiplier operand, B the 18-bit one.
 static const int DSPV4_A_WIDTH = 32;
 static const int DSPV4_B_WIDTH = 18;
@@ -1234,7 +1251,7 @@ struct QlDspV4Pass : public Pass {
         }
 
         const Dspv4Mode &m = dspv4_mode(mode_name);
-        RTLIL::Cell *cell = module->addCell(NEW_ID, ID(QL_DSP4));
+        RTLIL::Cell *cell = module->addCell(dspv4_cell_name(module, st.mul), ID(QL_DSP4));
         dspv4_apply_mode(cell, m);
 
         // C is the adder operand that is neither the product nor the
