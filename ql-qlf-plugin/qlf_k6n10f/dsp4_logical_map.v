@@ -155,8 +155,8 @@ module QL_DSP4 #(
     // multiplier's own U/V and only adds. The fold puts the ALU inside the
     // registered path, which reschedules any other ALU input by a cycle (C(t)
     // becomes C(t-1)), and nothing compensates for it. A subtracting ALU has a
-    // live carry-out (1 when the product is 0), which the fold would also
-    // move a cycle early; an adding one's carry is always 0.
+    // live carry-out (a borrow), which the fold would also move a cycle
+    // early; an adding one's carry is always 0.
     // The carry-in is an ALU input too: a live one would be stored with the
     // product and reach P a cycle late. So it must be tied to 0.
     parameter _TECHMAP_CONSTMSK_CIN_  = 1'b0;
@@ -273,10 +273,10 @@ module QL_DSP4 #(
     // the 32-bit port. Non-pre-adder modes multiply A (32b) * B (18b) directly.
     // =======================================================================
     wire [31:0] ad_raw, ad_path;
-    // Operand zero-gates (INMODE[1]). Only the pre-adder side is gated on A --
-    // the multiplier takes the A reg-path output ungated (dsp4_top.v:
-    // mult_a = AMULTSEL ? preadd_ad : preadd_xmux, and preadd_xmux is PATH_OUT,
-    // not GATE_OUT). On B the multiplier does take the gated value.
+    // Operand zero-gates (INMODE[1]). The multiplier and the pre-adder both
+    // take the gated A and the gated B (preadd_path.v: AMULT = AMULTSEL ?
+    // preadd_r_sel : a_n_gate, since ffb #198). Only the A:B concatenation
+    // reads the ungated a_path / b_path.
     wire [31:0] a_gate = GATE_A ? 32'b0 : a_path;
     wire [17:0] b_gate = GATE_B ? 18'b0 : b_path;
     // Pre-adder I1: B sign-extended 18 -> 32, or the A path (PREADDINSEL).
@@ -302,17 +302,17 @@ module QL_DSP4 #(
     endgenerate
 
     // =======================================================================
-    // Multiplier. I1 (32b) = A path; I0 (18b) = pre-adder result (pre-adder
-    // modes) or B path.
+    // Multiplier. I1 (32b) = pre-adder result or gated A path; I0 (18b) =
+    // pre-adder result or gated B path.
     // =======================================================================
     wire [17:0] mult_i0;
     wire [31:0] mult_i1;
     generate
-        // I1 (32b): pre-adder result when AMULTSEL, else the ungated A path.
+        // I1 (32b): pre-adder result when AMULTSEL, else the gated A path.
         if (AMULTSEL) begin : g_mi1_ad
             assign mult_i1 = ad_path;
         end else begin : g_mi1_a
-            assign mult_i1 = a_path;
+            assign mult_i1 = a_gate;
         end
         // I0 (18b): pre-adder result when BMULTSEL, else the gated B path.
         if (BMULTSEL) begin : g_mi0_ad

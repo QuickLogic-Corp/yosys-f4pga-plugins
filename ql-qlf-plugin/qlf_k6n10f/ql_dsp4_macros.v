@@ -140,7 +140,7 @@ module ql_dsp4_macc100 #(
 );
   wire carry;
   wire sign;
-  // low slice: P[49:0] += A * B (MACC100_CONT_LO)
+  // low slice: P[49:0] += A * B (MACC100_LO)
   QL_DSP4 #(
       .OPMODE(9'b000100101), .ALUMODE(2'b00), .CARRYINSEL(3'b000),
       .PREG(1'b1), .COUTREG(COUTREG)
@@ -154,7 +154,7 @@ module ql_dsp4_macc100 #(
       .CEP(CEP), .ARSTN(1'b1),
       .RSTN(RSTN), .ACCRSTN(ACCRSTN)
   );
-  // high slice: P[99:50] += {64{SIGNCIN}} + CCIN (MACC100_CONT_HI)
+  // high slice: P[99:50] += {64{SIGNCIN}} + CCIN (MACC100_HI)
   QL_DSP4 #(
       .OPMODE(9'b011000000), .ALUMODE(2'b00), .CARRYINSEL(3'b010),
       .PREG(1'b1)

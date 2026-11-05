@@ -225,6 +225,13 @@ module ql_alu #(
 
   reg [3:0] arith_carryout;
 
+  // ALUMODE[1] inverts the W/X/Y and CIN terms, so the adder's raw carry out
+  // is inverted relative to the CIN a slice in the same ALUMODE expects.
+  // Re-invert it so CARRYOUT (and CCOUT / the CARRYINSEL=100 feedback, which
+  // tap CARRYOUT[3]) chains directly in every ALUMODE: a borrow in ALUMODE=11,
+  // the carry of Z+W+X+Y+CIN in ALUMODE=10.
+  wire carry_inv = ALUMODE[1];
+
   // Assign carryout depending on mode of operation
   // ONE50:  only CARRYOUT[3] is meaningful (carry out of bit 49).
   // TWO24:  CARRYOUT[1] and [3] are the valid segment carries;
@@ -234,20 +241,20 @@ module ql_alu #(
     if (!USE_SIMD) begin
       // ONE50: CARRYOUT[3] is the carry out of bit 49 (the 50-bit P
       // boundary) -- this is also the inter-slice cascade carry.
-      arith_carryout[3]   = cascade_carry;
+      arith_carryout[3]   = cascade_carry ^ carry_inv;
       arith_carryout[2:0] = 3'b0;
       // If in TWO24 Mode: we only carryout for the 2x 24 bit segments
     end else if (USE_SIMD == 2'b01) begin
       arith_carryout[0] = 1'b0;
-      arith_carryout[1] = simd_c1;
+      arith_carryout[1] = simd_c1 ^ carry_inv;
       arith_carryout[2] = 1'b0;
-      arith_carryout[3] = simd_c3;
+      arith_carryout[3] = simd_c3 ^ carry_inv;
     end else begin
       // FOUR12: all four segment carries are output
-      arith_carryout[0] = simd_c0;
-      arith_carryout[1] = simd_c1;
-      arith_carryout[2] = simd_c2;
-      arith_carryout[3] = simd_c3;
+      arith_carryout[0] = simd_c0 ^ carry_inv;
+      arith_carryout[1] = simd_c1 ^ carry_inv;
+      arith_carryout[2] = simd_c2 ^ carry_inv;
+      arith_carryout[3] = simd_c3 ^ carry_inv;
     end
   end
 
@@ -476,7 +483,8 @@ module ql_preadd_path #(
     parameter D_WIDTH = 27,
     parameter ACOUT_WIDTH = 32,
     parameter AD_WIDTH = 32,
-    parameter XMUX_WIDTH = 32
+    parameter XMUX_WIDTH = 32,
+    parameter AMULT_WIDTH = 32
 ) (
     input [A_WIDTH-1:0] A,
     input [ACIN_WIDTH-1:0] ACIN,
@@ -498,7 +506,8 @@ module ql_preadd_path #(
     input RSTN,
     output [ACOUT_WIDTH-1:0] ACOUT,
     output [AD_WIDTH-1:0] AD,
-    output [XMUX_WIDTH-1:0] XMUX
+    output [XMUX_WIDTH-1:0] XMUX,
+    output [AMULT_WIDTH-1:0] AMULT
 );
   // --- END AUTO-GENERATED PORT DEFINITION ---
 
@@ -597,6 +606,12 @@ module ql_preadd_path #(
   );
 
   assign preadd_r_sel = ADREG ? preadd_sat_r : preadd_sat;
+
+  // Multiplier operand select (MULT_I1_SEL) — mirrors b_path's BMULT: the raw
+  // operand is the gated reg-path output (INMODE[0] stage select + INMODE[1]
+  // gate), not PATH_OUT, so A and B reach the multiplier through the same
+  // structure.  XMUX (A:B concat) stays on PATH_OUT.
+  assign AMULT = AMULTSEL ? preadd_r_sel : a_n_gate;
 
   // Outputs
   assign AD = preadd_r_sel;
@@ -978,6 +993,7 @@ module ql_dsp4_top #(
   wire [A_WIDTH-1:0]  preadd_xmux;   // A path output for X mux (A:B concat)
   wire [A_WIDTH-1:0]  preadd_ad;     // Pre-adder output to multiplier
   wire [ACOUT_WIDTH-1:0] acout_int;
+  wire signed [MULT_A_WIDTH-1:0] mult_a;  // 32-bit MULT port (I1): AD or gated A
 
   wire [B_WIDTH-1:0]  b_gate;     // B gate out
 
@@ -988,7 +1004,8 @@ module ql_dsp4_top #(
       .D_WIDTH    (D_WIDTH),
       .ACOUT_WIDTH(ACOUT_WIDTH),
       .AD_WIDTH   (A_WIDTH),
-      .XMUX_WIDTH (A_WIDTH)
+      .XMUX_WIDTH (A_WIDTH),
+      .AMULT_WIDTH(MULT_A_WIDTH)
   ) u_preadd_path (
       .A          (A),
       .ACIN       (ACIN),
@@ -1010,7 +1027,8 @@ module ql_dsp4_top #(
       .RSTN       (l_rst_n),
       .ACOUT      (acout_int),
       .AD         (preadd_ad),
-      .XMUX       (preadd_xmux)
+      .XMUX       (preadd_xmux),
+      .AMULT      (mult_a)
   );
 
   // ========================================================================
@@ -1067,10 +1085,6 @@ module ql_dsp4_top #(
   );
 
   assign c_sel = CREG ? c_reg : C;
-
-  wire signed [MULT_A_WIDTH-1:0] mult_a;  // 32-bit MULT port (I1): AD or raw A
-
-  assign mult_a = AMULTSEL ? preadd_ad : preadd_xmux;  // MULT_I1_SEL
 
   wire [MULT_P_WIDTH-1:0] mult_pp_U_out, mult_pp_V_out;
   wire [MULT_P_WIDTH-1:0] mult_pp_U_reg, mult_pp_U_sel, mult_pp_V_reg, mult_pp_V_sel;
@@ -1281,8 +1295,7 @@ module ql_dsp4_top #(
   );
 
 
-  // The accumulator's local sync reset folds in the dedicated ACCRSTN: the P
-  // register clears on either the local sync reset (RSTN) or ACCRSTN.
+  // The P register's sync reset is ACCRSTN only; RSTN does not clear P.
   wire l_rst_n_acc;
   assign l_rst_n_acc = ACCRSTN;
 
@@ -1298,7 +1311,8 @@ module ql_dsp4_top #(
       .Q  (p_reg)
   );
 
-  // Accumulator feedback (64b): registered (PREG=1) or combinational bypass.
+  // P/PCOUT/RSS source (64b): P register (PREG=1) or ALU result (PREG=0).
+  // The W/X/Z feedback always reads p_reg, whatever PREG is.
   assign p_acc = PREG ? p_reg : alu_result;
 
   // Cascade carry: CARRYOUT[3] is the ALU's carry out of bit 49 (the 50-bit P /

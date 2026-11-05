@@ -33,7 +33,7 @@
 //
 //   QL_DSP4_MULT                       rtl/pmult.v              sha256:5cf5e388a54660bd
 //   QL_DSP4_MULT                       rtl/multiplier.v         sha256:2774a077899700ff
-//   QL_DSP4_ALU_*                      rtl/alu.v                sha256:e4321c63e7064ecd
+//   QL_DSP4_ALU_*                      rtl/alu.v                sha256:24598014e65a3c3f
 //   QL_DSP4_PREADD / QL_DSP4_PRESUB    rtl/preadder.v           sha256:3269b4f9ed290fc6
 //   QL_DSP4_RSS                        rtl/rss_block.v          sha256:4934a3f41b91d330
 //   QL_DSP4_RSS                        rtl/round.v              sha256:e5ce9f93518b88d0
@@ -234,11 +234,16 @@ module qldsp4_alu_core #(
   // alu.v's CASC_BIT) in the 1x50 path. In TWO24 only [1] and [3] are the real
   // segment carries -- [0] and [2] are intra-half intermediates and read 0. In
   // FOUR12 all four are valid.
+  //
+  // MODE[1] inverts the W/X/Y and CIN terms, so the adder's raw carry comes
+  // out inverted too. alu.v (ffb #199) re-inverts every valid bit, so the
+  // carry chains in every mode: a borrow in SUB, the sum's carry in NOT_SUM.
+  wire carry_inv = MODE[1];
   wire cascade_carry = full_sum[50] ^ z_eff[50] ^ wxy_eff[50];
   assign CARRYOUT =
-      (USE_SIMD == 2'b00) ? {cascade_carry, 3'b000} :
-      (USE_SIMD == 2'b01) ? {simd_c3, 1'b0, simd_c1, 1'b0}
-                          : {simd_c3, simd_c2, simd_c1, simd_c0};
+      (USE_SIMD == 2'b00) ? {cascade_carry ^ carry_inv, 3'b000} :
+      (USE_SIMD == 2'b01) ? {simd_c3 ^ carry_inv, 1'b0, simd_c1 ^ carry_inv, 1'b0}
+                          : {simd_c3, simd_c2, simd_c1, simd_c0} ^ {4{carry_inv}};
 endmodule
 
 module QL_DSP4_ALU_ADD (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT, SIGN_M);
