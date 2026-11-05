@@ -1114,10 +1114,11 @@ struct QlDspV4Pass : public Pass {
                 // multiplier side. That port is left empty, and unsigned, so
                 // dspv4_fit pads it with zeros rather than x.
                 //
-                // XPATH has add words only. A subtract, or an add no XPATH word
-                // fits, goes on to the PREADD words below. Those can still fold
-                // it with the shared operand on port D; when they would put it
-                // on A and B instead, the double-feed check refuses the cell.
+                // XPATH has add words only, and none with an ALU term. Any other
+                // shape goes on to the PREADD words below. Those can still fold
+                // it with the shared operand on port D. When they would put it
+                // on A and B instead, the double-feed check refuses the cell --
+                // or, with an ALU term, `placed` refuses the pre-adder alone.
                 bool shared_first = sigmapper(other) == sigmapper(first_addend);
                 bool shared_second = !shared_first && sigmapper(other) == sigmapper(second_addend);
                 if (shared_first || shared_second) {
@@ -1129,19 +1130,12 @@ struct QlDspV4Pass : public Pass {
                     // AD is signed, and signed_width counts an unsigned value's
                     // top bit as its sign. So an unsigned sum needs one more bit.
                     int signed_sum_width = sum_width + (sum_port_signed ? 0 : 1);
-                    // Refused here, not left to the double-feed check: that check
-                    // drops the whole cell, and the matcher's next offer then keeps
-                    // the pre-adder and leaves the wider ALU add in fabric.
-                    if (st.add != nullptr) {
-                        refuse(preadd, "pre-adder: no cross-path control word for it with an ALU term");
-                        continue;
-                    }
                     // XPATH_A: the shared operand on A, the sum to the 18-bit B side.
                     // XPATH_B: the shared operand on B, the sum to the 32-bit A side.
-                    bool xpath_a =
-                      !preadd_is_sub && d_fits && signed_sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(shared), shared_signed, DSPV4_A_WIDTH);
-                    bool xpath_b = !xpath_a && !preadd_is_sub && d_fits && signed_sum_width <= DSPV4_AD_A_WIDTH &&
-                                   fits(GetSize(shared), shared_signed, DSPV4_B_WIDTH);
+                    bool xpath_word = st.add == nullptr && !preadd_is_sub && d_fits;
+                    bool xpath_a = xpath_word && signed_sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(shared), shared_signed, DSPV4_A_WIDTH);
+                    bool xpath_b =
+                      !xpath_a && xpath_word && signed_sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(shared), shared_signed, DSPV4_B_WIDTH);
                     if (xpath_a || xpath_b) {
                         mode_name = xpath_a ? "XPATH_A" : "XPATH_B";
                         if (xpath_a) {
@@ -1231,7 +1225,24 @@ struct QlDspV4Pass : public Pass {
                     continue;
                 }
 
-                if (sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && orient(DSPV4_A_WIDTH)) {
+                // With an ALU term, a placement that leaves the shared operand on
+                // the X side would feed it to ports A and B. The double-feed check
+                // cannot be left to refuse it: it drops the whole cell, and the
+                // matcher's next offer keeps the pre-adder out and the wider ALU
+                // add in fabric. So such a placement does not count as fitting.
+                bool cross_path_alu = (shared_first || shared_second) && st.add != nullptr;
+                bool shared_on_x = false;
+                auto placed = [&](int x_port) {
+                    if (!orient(x_port))
+                        return false;
+                    if (cross_path_alu && sigmapper(x_operand) == sigmapper(other)) {
+                        shared_on_x = true;
+                        return false;
+                    }
+                    return true;
+                };
+
+                if (sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && placed(DSPV4_A_WIDTH)) {
                     // The sum keeps all 32 bits of AD.
                     mode_name = preadd_mode_a;
                     ma = x_operand;
@@ -1244,7 +1255,7 @@ struct QlDspV4Pass : public Pass {
                     ad_flop_cell = ad_flop;
                     break;
                 }
-                if (sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && orient(DSPV4_B_WIDTH)) {
+                if (sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && placed(DSPV4_B_WIDTH)) {
                     // AD is truncated to 18 bits here, which is why this path is
                     // tried second and needs the tighter proof.
                     mode_name = preadd_mode_b;
@@ -1257,6 +1268,10 @@ struct QlDspV4Pass : public Pass {
                     padd_cell = preadd;
                     ad_flop_cell = ad_flop;
                     break;
+                }
+                if (shared_on_x) {
+                    refuse(preadd, "pre-adder: no cross-path control word for it with an ALU term");
+                    continue;
                 }
                 refuse(preadd, "pre-adder: its sum may exceed the multiplier port");
                 log_debug("  %s: pre-adder not fused -- D +/- X needs %d bits, "

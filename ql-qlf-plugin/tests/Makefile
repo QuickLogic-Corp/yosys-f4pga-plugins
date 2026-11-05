@@ -182,18 +182,24 @@ qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 x  pre-adder: it feeds bo
 # Cross-path folds. Four modes, once each, in no fixed order: both XPATH
 # words, and the two PREADD words that take the shared operand on port D.
 # The double-feed check must never fire here.
-qlf_k6n10f-dspv4_xpath_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){3}$$' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){5}$$' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_A x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_B x3' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B_C x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B_C x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && ! grep -q 'no cross-path control word for it with an ALU term' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && ! grep -q 'one signal on ports A and B' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && ! grep -q 'register chain given up' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 # Cross-path refusals, each for its own reason: the subtract by the
 # double-feed check, the ALU term by the cross-path block.
-qlf_k6n10f-dspv4_xpath_refused_verify = grep -E -q 'modes inferred: (MULT x1, MULT_ADD_C x1|MULT_ADD_C x1, MULT x1)$$' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){2}$$' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'modes inferred:.*MULT x1' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'modes inferred:.*MULT_ADD_C x2' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'modes inferred:.*MULT_ACC x1' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
 qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '1 x  pre-adder: its mode would put one signal on ports A and B' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
-qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '1 x  pre-adder: no cross-path control word for it with an ALU term' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '3 x  pre-adder: no cross-path control word for it with an ALU term' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
 # Three modes, each grepped on its own: the order of the line changes when
 # two modes tie, and a count alone cannot say the double-feed check let
 # pipe and aa keep PREADD_A_MULT_B rather than something else.
