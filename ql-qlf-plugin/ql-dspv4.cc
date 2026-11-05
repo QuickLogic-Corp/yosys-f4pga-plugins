@@ -1108,6 +1108,57 @@ struct QlDspV4Pass : public Pass {
                 // answer -- this bound is the whole guard.
                 int sum_width = preadder_sum_width(preadd);
 
+                // Cross-path: the other multiply operand is one of this adder's
+                // own operands. A PREADD word would put it on ports A and B; an
+                // XPATH word reads it once and the tile routes AD to the other
+                // multiplier side. That port is left empty, and unsigned, so
+                // dspv4_fit pads it with zeros rather than x.
+                //
+                // XPATH has add words only. A subtract, or an add no XPATH word
+                // fits, goes on to the PREADD words below. Those can still fold
+                // it with the shared operand on port D; when they would put it
+                // on A and B instead, the double-feed check refuses the cell.
+                bool shared_first = sigmapper(other) == sigmapper(first_addend);
+                bool shared_second = !shared_first && sigmapper(other) == sigmapper(second_addend);
+                if (shared_first || shared_second) {
+                    SigSpec shared = shared_first ? first_addend : second_addend;
+                    bool shared_signed = shared_first ? first_addend_signed : second_addend_signed;
+                    SigSpec d_side = shared_first ? second_addend : first_addend;
+                    bool d_side_signed = shared_first ? second_addend_signed : first_addend_signed;
+                    bool d_fits = fits(GetSize(d_side), d_side_signed, DSPV4_D_WIDTH);
+                    // Refused here, not left to the double-feed check: that check
+                    // drops the whole cell, and the matcher's next offer then keeps
+                    // the pre-adder and leaves the wider ALU add in fabric.
+                    if (st.add != nullptr) {
+                        refuse(preadd, "pre-adder: no cross-path control word for it with an ALU term");
+                        continue;
+                    }
+                    // XPATH_A: the shared operand on A, the sum to the 18-bit B side.
+                    // XPATH_B: the shared operand on B, the sum to the 32-bit A side.
+                    bool xpath_a = !preadd_is_sub && d_fits && sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(shared), shared_signed, DSPV4_A_WIDTH);
+                    bool xpath_b =
+                      !xpath_a && !preadd_is_sub && d_fits && sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(shared), shared_signed, DSPV4_B_WIDTH);
+                    if (xpath_a || xpath_b) {
+                        mode_name = xpath_a ? "XPATH_A" : "XPATH_B";
+                        if (xpath_a) {
+                            ma = shared;
+                            a_signed = shared_signed;
+                            mb = SigSpec();
+                            b_signed = false;
+                        } else {
+                            mb = shared;
+                            b_signed = shared_signed;
+                            ma = SigSpec();
+                            a_signed = false;
+                        }
+                        md = d_side;
+                        d_signed = d_side_signed;
+                        padd_cell = preadd;
+                        ad_flop_cell = ad_flop;
+                        break;
+                    }
+                }
+
                 // $add is commutative, so either operand can take the D port.
                 // The two sides differ in width and in depth -- D is 27 bits
                 // and one register stage, X is the A or B path with two -- so
@@ -2497,6 +2548,10 @@ struct QlDspV4Pass : public Pass {
     } while (0)
         FlopChain chain;
         chain.source = sig;
+        // A cross-path cell leaves one multiplier port empty. With no bits,
+        // every bit "resolves to a flop" and the walk would count empty stages.
+        if (sig.empty())
+            return chain;
         // Seeding pins what this cell has already fixed: the clock, and the
         // reset when M is absorbed -- see FlopChain. The enable is left free:
         // CEP does not constrain CEA/CEB.

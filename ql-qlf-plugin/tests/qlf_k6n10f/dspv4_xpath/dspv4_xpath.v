@@ -1,25 +1,32 @@
-// Cross-path: the pre-adder result multiplies one of its own inputs.
-// Phase 4, REQ-C1.
+// Cross-path: the pre-adder's sum multiplies one of its own operands.
 //
-//        d ---->[ + ]---- AD ----> A port of the multiplier
-//        a --+-->[ ]                          |
-//            |                                v
-//            +-------------------------> B port
+// A PREADD word with the shared operand on port A would put it on ports A and
+// B. The XPATH words read it once. Where no XPATH word fits, a PREADD word
+// still folds it with the shared operand on port D instead.
 //
-// `a` is read twice -- once by the pre-adder, once by the multiplier's other
-// port. That fanout is the whole point of the test. The DSP does this in one
-// cell; the risk is that the pass sees the second reader and declines to fuse
-// the adder, which leaves a 17-bit carry chain in fabric and reports nothing.
-//
-// The mode table calls this XPATH_A, but the pass emits PREADD_A_MULT_B --
-// the two control words drive the same hardware for this RTL, and the PREADD
-// word is what the operand-assignment logic naturally picks. The assertions
-// below are on the RESULT (one DSP, no fabric adder), not the mode name, so
-// they stay true if that choice is ever revisited.
-//
-// Signed because the multiplier is Baugh-Wooley signed. d + a needs 17 bits,
-// well inside AD's 32 on the A path; `a` at 16 bits fits the 18-bit B port.
-module dspv4_xpath (input signed [15:0] d, input signed [15:0] a,
-                    output signed [33:0] p);
-  assign p = (d + a) * a;
+//   na    (d + a) * a, a 17-bit sum fits the 18-bit B side: XPATH_A
+//   wd    a 26-bit d makes a 27-bit sum, which takes the 32-bit A side: XPATH_B
+//   wide  a 28-bit d does not fit port D, so a goes there: PREADD_A_MULT_B
+//   min   (a - d) * a. XPATH has no subtract word; a is the minuend, so it can
+//         take port D: PREADD_A_SUB_B
+//   wdr   wd with a registered. The B bank absorbs the register, and the empty
+//         A port must not cost it: nothing stays in fabric. XPATH_B
+module dspv4_xpath (
+    input clk,
+    input signed [15:0] na_d, input signed [15:0] na_a, output signed [33:0] na_p,
+    input signed [25:0] wd_d, input signed [15:0] wd_a, output signed [42:0] wd_p,
+    input signed [27:0] wide_d, input signed [15:0] wide_a, output signed [44:0] wide_p,
+    input signed [15:0] min_d, input signed [15:0] min_a, output signed [33:0] min_p,
+    input signed [25:0] wdr_d, input signed [15:0] wdr_a, output signed [42:0] wdr_p
+);
+  assign na_p = (na_d + na_a) * na_a;
+  assign wd_p = (wd_d + wd_a) * wd_a;
+  assign wide_p = (wide_d + wide_a) * wide_a;
+  assign min_p = (min_a - min_d) * min_a;
+
+  reg signed [15:0] wdr_a_r;
+  always @(posedge clk) begin
+    wdr_a_r <= wdr_a;
+  end
+  assign wdr_p = (wdr_d + wdr_a_r) * wdr_a_r;
 endmodule
