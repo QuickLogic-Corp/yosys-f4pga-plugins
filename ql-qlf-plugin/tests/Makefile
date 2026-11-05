@@ -65,6 +65,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_both \
 	qlf_k6n10f/dspv4_preadd_shared \
 	qlf_k6n10f/dspv4_preadd_square \
+	qlf_k6n10f/dspv4_double_feed_scope \
 	qlf_k6n10f/dspv4_preadd_preg_wrap \
 	qlf_k6n10f/dspv4_preadd_adreg_trunc \
 	qlf_k6n10f/dspv4_preadd_regs \
@@ -184,6 +185,14 @@ qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 x  pre-adder: it feeds bo
 # separate control word -- PREADD_A_MULT_B already covers it.
 qlf_k6n10f-dspv4_xpath_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_sub_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_xpath_sub/dspv4_xpath_sub.log
+# Three modes, each grepped on its own: the order of the line changes when
+# two modes tie, and a count alone cannot say the double-feed check let
+# pipe and aa keep PREADD_A_MULT_B rather than something else.
+qlf_k6n10f-dspv4_double_feed_scope_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){2}$$' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -q 'modes inferred:.*MULT_ADD_C x2' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B x2' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -q 'modes inferred:.*MULT x1' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && ! grep -q 'one signal on ports A and B' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
 # Phase 4, register absorption into the pre-adder's D and AD banks. The mode
 # has to be asserted here as well as the cell counts: a register absorbed into
 # the wrong bank, or an operand register absorbed after the pre-adder was

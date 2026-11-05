@@ -126,6 +126,21 @@ static SigSpec dspv4_fit(RTLIL::Module *module, SigSpec sig, int width, bool is_
     return sig;
 }
 
+// The pre-adder's second input is a bus mux fed from both the A and the B
+// path. With one signal on both ports, OpenFPGA repack picks a side per bit
+// and the bitstream step fails. Constants have no wire and are not compared.
+static bool dspv4_double_feed(SigMap &sigmap, const SigSpec &a, const SigSpec &b)
+{
+    pool<SigBit> on_a;
+    for (SigBit bit : sigmap(a))
+        if (bit.wire != nullptr)
+            on_a.insert(bit);
+    for (SigBit bit : sigmap(b))
+        if (bit.wire != nullptr && on_a.count(bit))
+            return true;
+    return false;
+}
+
 // Strip an extension the RTL applied to an operand before the multiply.
 //
 // The register walk keys on a flop's exact Q, so an operand written as
@@ -1234,6 +1249,11 @@ struct QlDspV4Pass : public Pass {
         }
 
         const Dspv4Mode &m = dspv4_mode(mode_name);
+        if ((m.amultsel || m.bmultsel) && dspv4_double_feed(sigmapper, ma, mb)) {
+            refuse(padd_cell, "pre-adder: its mode would put one signal on ports A and B, which repack cannot program");
+            log_debug("  %s: not fused -- %s puts the same signal on A and B\n", log_id(st.mul), mode_name);
+            return false;
+        }
         RTLIL::Cell *cell = module->addCell(NEW_ID, ID(QL_DSP4));
         dspv4_apply_mode(cell, m);
 
