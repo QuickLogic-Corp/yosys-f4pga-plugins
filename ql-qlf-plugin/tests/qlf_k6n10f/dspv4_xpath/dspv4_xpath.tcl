@@ -15,9 +15,9 @@ hierarchy -top dspv4_xpath
 $PASS_NAME -family qlf_k6n10f -top dspv4_xpath -dspv4 -no_abc9 -lib_path $LIB/
 yosys cd dspv4_xpath
 check -assert
-select -assert-count 4 t:QL_DSP4_PREADD
+select -assert-count 5 t:QL_DSP4_PREADD
 select -assert-count 1 t:QL_DSP4_PRESUB
-select -assert-count 5 t:QL_DSP4_MULT
+select -assert-count 6 t:QL_DSP4_MULT
 # wdr: its register is in the B bank, the only register in the design.
 select -assert-count 1 t:QL_DSP4_B2_DFFRE_18
 select -assert-count 0 t:QL_DSP4_B1_DFFRE_18

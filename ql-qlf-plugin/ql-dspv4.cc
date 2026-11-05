@@ -1126,6 +1126,9 @@ struct QlDspV4Pass : public Pass {
                     SigSpec d_side = shared_first ? second_addend : first_addend;
                     bool d_side_signed = shared_first ? second_addend_signed : first_addend_signed;
                     bool d_fits = fits(GetSize(d_side), d_side_signed, DSPV4_D_WIDTH);
+                    // AD is signed, and signed_width counts an unsigned value's
+                    // top bit as its sign. So an unsigned sum needs one more bit.
+                    int signed_sum_width = sum_width + (sum_port_signed ? 0 : 1);
                     // Refused here, not left to the double-feed check: that check
                     // drops the whole cell, and the matcher's next offer then keeps
                     // the pre-adder and leaves the wider ALU add in fabric.
@@ -1135,9 +1138,10 @@ struct QlDspV4Pass : public Pass {
                     }
                     // XPATH_A: the shared operand on A, the sum to the 18-bit B side.
                     // XPATH_B: the shared operand on B, the sum to the 32-bit A side.
-                    bool xpath_a = !preadd_is_sub && d_fits && sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(shared), shared_signed, DSPV4_A_WIDTH);
-                    bool xpath_b =
-                      !xpath_a && !preadd_is_sub && d_fits && sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(shared), shared_signed, DSPV4_B_WIDTH);
+                    bool xpath_a =
+                      !preadd_is_sub && d_fits && signed_sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(shared), shared_signed, DSPV4_A_WIDTH);
+                    bool xpath_b = !xpath_a && !preadd_is_sub && d_fits && signed_sum_width <= DSPV4_AD_A_WIDTH &&
+                                   fits(GetSize(shared), shared_signed, DSPV4_B_WIDTH);
                     if (xpath_a || xpath_b) {
                         mode_name = xpath_a ? "XPATH_A" : "XPATH_B";
                         if (xpath_a) {

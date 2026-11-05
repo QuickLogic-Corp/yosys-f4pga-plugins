@@ -11,18 +11,22 @@
 //         take port D: PREADD_A_SUB_B
 //   wdr   wd with a registered. The B bank absorbs the register, and the empty
 //         A port must not cost it: nothing stays in fabric. XPATH_B
+//   uns   unsigned 17-bit operands. Their 18-bit sum needs 19 signed bits, too
+//         many for the B side; a fits B: XPATH_B
 module dspv4_xpath (
     input clk,
     input signed [15:0] na_d, input signed [15:0] na_a, output signed [33:0] na_p,
     input signed [25:0] wd_d, input signed [15:0] wd_a, output signed [42:0] wd_p,
     input signed [27:0] wide_d, input signed [15:0] wide_a, output signed [44:0] wide_p,
     input signed [15:0] min_d, input signed [15:0] min_a, output signed [33:0] min_p,
-    input signed [25:0] wdr_d, input signed [15:0] wdr_a, output signed [42:0] wdr_p
+    input signed [25:0] wdr_d, input signed [15:0] wdr_a, output signed [42:0] wdr_p,
+    input [16:0] uns_d, input [16:0] uns_a, output [34:0] uns_p
 );
   assign na_p = (na_d + na_a) * na_a;
   assign wd_p = (wd_d + wd_a) * wd_a;
   assign wide_p = (wide_d + wide_a) * wide_a;
   assign min_p = (min_a - min_d) * min_a;
+  assign uns_p = (uns_d + uns_a) * uns_a;
 
   reg signed [15:0] wdr_a_r;
   always @(posedge clk) begin
