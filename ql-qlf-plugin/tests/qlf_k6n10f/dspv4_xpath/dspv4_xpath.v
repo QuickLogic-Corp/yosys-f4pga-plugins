@@ -16,6 +16,11 @@
 //   minc  (a - d) * a + c. No XPATH word has an ALU term, but a is the minuend
 //         and takes port D: PREADD_A_SUB_B_C
 //   widec (d + a) * a + c with a 28-bit d: a takes port D: PREADD_A_MULT_B_C
+//   aluc  (d + a) * a + c. No XPATH word has an ALU term. The order flips so a
+//         takes port D, and d port A: PREADD_A_MULT_B_C
+//   accp  p <= p + (d + a) * a, the + p form of the same: PREADD_A_MACC
+//   alucr aluc with a behind two registers. On D, a keeps one stage; the other
+//         stays in fabric, and the summary says why: PREADD_A_MULT_B_C
 module dspv4_xpath (
     input clk,
     input signed [15:0] na_d, input signed [15:0] na_a, output signed [33:0] na_p,
@@ -25,7 +30,10 @@ module dspv4_xpath (
     input signed [25:0] wdr_d, input signed [15:0] wdr_a, output signed [42:0] wdr_p,
     input [16:0] uns_d, input [16:0] uns_a, output [34:0] uns_p,
     input signed [15:0] minc_d, input signed [15:0] minc_a, input signed [31:0] minc_c, output signed [34:0] minc_p,
-    input signed [27:0] widec_d, input signed [15:0] widec_a, input signed [31:0] widec_c, output signed [45:0] widec_p
+    input signed [27:0] widec_d, input signed [15:0] widec_a, input signed [31:0] widec_c, output signed [45:0] widec_p,
+    input signed [15:0] aluc_d, input signed [15:0] aluc_a, input signed [31:0] aluc_c, output signed [34:0] aluc_p,
+    input signed [15:0] accp_d, input signed [15:0] accp_a, output reg signed [49:0] accp_p,
+    input signed [15:0] alucr_d, input signed [15:0] alucr_a, input signed [31:0] alucr_c, output signed [34:0] alucr_p
 );
   assign na_p = (na_d + na_a) * na_a;
   assign wd_p = (wd_d + wd_a) * wd_a;
@@ -40,4 +48,16 @@ module dspv4_xpath (
     wdr_a_r <= wdr_a;
   end
   assign wdr_p = (wdr_d + wdr_a_r) * wdr_a_r;
+
+  assign aluc_p = (aluc_d + aluc_a) * aluc_a + aluc_c;
+  always @(posedge clk) begin
+    accp_p <= accp_p + (accp_d + accp_a) * accp_a;
+  end
+
+  reg signed [15:0] alucr_a1, alucr_a2;
+  always @(posedge clk) begin
+    alucr_a1 <= alucr_a;
+    alucr_a2 <= alucr_a1;
+  end
+  assign alucr_p = (alucr_d + alucr_a2) * alucr_a2 + alucr_c;
 endmodule

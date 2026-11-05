@@ -1166,9 +1166,13 @@ struct QlDspV4Pass : public Pass {
                 //
                 // A subtract never swaps. The hardware computes D - X and has
                 // no X - D (ffb preadder.v:21), so a swap would flip the sign.
+                //
+                // `keep_off_x` overrides the register depth: a cross-path ALU
+                // form keeps its shared operand off X, where it would sit on
+                // ports A and B. On D it reaches the pre-adder by its own wire.
                 SigSpec d_operand, x_operand;
                 bool d_operand_signed = false, x_operand_signed = false;
-                auto orient = [&](int x_port) {
+                auto orient = [&](int x_port, const SigSpec &keep_off_x) {
                     auto sides_fit = [&](const SigSpec &d, bool d_sgn, const SigSpec &x, bool x_sgn) {
                         return fits(GetSize(d), d_sgn, DSPV4_D_WIDTH) && fits(GetSize(x), x_sgn, x_port);
                     };
@@ -1181,11 +1185,22 @@ struct QlDspV4Pass : public Pass {
                     };
                     bool written_fits = sides_fit(first_addend, first_addend_signed, second_addend, second_addend_signed);
                     bool swapped_fits = sides_fit(second_addend, second_addend_signed, first_addend, first_addend_signed);
-                    bool swapped_absorbs_more = stages_absorbed(second_addend, first_addend) > stages_absorbed(first_addend, second_addend);
+                    int written_stages = stages_absorbed(first_addend, second_addend);
+                    int swapped_stages = stages_absorbed(second_addend, first_addend);
+                    bool swapped_absorbs_more = swapped_stages > written_stages;
                     bool swap = !preadd_is_sub && swapped_fits && (!written_fits || swapped_absorbs_more);
 
                     chain_kept_on_d = nullptr;
-                    if (written_fits && !swap && swapped_absorbs_more)
+                    bool other_order_fits = swap ? written_fits : swapped_fits;
+                    bool keep_moves_off_x = !keep_off_x.empty() && !preadd_is_sub && other_order_fits &&
+                                            sigmapper(swap ? first_addend : second_addend) == sigmapper(keep_off_x);
+                    if (keep_moves_off_x) {
+                        int stages_before = swap ? swapped_stages : written_stages;
+                        swap = !swap;
+                        if ((swap ? swapped_stages : written_stages) < stages_before)
+                            chain_kept_on_d = "the shared cross-path operand takes D, which holds one register stage, to stay off "
+                                              "ports A and B";
+                    } else if (written_fits && !swap && swapped_absorbs_more)
                         chain_kept_on_d = preadd_is_sub ? "a subtract cannot swap its two-deep register chain off D, "
                                                           "which holds one stage (the DSP has D - X, not X - D)"
                                                         : "the two-deep register chain stays on D: the other operand "
@@ -1233,7 +1248,7 @@ struct QlDspV4Pass : public Pass {
                 bool cross_path_alu = (shared_first || shared_second) && st.add != nullptr;
                 bool shared_on_x = false;
                 auto placed = [&](int x_port) {
-                    if (!orient(x_port))
+                    if (!orient(x_port, cross_path_alu ? other : SigSpec()))
                         return false;
                     if (cross_path_alu && sigmapper(x_operand) == sigmapper(other)) {
                         shared_on_x = true;
