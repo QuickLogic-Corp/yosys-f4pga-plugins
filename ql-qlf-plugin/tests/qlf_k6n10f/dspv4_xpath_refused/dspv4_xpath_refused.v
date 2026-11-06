@@ -33,6 +33,10 @@
 //   s33     (d + a) * a, d 32 (over D), sum 33 (over the A side too): split
 //   accsub  p <= p - (d + a) * a. No PREADD word subtracts the product from P:
 //           MULT_ACC_SUB, PREG
+//   uns31   (d + a) * a, unsigned, d 31 (over AD once the unsigned bit is
+//           counted): the A-path site of the unsigned-sum-width bug. Split
+//   uns17b  (d + a) * b, unsigned, d and a 17, b 20 (over port B): the B-path
+//           site of the same bug, which b's width forces onto that side. Split
 module dspv4_xpath_refused (
     input clk,
     input signed [15:0] sub_d, input signed [15:0] sub_a, output signed [33:0] sub_p,
@@ -55,7 +59,9 @@ module dspv4_xpath_refused (
     input signed [15:0] alu19_d, input signed [18:0] alu19_a,
     input signed [31:0] alu19_c, output signed [37:0] alu19_p,
     input signed [31:0] s33_d, input signed [15:0] s33_a, output signed [49:0] s33_p,
-    input signed [15:0] accsub_d, input signed [15:0] accsub_a, output reg signed [49:0] accsub_p
+    input signed [15:0] accsub_d, input signed [15:0] accsub_a, output reg signed [49:0] accsub_p,
+    input [30:0] uns31_d, input [15:0] uns31_a, output [46:0] uns31_p,
+    input [16:0] uns17b_d, input [16:0] uns17b_a, input [19:0] uns17b_b, output [37:0] uns17b_p
 );
   assign sub_p = (sub_d - sub_a) * sub_a;
   assign subc_p = (subc_d - subc_a) * subc_a + subc_c;
@@ -86,4 +92,7 @@ module dspv4_xpath_refused (
   always @(posedge clk) begin
     accsub_p <= accsub_p - (accsub_d + accsub_a) * accsub_a;
   end
+
+  assign uns31_p = (uns31_d + uns31_a) * uns31_a;
+  assign uns17b_p = (uns17b_d + uns17b_a) * uns17b_b;
 endmodule

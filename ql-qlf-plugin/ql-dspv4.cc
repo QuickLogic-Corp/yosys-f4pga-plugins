@@ -1107,6 +1107,10 @@ struct QlDspV4Pass : public Pass {
                 // than saturating, so a sum that does not fit is a silent wrong
                 // answer -- this bound is the whole guard.
                 int sum_width = preadder_sum_width(preadd);
+                // AD is signed, and signed_width counts an unsigned value's top bit as
+                // its sign. So an unsigned sum needs one more bit, on every path: the
+                // cross-path words and the PREADD words alike. A subtract does not.
+                int signed_sum_width = sum_width + (sum_port_signed || preadd_is_sub ? 0 : 1);
 
                 // Cross-path: the other multiply operand is one of this adder's
                 // own operands. A PREADD word would put it on ports A and B; an
@@ -1134,9 +1138,6 @@ struct QlDspV4Pass : public Pass {
                     SigSpec d_side = shared_first ? second_addend : first_addend;
                     bool d_side_signed = shared_first ? second_addend_signed : first_addend_signed;
                     bool d_fits = fits(GetSize(d_side), d_side_signed, DSPV4_D_WIDTH);
-                    // AD is signed, and signed_width counts an unsigned value's
-                    // top bit as its sign. So an unsigned sum needs one more bit.
-                    int signed_sum_width = sum_width + (sum_port_signed ? 0 : 1);
                     // XPATH_A: the shared operand on A, the sum to the 18-bit B side.
                     // XPATH_B: the shared operand on B, the sum to the 32-bit A side.
                     bool xpath_word = st.add == nullptr && !preadd_is_sub && d_fits;
@@ -1267,7 +1268,7 @@ struct QlDspV4Pass : public Pass {
                     return true;
                 };
 
-                if (sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && placed(DSPV4_A_WIDTH)) {
+                if (signed_sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && placed(DSPV4_A_WIDTH)) {
                     // The sum keeps all 32 bits of AD.
                     mode_name = preadd_mode_a;
                     ma = x_operand;
@@ -1280,7 +1281,7 @@ struct QlDspV4Pass : public Pass {
                     ad_flop_cell = ad_flop;
                     break;
                 }
-                if (sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && placed(DSPV4_B_WIDTH)) {
+                if (signed_sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && placed(DSPV4_B_WIDTH)) {
                     // AD is truncated to 18 bits here, which is why this path is
                     // tried second and needs the tighter proof.
                     mode_name = preadd_mode_b;
@@ -1302,7 +1303,7 @@ struct QlDspV4Pass : public Pass {
                 log_debug("  %s: pre-adder not fused -- D +/- X needs %d bits, "
                           "which exceeds AD's %d on the A path and %d on the B "
                           "path once the other operand is placed\n",
-                          log_id(st.mul), sum_width, DSPV4_AD_A_WIDTH, DSPV4_AD_B_WIDTH);
+                          log_id(st.mul), signed_sum_width, DSPV4_AD_A_WIDTH, DSPV4_AD_B_WIDTH);
             }
         }
         if (padd_cell != nullptr && chain_kept_on_d != nullptr)

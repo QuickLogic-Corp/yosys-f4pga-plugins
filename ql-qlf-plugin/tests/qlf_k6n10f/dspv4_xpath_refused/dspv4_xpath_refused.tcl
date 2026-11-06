@@ -19,7 +19,7 @@ $PASS_NAME -family qlf_k6n10f -top dspv4_xpath_refused -dspv4 -no_abc9 -lib_path
 yosys cd dspv4_xpath_refused
 check -assert
 # Every multiply in a DSP, no pre-adder used, the additions in fabric.
-select -assert-count 22 t:QL_DSP4_MULT
+select -assert-count 26 t:QL_DSP4_MULT
 select -assert-count 0 t:QL_DSP4_PREADD
 select -assert-count 0 t:QL_DSP4_PRESUB
 select -assert-min 1 t:adder_carry
