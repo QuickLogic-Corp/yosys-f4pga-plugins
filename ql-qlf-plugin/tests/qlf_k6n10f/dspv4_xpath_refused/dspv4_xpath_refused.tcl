@@ -9,14 +9,19 @@ yosys -import
 set PASS_NAME synth_quicklogic
 if { [info commands synth_ql] != {} } { set PASS_NAME synth_ql }
 set LIB [file normalize [file join [file dirname [info script]] .. .. ..]]
+# A stale netlist from an earlier run must not let the x-grep rule pass on
+# nothing: delete it first, so a run that crashes before write_verilog
+# leaves no file for `test -s` to find.
+file delete -force netlist.v
 read_verilog dspv4_xpath_refused.v
 hierarchy -top dspv4_xpath_refused
 $PASS_NAME -family qlf_k6n10f -top dspv4_xpath_refused -dspv4 -no_abc9 -lib_path $LIB/
 yosys cd dspv4_xpath_refused
 check -assert
 # Every multiply in a DSP, no pre-adder used, the additions in fabric.
-select -assert-count 2 t:QL_DSP4_MULT
+select -assert-count 22 t:QL_DSP4_MULT
 select -assert-count 0 t:QL_DSP4_PREADD
 select -assert-count 0 t:QL_DSP4_PRESUB
 select -assert-min 1 t:adder_carry
 select -assert-count 0 t:\$mul
+write_verilog -noattr netlist.v

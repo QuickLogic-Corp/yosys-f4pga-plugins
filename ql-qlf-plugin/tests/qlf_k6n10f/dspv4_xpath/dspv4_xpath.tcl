@@ -15,18 +15,21 @@ hierarchy -top dspv4_xpath
 $PASS_NAME -family qlf_k6n10f -top dspv4_xpath -dspv4 -no_abc9 -lib_path $LIB/
 yosys cd dspv4_xpath
 check -assert
-select -assert-count 9 t:QL_DSP4_PREADD
-select -assert-count 2 t:QL_DSP4_PRESUB
-select -assert-count 11 t:QL_DSP4_MULT
-# Registers: wdr's in the B bank; alucr's two in the B bank and one on D;
-# accp's accumulator. alucr's other D stage stays in fabric: 16 flops, and
-# no more. A port register would mean a phantom stage on an empty port.
-select -assert-count 1 t:QL_DSP4_B1_DFFRE_18
-select -assert-count 2 t:QL_DSP4_B2_DFFRE_18
-select -assert-count 1 t:QL_DSP4_D_DFFRE_27
-select -assert-count 0 t:QL_DSP4_A1_DFFRE_32
-select -assert-count 0 t:QL_DSP4_A2_DFFRE_32
-select -assert-count 16 t:*dff*
+select -assert-count 37 t:QL_DSP4_PREADD
+select -assert-count 3 t:QL_DSP4_PRESUB
+select -assert-count 40 t:QL_DSP4_MULT
+# Register leaves, read from the build, not hand-derived: four blocks each
+# give up one stage to the bank depth limit (16 flops apiece, 64 total), and
+# two reorder which operand takes D to stay off ports A and B (the Makefile
+# asserts that count by its stall-summary line, not a leaf count).
+select -assert-count 3 t:QL_DSP4_A1_DFFRE_32
+select -assert-count 4 t:QL_DSP4_A2_DFFRE_32
+select -assert-count 3 t:QL_DSP4_B1_DFFRE_18
+select -assert-count 5 t:QL_DSP4_B2_DFFRE_18
+select -assert-count 7 t:QL_DSP4_D_DFFRE_27
+select -assert-count 1 t:QL_DSP4_AD_DFFR_32
+select -assert-count 5 t:QL_DSP4_ACC_DFFRE_64
+select -assert-count 64 t:*dff*
 select -assert-count 0 t:adder_carry
 select -assert-count 0 t:\$mul
 select -assert-count 0 t:\$add

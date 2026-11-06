@@ -1243,8 +1243,11 @@ struct QlDspV4Pass : public Pass {
                 // With an ALU term, a placement that leaves the shared operand on
                 // the X side would feed it to ports A and B. The double-feed check
                 // cannot be left to refuse it: it drops the whole cell, and the
-                // matcher's next offer keeps the pre-adder out and the wider ALU
-                // add in fabric. So such a placement does not count as fitting.
+                // matcher's next offer is the pre-adder without the ALU adder. For
+                // an add such as (a + a) * a + c, that offer folds the pre-adder as
+                // XPATH and leaves the wider ALU add in fabric. For a subtract it
+                // double-feeds too, and only the printed reason is wrong. So such a
+                // placement does not count as fitting.
                 bool cross_path_alu = (shared_first || shared_second) && st.add != nullptr;
                 bool shared_on_x = false;
                 auto placed = [&](int x_port) {
