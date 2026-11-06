@@ -150,7 +150,7 @@ qlf_k6n10f-dspv4_macc_dup_verify = grep -q 'the DSP has no register stage after 
 # QL_DSP4_MULT -- so without these the A/B decision is untested. A refused
 # shape must report MULT, not a PREADD mode: that is what says the guard
 # refused rather than folded something it should not have.
-qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
+qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x2' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
 qlf_k6n10f-dspv4_preadd_sub_unsigned_verify += && grep -q '1 x  pre-adder: an unsigned subtract wraps where the DSP signs' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
 qlf_k6n10f-dspv4_mult_reg_pad_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_reg_pad/dspv4_mult_reg_pad.log
 qlf_k6n10f-dspv4_mult_add_self_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_add_self/dspv4_mult_add_self.log
@@ -179,17 +179,18 @@ qlf_k6n10f-dspv4_preadd_both_verify += && grep -q '1 x  a second pre-adder sum s
 # Squaring is refused, so no pre-adder mode at all.
 qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
 qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 x  pre-adder: it feeds both multiply operands (squaring)' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
-# Every cross-path shape that must fold, all 40 blocks `cases.md` §2 gives
-# this test, nine modes in no fixed order. The double-feed check must never
-# fire here, and the four blocks that give up a register stage to the bank
-# depth limit must do it for that reason, not a clock/reset mismatch.
+# Every cross-path shape that must fold, 46 blocks, nine modes in no fixed
+# order. None of them may put one signal on ports A and B without the pass
+# recognizing it and routing it correctly, and the four blocks that give up
+# a register stage to the bank depth limit must do it for that reason, not a
+# clock/reset mismatch.
 qlf_k6n10f-dspv4_xpath_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){8}$$' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_A x14' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_B x7' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B x6' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B x2' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B_C x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
-qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B_C x10' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B_C x12' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MACC x2' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_MACC x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MACC_C x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
@@ -205,8 +206,13 @@ qlf_k6n10f-dspv4_xpath_verify += && test -s qlf_k6n10f/dspv4_xpath/netlist.v
 qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovl_d_QL_DSP4_PREADD_I1 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ovl_a\[15:0\] })'
 qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovlc_d_QL_DSP4_PREADD_I1 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ovlc_a\[15:0\] })'
 qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovlr_d_QL_DSP4_PREADD_I1 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ovlr_a })'
-# Cross-path refusals and every pre-adder-still-refused reason cases.md gives
-# this test: the overlap shape moved to dspv4_xpath once the flip covered it,
+# ov2 and ov2r: the same two addends, written in opposite order, must land the
+# same operand (the whole signal) off the X side in both cases -- the order-
+# dependence bug a prior review round found and this fixes.
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2_a_QL_DSP4_PREADD_I0 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2_a\[7:0\] })'
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2r_a_QL_DSP4_PREADD_I0 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2r_a\[7:0\] })'
+# Cross-path refusals and every pre-adder-still-refused reason this test
+# covers: the overlap shape moved to dspv4_xpath once the flip covered it,
 # and the subtract (sub) moved there too once the double-feed check that
 # refused it was removed -- a word that puts one signal on ports A and B
 # programs since OpenFPGA-QL 10cd2f838, so that line can no longer appear
@@ -214,7 +220,7 @@ qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovlr_d_QL_DSP4_PREA
 # unsigned-subtract guard, and the widths the multiplier ports cannot take.
 # mul2dsp re-offers the
 # split pieces, which is the second "modes inferred" line. The x-grep rule
-# (test-plan.md) scans the written netlist for a swallowed constant, the
+# scans the written netlist for a swallowed constant, the
 # shape a lost driver takes once `opt_clean` has run; `test -s` first so a
 # run that crashes before `write_verilog` cannot pass on a stale file.
 qlf_k6n10f-dspv4_xpath_refused_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){5}$$' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
@@ -240,9 +246,9 @@ qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '18x20 (unsigned x unsigned)
 qlf_k6n10f-dspv4_xpath_refused_verify += && test -s qlf_k6n10f/dspv4_xpath_refused/netlist.v
 qlf_k6n10f-dspv4_xpath_refused_verify += && ! grep -E -q "'[bh][0-9a-f]*x" qlf_k6n10f/dspv4_xpath_refused/netlist.v
 # Three modes, each grepped on its own: the order of the line changes when
-# two modes tie, and a count alone cannot say the double-feed check let
-# pipe, aa, pipe2, two_en, mulr, addr and cst keep PREADD_A_MULT_B rather
-# than something else. cst's own wiring is asserted from the written
+# two modes tie, and a count alone cannot say pipe, aa, pipe2, two_en, mulr,
+# addr and cst each correctly kept PREADD_A_MULT_B rather than something
+# else. cst's own wiring is asserted from the written
 # netlist (test -s first, so a crash before write_verilog cannot pass on a
 # stale file): a constant has no wire, so the cross-path test cannot treat
 # it as the shared operand, and the word keeps the constant on both A and B.

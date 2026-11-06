@@ -71,6 +71,12 @@
 //   sub     (d - a) * a. No XPATH subtract word, and a is the subtrahend, so it
 //           cannot move to port D: PREADD_A_SUB_B, with a on A and B -- a word
 //           that double-feeds, which programs since OpenFPGA-QL 10cd2f838
+//   ov2     (a + a[7:0]) * a + c: both addends overlap a, the whole signal and
+//           a slice of it. The whole signal is the one kept off X: PREADD_A_MULT_B_C,
+//           D = a
+//   ov2r    a[7:0] + a, the same two addends the other way round. Which one is
+//           kept off X must not depend on which came first in the RTL: same
+//           cell as ov2, PREADD_A_MULT_B_C, D = a
 //
 // X67 ("mreg": m <= (d + a) * a; p = m + c) is not included here yet. A
 // pre-adder-fed multiply with an M register does not fuse its ALU term:
@@ -122,7 +128,9 @@ module dspv4_xpath (
     input signed [15:0] ovl_d, input signed [16:0] ovl_a, output signed [33:0] ovl_p,
     input signed [15:0] ovlc_d, input signed [16:0] ovlc_a, input signed [31:0] ovlc_c, output signed [34:0] ovlc_p,
     input signed [15:0] ovlr_d, input signed [16:0] ovlr_a, output signed [33:0] ovlr_p,
-    input signed [15:0] sub_d, input signed [15:0] sub_a, output signed [33:0] sub_p
+    input signed [15:0] sub_d, input signed [15:0] sub_a, output signed [33:0] sub_p,
+    input signed [15:0] ov2_a, input signed [31:0] ov2_c, output signed [34:0] ov2_p,
+    input signed [15:0] ov2r_a, input signed [31:0] ov2r_c, output signed [34:0] ov2r_p
 );
   assign na_p = (na_d + na_a) * na_a;
   assign wd_p = (wd_d + wd_a) * wd_a;
@@ -247,4 +255,7 @@ module dspv4_xpath (
   assign ovlc_p = (ovlc_d + $signed(ovlc_a[15:0])) * ovlc_a + ovlc_c;
   assign ovlr_p = (ovlr_d + ovlr_a) * $signed(ovlr_a[15:0]);
   assign sub_p = (sub_d - sub_a) * sub_a;
+
+  assign ov2_p = (ov2_a + $signed(ov2_a[7:0])) * ov2_a + ov2_c;
+  assign ov2r_p = ($signed(ov2r_a[7:0]) + ov2r_a) * ov2r_a + ov2r_c;
 endmodule

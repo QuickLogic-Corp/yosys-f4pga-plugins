@@ -1,7 +1,10 @@
-// Shapes that share an operand between ports and must keep their modes.
-// The double-feed check refuses a cell that uses its pre-adder only when the
-// pre-adder's input mux would see one signal on both the A and the B path.
-// The first three do not use the pre-adder. The last two do, safely.
+// Shapes that share an operand between ports and must keep their modes. The
+// pre-adder's second input is a bus mux fed from both the A and the B path;
+// a word that puts one signal on both ports programs (OpenFPGA-QL
+// 10cd2f838), so none of these need a refusal. What still has to be right:
+// the pass must recognize the shared operand and route it correctly, not
+// confuse it with register absorption or with which port carries what.
+// The first three do not use the pre-adder.
 //
 //   sq     x * x: x on A and B with the pre-adder off
 //   sqc    x * x + c: the same, with the ALU adding C
@@ -21,7 +24,7 @@
 //          mulr. PREADD_A_MULT_B
 //   cst    (d + 12345) * 12345: the same constant on both sides of the
 //          pre-adder's input mux. A constant has no wire, so it is not a
-//          shared operand (OQ-X3). PREADD_A_MULT_B, the constant on A and B.
+//          shared operand. PREADD_A_MULT_B, the constant on A and B.
 module dspv4_double_feed_scope (
     input clk,
     input signed [15:0] sq_x, output signed [31:0] sq_y,

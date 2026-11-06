@@ -21,9 +21,9 @@ hierarchy -top dspv4_xpath
 $PASS_NAME -family qlf_k6n10f -top dspv4_xpath -dspv4 -no_abc9 -lib_path $LIB/
 yosys cd dspv4_xpath
 check -assert
-select -assert-count 40 t:QL_DSP4_PREADD
+select -assert-count 42 t:QL_DSP4_PREADD
 select -assert-count 4 t:QL_DSP4_PRESUB
-select -assert-count 44 t:QL_DSP4_MULT
+select -assert-count 46 t:QL_DSP4_MULT
 # Register leaves, read from the build, not hand-derived: four blocks each
 # give up one stage to the bank depth limit (16 flops apiece, 64 total), and
 # two reorder which operand takes D to stay off ports A and B (the Makefile

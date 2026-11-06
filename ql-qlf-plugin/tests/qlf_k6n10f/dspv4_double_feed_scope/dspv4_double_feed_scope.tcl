@@ -1,15 +1,14 @@
-# dspv4_double_feed_scope -- the double-feed check leaves these alone.
+# dspv4_double_feed_scope -- every shared operand here is recognized and
+# routed correctly, not mistaken for something else.
 #
 # Each block shares an operand between two ports. The first three never use
-# the pre-adder, so the bus mux the check protects is never in play. Of the
-# other seven, pipe is the one block a check run again after register
-# absorption would wrongly refuse, aa is the one a check that compared all
-# four ports would wrongly refuse, pipe2/two_en/mulr/addr each absorb a
-# register on one side only (or a two-deep chain, pipe2), so the check must
-# still pass them one at a time, not only pipe's own shape, and cst shares a
-# constant, not a signal, between the two ports: a constant has no wire, so
-# it is not a shared operand (OQ-X3), and the check never sees it. The modes
-# line in the Makefile is the main assertion: it must match P4 exactly.
+# the pre-adder, so the bus mux is never in play. Of the other seven, pipe
+# needs the shared operand recognized again after register absorption
+# changes its wire, aa needs it recognized across all four ports,
+# pipe2/two_en/mulr/addr each absorb a register on one side only (or a
+# two-deep chain, pipe2), and cst shares a constant, not a signal, between
+# the two ports: a constant has no wire, so it is not a shared operand. The
+# modes line in the Makefile is the main assertion: it must match P4 exactly.
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import

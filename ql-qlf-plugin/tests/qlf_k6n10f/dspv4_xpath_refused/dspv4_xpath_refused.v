@@ -14,8 +14,9 @@
 //           does not fit, split: two MULT cells
 //   usub    (a - d) * a, unsigned. An unsigned subtract wraps where the DSP
 //           signs, and the multiply is also too wide: two MULT cells
-//   usubs   (d - a) * a, unsigned, the subtrahend shared. As usub, but the
-//           unsigned-subtract reason comes before the double-feed check
+//   usubs   (d - a) * a, unsigned, the subtrahend shared: a would land on both
+//           A and B, a wiring that programs on its own (OpenFPGA-QL
+//           10cd2f838), but the unsigned-subtract guard refuses it first
 //   accs    p <= p + (d - a) * a. The ALU-term line, as subc, with the
 //           subtract in fabric: MULT_ACC
 //   csub    c - (d + a) * a. No PREADD word subtracts the product from C:
