@@ -126,10 +126,11 @@ static SigSpec dspv4_fit(RTLIL::Module *module, SigSpec sig, int width, bool is_
     return sig;
 }
 
-// The pre-adder's second input is a bus mux fed from both the A and the B
-// path. With one signal on both ports, OpenFPGA repack picks a side per bit
-// and the bitstream step fails. Constants have no wire and are not compared.
-static bool dspv4_double_feed(SigMap &sigmap, const SigSpec &a, const SigSpec &b)
+// True when one wire bit is in both signals, after sigmap. Constant bits
+// have no wire and never count. Used to keep an addend that overlaps the
+// multiply's other operand off the X side, and (until that refusal is
+// removed) to refuse a pre-adder cell with one signal on ports A and B.
+static bool dspv4_operands_overlap(SigMap &sigmap, const SigSpec &a, const SigSpec &b)
 {
     pool<SigBit> on_a;
     for (SigBit bit : sigmap(a))
@@ -1248,6 +1249,18 @@ struct QlDspV4Pass : public Pass {
                     continue;
                 }
 
+                // Every add keeps an addend that overlaps the other multiply operand off
+                // the X side, where it would sit on ports A and B; on D it reaches the
+                // pre-adder by its own wire. A partial overlap counts: (d + a[15:0]) * a
+                // puts a[15:0] on D. With both addends overlapping, no order helps and
+                // nothing is handed. A subtract never swaps (CT-9).
+                SigSpec keep_off_x;
+                if (!preadd_is_sub) {
+                    bool first_overlaps = dspv4_operands_overlap(sigmapper, first_addend, other);
+                    bool second_overlaps = dspv4_operands_overlap(sigmapper, second_addend, other);
+                    if (first_overlaps != second_overlaps)
+                        keep_off_x = first_overlaps ? first_addend : second_addend;
+                }
                 // With an ALU term, a placement that leaves the shared operand on
                 // the X side would feed it to ports A and B. The double-feed check
                 // cannot be left to refuse it: it drops the whole cell, and the
@@ -1259,7 +1272,7 @@ struct QlDspV4Pass : public Pass {
                 bool cross_path_alu = (shared_first || shared_second) && st.add != nullptr;
                 bool shared_on_x = false;
                 auto placed = [&](int x_port) {
-                    if (!orient(x_port, cross_path_alu ? other : SigSpec()))
+                    if (!orient(x_port, keep_off_x))
                         return false;
                     if (cross_path_alu && sigmapper(x_operand) == sigmapper(other)) {
                         shared_on_x = true;
@@ -1345,7 +1358,7 @@ struct QlDspV4Pass : public Pass {
         }
 
         const Dspv4Mode &m = dspv4_mode(mode_name);
-        if ((m.amultsel || m.bmultsel) && dspv4_double_feed(sigmapper, ma, mb)) {
+        if ((m.amultsel || m.bmultsel) && dspv4_operands_overlap(sigmapper, ma, mb)) {
             refuse(padd_cell, "pre-adder: its mode would put one signal on ports A and B, which repack cannot program");
             log_debug("  %s: not fused -- %s puts the same signal on A and B\n", log_id(st.mul), mode_name);
             return false;

@@ -8,9 +8,6 @@
 //           subtrahend, so it cannot move to port D: MULT_ADD_C
 //   s19     (d + a) * a, a 19 (over the B side): the multiply itself does not
 //           fit, so it is split, with no pre-adder in use: two MULT cells
-//   ovl     (d + $signed(a[15:0])) * a, a[15:0] overlaps the full a. The written
-//           order puts the slice on X, so the pre-adder wants a on A and B:
-//           MULT, the double-feed line
 //   rd3     s = d + a; p = s * a; s_out = s. The sum has a third reader, so the
 //           matcher's own fanout bound refuses the pre-adder, silently: MULT
 //   trunc   wire [15:0] s = d + a; s * a. The sum is truncated to 16 bits: MULT,
@@ -43,7 +40,6 @@ module dspv4_xpath_refused (
     input signed [15:0] subc_d, input signed [15:0] subc_a,
     input signed [31:0] subc_c, output signed [34:0] subc_p,
     input signed [15:0] s19_d, input signed [18:0] s19_a, output signed [37:0] s19_p,
-    input signed [15:0] ovl_d, input signed [16:0] ovl_a, output signed [33:0] ovl_p,
     input signed [15:0] rd3_d, input signed [15:0] rd3_a, output signed [33:0] rd3_p,
     output signed [16:0] rd3_s_out,
     input signed [15:0] trunc_d, input signed [15:0] trunc_a, output signed [31:0] trunc_p,
@@ -66,7 +62,6 @@ module dspv4_xpath_refused (
   assign sub_p = (sub_d - sub_a) * sub_a;
   assign subc_p = (subc_d - subc_a) * subc_a + subc_c;
   assign s19_p = (s19_d + s19_a) * s19_a;
-  assign ovl_p = (ovl_d + $signed(ovl_a[15:0])) * ovl_a;
 
   wire signed [16:0] rd3_s = rd3_d + rd3_a;
   assign rd3_p = rd3_s * rd3_a;

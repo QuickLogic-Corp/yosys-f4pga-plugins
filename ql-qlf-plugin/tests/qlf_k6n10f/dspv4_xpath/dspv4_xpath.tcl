@@ -10,14 +10,18 @@ yosys -import
 set PASS_NAME synth_quicklogic
 if { [info commands synth_ql] != {} } { set PASS_NAME synth_ql }
 set LIB [file normalize [file join [file dirname [info script]] .. .. ..]]
+# A stale netlist from an earlier run must not let the x-grep rule pass on
+# nothing: delete it first, so a run that crashes before write_verilog
+# leaves no file for `test -s` to find.
+file delete -force netlist.v
 read_verilog dspv4_xpath.v
 hierarchy -top dspv4_xpath
 $PASS_NAME -family qlf_k6n10f -top dspv4_xpath -dspv4 -no_abc9 -lib_path $LIB/
 yosys cd dspv4_xpath
 check -assert
-select -assert-count 37 t:QL_DSP4_PREADD
+select -assert-count 40 t:QL_DSP4_PREADD
 select -assert-count 3 t:QL_DSP4_PRESUB
-select -assert-count 40 t:QL_DSP4_MULT
+select -assert-count 43 t:QL_DSP4_MULT
 # Register leaves, read from the build, not hand-derived: four blocks each
 # give up one stage to the bank depth limit (16 flops apiece, 64 total), and
 # two reorder which operand takes D to stay off ports A and B (the Makefile
@@ -33,3 +37,4 @@ select -assert-count 64 t:*dff*
 select -assert-count 0 t:adder_carry
 select -assert-count 0 t:\$mul
 select -assert-count 0 t:\$add
+write_verilog -noattr netlist.v

@@ -61,6 +61,13 @@
 //           in fabric: PREADD_A_MULT_B_C, "reached the bank depth limit"
 //   accpr   accp with a behind two registers; one stage stays in fabric:
 //           PREADD_A_MACC, "reached the bank depth limit"
+//   ovl     (d + a[15:0]) * a, a[15:0] overlaps the whole a. The flip puts the
+//           overlapping slice on D instead of leaving it on X: PREADD_A_MULT_B,
+//           D = a[15:0]
+//   ovlc    ovl with an ALU term: (d + a[15:0]) * a + c: PREADD_A_MULT_B_C,
+//           D = a[15:0]
+//   ovlr    (d + a) * a[15:0], the overlap on the multiply side instead of the
+//           adder side: PREADD_A_MULT_B, D = a (the whole signal, not the slice)
 //
 // X67 ("mreg": m <= (d + a) * a; p = m + c) is not included here yet. A
 // pre-adder-fed multiply with an M register does not fuse its ALU term:
@@ -108,7 +115,10 @@ module dspv4_xpath (
     input signed [15:0] alucr1_d, input signed [15:0] alucr1_a, input signed [31:0] alucr1_c, output signed [34:0] alucr1_p,
     input signed [15:0] alucd2_d, input signed [15:0] alucd2_a, input signed [31:0] alucd2_c, output signed [34:0] alucd2_p,
     input signed [15:0] alucr2d2_d, input signed [15:0] alucr2d2_a, input signed [31:0] alucr2d2_c, output signed [34:0] alucr2d2_p,
-    input signed [15:0] accpr_d, input signed [15:0] accpr_a, output reg signed [49:0] accpr_p
+    input signed [15:0] accpr_d, input signed [15:0] accpr_a, output reg signed [49:0] accpr_p,
+    input signed [15:0] ovl_d, input signed [16:0] ovl_a, output signed [33:0] ovl_p,
+    input signed [15:0] ovlc_d, input signed [16:0] ovlc_a, input signed [31:0] ovlc_c, output signed [34:0] ovlc_p,
+    input signed [15:0] ovlr_d, input signed [16:0] ovlr_a, output signed [33:0] ovlr_p
 );
   assign na_p = (na_d + na_a) * na_a;
   assign wd_p = (wd_d + wd_a) * wd_a;
@@ -228,4 +238,8 @@ module dspv4_xpath (
     accpr_a2 <= accpr_a1;
     accpr_p <= accpr_p + (accpr_d + accpr_a2) * accpr_a2;
   end
+
+  assign ovl_p = (ovl_d + $signed(ovl_a[15:0])) * ovl_a;
+  assign ovlc_p = (ovlc_d + $signed(ovlc_a[15:0])) * ovlc_a + ovlc_c;
+  assign ovlr_p = (ovlr_d + ovlr_a) * $signed(ovlr_a[15:0]);
 endmodule
