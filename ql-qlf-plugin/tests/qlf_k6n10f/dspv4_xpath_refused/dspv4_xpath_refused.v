@@ -1,9 +1,6 @@
 // Cross-path shapes that must not fold. Each keeps its multiply in a DSP and
 // its pre-adder's work in fabric.
 //
-//   sub     (d - a) * a. No XPATH subtract word, and a is the subtrahend, so it
-//           cannot move to port D. The only PREADD word puts a on A and B, which
-//           the double-feed check refuses: MULT
 //   subc    (d - a) * a + c. No XPATH word has an ALU term, and a is the
 //           subtrahend, so it cannot move to port D: MULT_ADD_C
 //   s19     (d + a) * a, a 19 (over the B side): the multiply itself does not
@@ -36,7 +33,6 @@
 //           site of the same bug, which b's width forces onto that side. Split
 module dspv4_xpath_refused (
     input clk,
-    input signed [15:0] sub_d, input signed [15:0] sub_a, output signed [33:0] sub_p,
     input signed [15:0] subc_d, input signed [15:0] subc_a,
     input signed [31:0] subc_c, output signed [34:0] subc_p,
     input signed [15:0] s19_d, input signed [18:0] s19_a, output signed [37:0] s19_p,
@@ -59,7 +55,6 @@ module dspv4_xpath_refused (
     input [30:0] uns31_d, input [15:0] uns31_a, output [46:0] uns31_p,
     input [16:0] uns17b_d, input [16:0] uns17b_a, input [19:0] uns17b_b, output [37:0] uns17b_p
 );
-  assign sub_p = (sub_d - sub_a) * sub_a;
   assign subc_p = (subc_d - subc_a) * subc_a + subc_c;
   assign s19_p = (s19_d + s19_a) * s19_a;
 

@@ -128,8 +128,7 @@ static SigSpec dspv4_fit(RTLIL::Module *module, SigSpec sig, int width, bool is_
 
 // True when one wire bit is in both signals, after sigmap. Constant bits
 // have no wire and never count. Used to keep an addend that overlaps the
-// multiply's other operand off the X side, and (until that refusal is
-// removed) to refuse a pre-adder cell with one signal on ports A and B.
+// multiply's other operand off the X side.
 static bool dspv4_operands_overlap(SigMap &sigmap, const SigSpec &a, const SigSpec &b)
 {
     pool<SigBit> on_a;
@@ -1121,9 +1120,9 @@ struct QlDspV4Pass : public Pass {
                 //
                 // XPATH has add words only, and none with an ALU term. Any other
                 // shape goes on to the PREADD words below. Those can still fold
-                // it with the shared operand on port D. When they would put it
-                // on A and B instead, the double-feed check refuses the cell --
-                // or, with an ALU term, `placed` refuses the pre-adder alone.
+                // it with the shared operand on port D; an add is flipped to put
+                // it there (keep_off_x). A word that puts one signal on ports A
+                // and B programs since OpenFPGA-QL 10cd2f838, so it is not refused.
                 // A constant has no wire, so it cannot be a shared operand: sigmap hands
                 // it back unchanged, and it would compare equal to itself. Skipped here
                 // the same way this pass already skips constant bits elsewhere, so
@@ -1262,13 +1261,11 @@ struct QlDspV4Pass : public Pass {
                         keep_off_x = first_overlaps ? first_addend : second_addend;
                 }
                 // With an ALU term, a placement that leaves the shared operand on
-                // the X side would feed it to ports A and B. The double-feed check
-                // cannot be left to refuse it: it drops the whole cell, and the
-                // matcher's next offer is the pre-adder without the ALU adder. For
-                // an add such as (a + a) * a + c, that offer folds the pre-adder as
-                // XPATH and leaves the wider ALU add in fabric. For a subtract it
-                // double-feeds too, and only the printed reason is wrong. So such a
-                // placement does not count as fitting.
+                // the X side would feed it to ports A and B. That wiring programs
+                // now, but no cross-path word has an ALU term, and whether such a
+                // placement should fold through a PREADD word is not decided
+                // (spec OQ-X4). Until it is, it does not count as fitting, and the
+                // pre-adder is refused with its own line.
                 bool cross_path_alu = (shared_first || shared_second) && st.add != nullptr;
                 bool shared_on_x = false;
                 auto placed = [&](int x_port) {
@@ -1358,11 +1355,6 @@ struct QlDspV4Pass : public Pass {
         }
 
         const Dspv4Mode &m = dspv4_mode(mode_name);
-        if ((m.amultsel || m.bmultsel) && dspv4_operands_overlap(sigmapper, ma, mb)) {
-            refuse(padd_cell, "pre-adder: its mode would put one signal on ports A and B, which repack cannot program");
-            log_debug("  %s: not fused -- %s puts the same signal on A and B\n", log_id(st.mul), mode_name);
-            return false;
-        }
         RTLIL::Cell *cell = module->addCell(NEW_ID, ID(QL_DSP4));
         dspv4_apply_mode(cell, m);
 

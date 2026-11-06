@@ -1,9 +1,11 @@
-# dspv4_xpath -- every cross-path shape here folds, and none double-feeds.
+# dspv4_xpath -- every cross-path shape here folds, including sub, which
+# puts one signal on ports A and B (a wiring that programs since OpenFPGA-QL
+# 10cd2f838, so the pass no longer refuses it).
 #
 # The cell counts cannot tell XPATH from the PREADD word P4 used to emit, and
 # cannot tell a PREADD word with the shared operand on D from one with it on
-# A and B. The Makefile asserts the mode names, and that the double-feed
-# check never fired. `adder_carry 0` shows no pre-adder was left in fabric.
+# A and B. The Makefile asserts the mode names. `adder_carry 0` shows no
+# pre-adder was left in fabric.
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
@@ -20,8 +22,8 @@ $PASS_NAME -family qlf_k6n10f -top dspv4_xpath -dspv4 -no_abc9 -lib_path $LIB/
 yosys cd dspv4_xpath
 check -assert
 select -assert-count 40 t:QL_DSP4_PREADD
-select -assert-count 3 t:QL_DSP4_PRESUB
-select -assert-count 43 t:QL_DSP4_MULT
+select -assert-count 4 t:QL_DSP4_PRESUB
+select -assert-count 44 t:QL_DSP4_MULT
 # Register leaves, read from the build, not hand-derived: four blocks each
 # give up one stage to the bank depth limit (16 flops apiece, 64 total), and
 # two reorder which operand takes D to stay off ports A and B (the Makefile
