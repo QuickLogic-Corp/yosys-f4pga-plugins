@@ -19,6 +19,9 @@
 //          PREADD_A_MULT_B
 //   addr   (d + a1) * a: only the adder side is registered, the mirror of
 //          mulr. PREADD_A_MULT_B
+//   cst    (d + 12345) * 12345: the same constant on both sides of the
+//          pre-adder's input mux. A constant has no wire, so it is not a
+//          shared operand (OQ-X3). PREADD_A_MULT_B, the constant on A and B.
 module dspv4_double_feed_scope (
     input clk,
     input signed [15:0] sq_x, output signed [31:0] sq_y,
@@ -30,7 +33,8 @@ module dspv4_double_feed_scope (
     input two_en_en1, input two_en_en2,
     input signed [15:0] two_en_d, input signed [15:0] two_en_a, output signed [33:0] two_en_p,
     input signed [15:0] mulr_d, input signed [15:0] mulr_a, output signed [33:0] mulr_p,
-    input signed [15:0] addr_d, input signed [15:0] addr_a, output signed [33:0] addr_p
+    input signed [15:0] addr_d, input signed [15:0] addr_a, output signed [33:0] addr_p,
+    input signed [15:0] cst_d, output signed [32:0] cst_p
 );
   assign sq_y = sq_x * sq_x;
   assign sqc_y = sqc_x * sqc_x + sqc_c;
@@ -72,4 +76,6 @@ module dspv4_double_feed_scope (
     addr_a1 <= addr_a;
   end
   assign addr_p = (addr_d + addr_a1) * addr_a;
+
+  assign cst_p = (cst_d + 16'sd12345) * 16'sd12345;
 endmodule

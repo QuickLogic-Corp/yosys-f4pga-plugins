@@ -1119,8 +1119,15 @@ struct QlDspV4Pass : public Pass {
                 // it with the shared operand on port D. When they would put it
                 // on A and B instead, the double-feed check refuses the cell --
                 // or, with an ALU term, `placed` refuses the pre-adder alone.
-                bool shared_first = sigmapper(other) == sigmapper(first_addend);
-                bool shared_second = !shared_first && sigmapper(other) == sigmapper(second_addend);
+                // A constant has no wire, so it cannot be a shared operand: sigmap hands
+                // it back unchanged, and it would compare equal to itself. Skipped here
+                // the same way this pass already skips constant bits elsewhere, so
+                // (d + 12345) * 12345 keeps PREADD_A_MULT_B with the constant on A and
+                // B, which this spec predicts ties correctly on real hardware -- not yet
+                // confirmed (test-plan.md criterion 12).
+                bool other_is_signal = !other.is_fully_const();
+                bool shared_first = other_is_signal && sigmapper(other) == sigmapper(first_addend);
+                bool shared_second = other_is_signal && !shared_first && sigmapper(other) == sigmapper(second_addend);
                 if (shared_first || shared_second) {
                     SigSpec shared = shared_first ? first_addend : second_addend;
                     bool shared_signed = shared_first ? first_addend_signed : second_addend_signed;

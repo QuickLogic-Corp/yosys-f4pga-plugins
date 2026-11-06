@@ -229,13 +229,19 @@ qlf_k6n10f-dspv4_xpath_refused_verify += && test -s qlf_k6n10f/dspv4_xpath_refus
 qlf_k6n10f-dspv4_xpath_refused_verify += && ! grep -E -q "'[bh][0-9a-f]*x" qlf_k6n10f/dspv4_xpath_refused/netlist.v
 # Three modes, each grepped on its own: the order of the line changes when
 # two modes tie, and a count alone cannot say the double-feed check let
-# pipe, aa, pipe2, two_en, mulr and addr keep PREADD_A_MULT_B rather than
-# something else.
+# pipe, aa, pipe2, two_en, mulr, addr and cst keep PREADD_A_MULT_B rather
+# than something else. cst's own wiring is asserted from the written
+# netlist (test -s first, so a crash before write_verilog cannot pass on a
+# stale file): a constant has no wire, so the cross-path test cannot treat
+# it as the shared operand, and the word keeps the constant on both A and B.
 qlf_k6n10f-dspv4_double_feed_scope_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){2}$$' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
 qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -q 'modes inferred:.*MULT_ADD_C x2' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
-qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B x6' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B x7' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
 qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -q 'modes inferred:.*MULT x1' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
 qlf_k6n10f-dspv4_double_feed_scope_verify += && ! grep -q 'one signal on ports A and B' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && test -s qlf_k6n10f/dspv4_double_feed_scope/netlist.v
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -A3 'QL_DSP4_PREADD ' qlf_k6n10f/dspv4_double_feed_scope/netlist.v | grep -q '\.I1(32.d12345)'
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -A3 'QL_DSP4_MULT ' qlf_k6n10f/dspv4_double_feed_scope/netlist.v | grep -q '\.I0(18.h03039)'
 # Phase 4, register absorption into the pre-adder's D and AD banks. The mode
 # has to be asserted here as well as the cell counts: a register absorbed into
 # the wrong bank, or an operand register absorbed after the pre-adder was
