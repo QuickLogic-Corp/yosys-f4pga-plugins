@@ -1281,6 +1281,7 @@ struct QlDspV4Pass : public Pass {
                         return false;
                     if (cross_path_alu && sigmapper(x_operand) == sigmapper(other)) {
                         shared_on_x = true;
+                        chain_kept_on_d = nullptr;
                         return false;
                     }
                     return true;
