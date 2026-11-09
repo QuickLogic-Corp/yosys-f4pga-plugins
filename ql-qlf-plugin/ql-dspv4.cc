@@ -156,7 +156,11 @@ static SigSpec dspv4_strip_extension(SigSpec sig, bool &is_signed)
     }
 
     // Sign-extension: the top bits are copies of the value's own MSB, so one
-    // copy is kept and the operand stays signed.
+    // copy is kept and the operand stays signed. Only a signed operand has
+    // one. On an unsigned operand those copies are value bits: {x[7], x} is
+    // x + 256 * x[7], and dropping them would change the number multiplied.
+    if (!is_signed)
+        return sig;
     SigBit top = sig[n - 1];
     if (top.wire == nullptr)
         return sig; // constant one-fill: not an extension
