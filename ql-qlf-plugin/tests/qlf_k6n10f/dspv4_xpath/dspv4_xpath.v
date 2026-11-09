@@ -4,6 +4,9 @@
 // B. The XPATH words read it once. Where no XPATH word fits, a PREADD word
 // still folds it with the shared operand on port D instead.
 //
+// The pre-adder computes D +/- X. D comes in on its own port; X comes from
+// port A or port B. "Off X" below means on port D instead.
+//
 //   na      (d + a) * a, a 17-bit sum fits the 18-bit B side: XPATH_A
 //   wd      a 26-bit d makes a 27-bit sum, which takes the 32-bit A side: XPATH_B
 //   wide    a 28-bit d does not fit port D, so a goes there: PREADD_A_MULT_B
@@ -36,7 +39,8 @@
 //   uns26   unsigned, d at the 26-bit unsigned D limit, a 17: XPATH_B
 //   uns27   unsigned, d one over the unsigned D limit, a 17: falls through,
 //           a takes D: PREADD_A_MULT_B
-//   mix     d signed, a unsigned. Verilog makes the whole expression unsigned
+//   mix     d signed, a unsigned. Verilog makes the whole expression unsigned,
+//           so it folds as uns16 does: XPATH_A
 //   unsc    unsigned, d 17, a 17, + c. No XPATH word has an ALU term: falls
 //           through, a takes D: PREADD_A_MULT_B_C
 //   alucf   (a + d) * a + c, a written first: no flip needed: PREADD_A_MULT_B_C
@@ -45,8 +49,9 @@
 //   s32     d 31 (over D), a 16, sum 32 (the A-side limit): a takes D,
 //           the sum takes the A side: PREADD_A_MULT_B
 //   minacc  p <= p + (a - d) * a, the minuend takes D: PREADD_A_SUB_MACC, PREG
-//   uns30   unsigned, d 30 (over D), a 16, sum 32 (the A-side limit, one bit
-//           of slack under X35): PREADD_A_MULT_B
+//   uns30   unsigned, d 30 (over D), a 16, sum 32 (the A-side limit; d 31
+//           makes it 33, one over, which dspv4_xpath_refused's uns31 covers):
+//           PREADD_A_MULT_B
 //   a2r     a behind two registers, the shared operand: XPATH_A, AREG0, AREG1
 //   d1r     d behind one register, the other operand: XPATH_A, DREG
 //   d2r     d behind two registers; D holds one stage, the other stays in
@@ -70,7 +75,8 @@
 //           adder side: PREADD_A_MULT_B, D = a (the whole signal, not the slice)
 //   sub     (d - a) * a. No XPATH subtract word, and a is the subtrahend, so it
 //           cannot move to port D: PREADD_A_SUB_B, with a on A and B -- a word
-//           that double-feeds, which programs since OpenFPGA-QL 10cd2f838
+//           that double-feeds, which programs since OpenFPGA-QL commit
+//           10cd2f838 (QL-Proprietary/OpenFPGA-QL, branch ql_main)
 //   ov2     (a + a[7:0]) * a + c: both addends overlap a, the whole signal and
 //           a slice of it. The whole signal is the one kept off X: PREADD_A_MULT_B_C,
 //           D = a
@@ -78,11 +84,12 @@
 //           kept off X must not depend on which came first in the RTL: same
 //           cell as ov2, PREADD_A_MULT_B_C, D = a
 //
-// X67 ("mreg": m <= (d + a) * a; p = m + c) is not included here yet. A
+// One shape is not a block here yet: mreg, m <= (d + a) * a; p = m + c. A
 // pre-adder-fed multiply with an M register does not fuse its ALU term:
 // measured as PREADD_A_MULT_B with c left in fabric, not PREADD_A_MULT_B_C
 // with MREG. A plain multiply with the same M-register-then-add shape does
-// fuse (dspv4_mult_mreg). Base P4 behavior, not cross-path's to fix here.
+// fuse (dspv4_mult_mreg). The gap is in how the pass handles any pre-adder
+// with an M register, so it is not this test's to fix.
 module dspv4_xpath (
     input clk,
     input signed [15:0] na_d, input signed [15:0] na_a, output signed [33:0] na_p,

@@ -1,8 +1,9 @@
 # dspv4_xpath -- every cross-path shape here folds, including sub, which
 # puts one signal on ports A and B (a wiring that programs since OpenFPGA-QL
-# 10cd2f838, so the pass no longer refuses it).
+# commit 10cd2f838, QL-Proprietary/OpenFPGA-QL, branch ql_main, so the pass
+# does not refuse it).
 #
-# The cell counts cannot tell XPATH from the PREADD word P4 used to emit, and
+# The cell counts cannot tell an XPATH word from a PREADD word, and
 # cannot tell a PREADD word with the shared operand on D from one with it on
 # A and B. The Makefile asserts the mode names. `adder_carry 0` shows no
 # pre-adder was left in fabric.

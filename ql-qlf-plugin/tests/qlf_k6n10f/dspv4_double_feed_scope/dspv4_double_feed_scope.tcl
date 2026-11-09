@@ -8,7 +8,7 @@
 # pipe2/two_en/mulr/addr each absorb a register on one side only (or a
 # two-deep chain, pipe2), and cst shares a constant, not a signal, between
 # the two ports: a constant has no wire, so it is not a shared operand. The
-# modes line in the Makefile is the main assertion: it must match P4 exactly.
+# modes line in the Makefile is the main assertion.
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import

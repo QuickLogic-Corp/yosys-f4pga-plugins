@@ -128,7 +128,8 @@ static SigSpec dspv4_fit(RTLIL::Module *module, SigSpec sig, int width, bool is_
 
 // True when one wire bit is in both signals, after sigmap. Constant bits
 // have no wire and never count. Used to keep an addend that overlaps the
-// multiply's other operand off the X side.
+// multiply's other operand off the X side. The pre-adder computes D +/- X:
+// D comes in on its own port, X on port A or port B through one mux.
 static bool dspv4_operands_overlap(SigMap &sigmap, const SigSpec &a, const SigSpec &b)
 {
     pool<SigBit> on_a;
@@ -1108,8 +1109,7 @@ struct QlDspV4Pass : public Pass {
                 // answer -- this bound is the whole guard.
                 int sum_width = preadder_sum_width(preadd);
                 // AD is signed, and signed_width counts an unsigned value's top bit as
-                // its sign. So an unsigned sum needs one more bit, on every path: the
-                // cross-path words and the PREADD words alike. A subtract does not.
+                // its sign, so an unsigned sum needs one more bit. A subtract does not.
                 int signed_sum_width = sum_width + (sum_port_signed || preadd_is_sub ? 0 : 1);
 
                 // Cross-path: the other multiply operand is one of this adder's
@@ -1119,17 +1119,9 @@ struct QlDspV4Pass : public Pass {
                 // dspv4_fit pads it with zeros rather than x.
                 //
                 // XPATH has add words only, and none with an ALU term. Any other
-                // shape goes on to the PREADD words below. Those can still fold
-                // it with the shared operand on port D; an add is flipped to put
-                // it there (keep_off_x). A word that puts one signal on ports A
-                // and B programs since OpenFPGA-QL 10cd2f838, so it is not refused.
-                // A constant has no wire, so it cannot be a shared operand: sigmap hands
-                // it back unchanged, and it would compare equal to itself. Skipped here
-                // the same way this pass already skips constant bits elsewhere, so
-                // (d + 12345) * 12345 keeps PREADD_A_MULT_B with the constant on A and
-                // B. A constant tied to both ports is expected to program correctly,
-                // since OpenFPGA ties a constant rather than routing it, but no design
-                // has measured that wiring on real hardware yet.
+                // shape goes on to the PREADD words below.
+                //
+                // A constant has no wire, so it is never the shared operand.
                 bool other_is_signal = !other.is_fully_const();
                 bool shared_first = other_is_signal && sigmapper(other) == sigmapper(first_addend);
                 bool shared_second = other_is_signal && !shared_first && sigmapper(other) == sigmapper(second_addend);
@@ -1176,9 +1168,7 @@ struct QlDspV4Pass : public Pass {
                 // A subtract never swaps. The hardware computes D - X and has
                 // no X - D (ffb preadder.v:21), so a swap would flip the sign.
                 //
-                // `keep_off_x` overrides the register depth: a cross-path ALU
-                // form keeps its shared operand off X, where it would sit on
-                // ports A and B. On D it reaches the pre-adder by its own wire.
+                // `keep_off_x`, when set, goes on D if the other order fits, even at the cost of a register stage.
                 SigSpec d_operand, x_operand;
                 bool d_operand_signed = false, x_operand_signed = false;
                 auto orient = [&](int x_port, const SigSpec &keep_off_x) {
@@ -1249,16 +1239,7 @@ struct QlDspV4Pass : public Pass {
                     continue;
                 }
 
-                // Every add keeps an addend that overlaps the other multiply operand off
-                // the X side, where it would sit on ports A and B; on D it reaches the
-                // pre-adder by its own wire. A partial overlap counts: (d + a[15:0]) * a
-                // puts a[15:0] on D. When both addends overlap -- one of them the whole
-                // signal, the other only a slice of it, as (a + a[7:0]) * a -- the whole
-                // signal is the one handed: it is the one that would otherwise land on
-                // ports A and B exactly, and RTL written the other way round must not
-                // change which operand that is. Two addends that are each only a partial
-                // overlap, neither equal to the other operand, are not resolved here; no
-                // order is handed, as before. A subtract never swaps.
+                // The addend that overlaps the other multiply operand is kept off X; if both overlap, the one equal to it.
                 SigSpec keep_off_x;
                 if (!preadd_is_sub) {
                     bool first_overlaps = dspv4_operands_overlap(sigmapper, first_addend, other);
@@ -1268,12 +1249,7 @@ struct QlDspV4Pass : public Pass {
                     else if (first_overlaps && (shared_first || shared_second))
                         keep_off_x = shared_first ? first_addend : second_addend;
                 }
-                // With an ALU term, a placement that leaves the shared operand on
-                // the X side would feed it to ports A and B. That wiring programs
-                // now, but no cross-path word has an ALU term, and whether such a
-                // placement should fold through a PREADD word instead is still an
-                // open question. Until it is answered, it does not count as
-                // fitting, and the pre-adder is refused with its own line.
+                // With an ALU term, a placement that leaves the shared operand on X does not count as fitting.
                 bool cross_path_alu = (shared_first || shared_second) && st.add != nullptr;
                 bool shared_on_x = false;
                 auto placed = [&](int x_port) {

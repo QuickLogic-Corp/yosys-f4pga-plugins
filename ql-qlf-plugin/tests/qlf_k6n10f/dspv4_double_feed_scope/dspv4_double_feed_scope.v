@@ -1,7 +1,8 @@
 // Shapes that share an operand between ports and must keep their modes. The
 // pre-adder's second input is a bus mux fed from both the A and the B path;
-// a word that puts one signal on both ports programs (OpenFPGA-QL
-// 10cd2f838), so none of these need a refusal. What still has to be right:
+// a word that puts one signal on both ports programs (OpenFPGA-QL commit
+// 10cd2f838, QL-Proprietary/OpenFPGA-QL, branch ql_main), so none of these
+// need a refusal. What still has to be right:
 // the pass must recognize the shared operand and route it correctly, not
 // confuse it with register absorption or with which port carries what.
 // The first three do not use the pre-adder.
