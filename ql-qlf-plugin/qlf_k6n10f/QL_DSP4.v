@@ -23,9 +23,9 @@
 // the VPR operating model (`vpr_models.yaml` `QL_DSP4`), whose port list carries
 // no OPMODE/ALUMODE/... - those are configuration.
 //
-// The behaviour is defined by the canonical DSP-V4 model `dsp4_top` in
+// The behaviour is defined by the canonical DSP-V4 model `ql_dsp4_top` in
 // dspv4_sim.v (RTL is the single source of truth). This wrapper drives the
-// dsp4_top configuration *input ports* from the QL_DSP4 *parameters* so the two
+// ql_dsp4_top configuration *input ports* from the QL_DSP4 *parameters* so the two
 // stay bit-identical. Read with `-lib -specify` the module is treated as a
 // black box (interface only); the body is used for functional/equivalence
 // simulation.
@@ -91,7 +91,7 @@ module QL_DSP4 #(
     input  wire        ACCRSTN  // accumulator reset, synchronous, active-low
 );
 
-    dsp4_top u_dsp4 (
+    ql_dsp4_top u_dsp4 (
         .A          (A),
         .B          (B),
         .C          (C),
