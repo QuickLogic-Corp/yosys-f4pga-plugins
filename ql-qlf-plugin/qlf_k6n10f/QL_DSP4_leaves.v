@@ -72,8 +72,9 @@ endmodule
 
 // ALU: ALU_OUT = W + X + Y + Z + CIN, ALUMODE = 00 (add).
 (* blackbox *)
-module QL_DSP4_ALU_ADD (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-    // [1:0] ALUMODE, [3:2] USE_SIMD
+module QL_DSP4_ALU_ADD (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT, SIGN_M);
+    // The physical mode {USE_SIMD[1:0], ALUMODE[1:0]}, bit-reversed by the techmap:
+    //   MODE_BITS = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
     parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
@@ -82,12 +83,14 @@ module QL_DSP4_ALU_ADD (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
     input  wire        CIN;
     output wire [63:0] ALU_OUT;
     output wire [3:0]  CARRYOUT;
+    output wire        SIGN_M;
 endmodule
 
 // ALU, ALUMODE = 11 (subtract):  ALU_OUT = Z - (W + X + Y + CIN).
 (* blackbox *)
-module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-    // [1:0] ALUMODE, [3:2] USE_SIMD
+module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT, SIGN_M);
+    // The physical mode {USE_SIMD[1:0], ALUMODE[1:0]}, bit-reversed by the techmap:
+    //   MODE_BITS = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
     parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
@@ -96,12 +99,14 @@ module QL_DSP4_ALU_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
     input  wire        CIN;
     output wire [63:0] ALU_OUT;
     output wire [3:0]  CARRYOUT;
+    output wire        SIGN_M;
 endmodule
 
 // ALU, ALUMODE = 01 (reverse subtract):  ALU_OUT = -Z + (W + X + Y + CIN) - 1.
 (* blackbox *)
-module QL_DSP4_ALU_REV_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-    // [1:0] ALUMODE, [3:2] USE_SIMD
+module QL_DSP4_ALU_REV_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT, SIGN_M);
+    // The physical mode {USE_SIMD[1:0], ALUMODE[1:0]}, bit-reversed by the techmap:
+    //   MODE_BITS = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
     parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
@@ -110,12 +115,14 @@ module QL_DSP4_ALU_REV_SUB (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
     input  wire        CIN;
     output wire [63:0] ALU_OUT;
     output wire [3:0]  CARRYOUT;
+    output wire        SIGN_M;
 endmodule
 
 // ALU, ALUMODE = 10 (not-sum):  ALU_OUT = -(Z + W + X + Y + CIN) - 1.
 (* blackbox *)
-module QL_DSP4_ALU_NOT_SUM (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
-    // [1:0] ALUMODE, [3:2] USE_SIMD
+module QL_DSP4_ALU_NOT_SUM (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT, SIGN_M);
+    // The physical mode {USE_SIMD[1:0], ALUMODE[1:0]}, bit-reversed by the techmap:
+    //   MODE_BITS = {ALUMODE[0], ALUMODE[1], USE_SIMD[0], USE_SIMD[1]}
     parameter [3:0] MODE_BITS = 4'b0000;
     input  wire [63:0] W;
     input  wire [63:0] X;
@@ -124,6 +131,7 @@ module QL_DSP4_ALU_NOT_SUM (W, X, Y, Z, CIN, ALU_OUT, CARRYOUT);
     input  wire        CIN;
     output wire [63:0] ALU_OUT;
     output wire [3:0]  CARRYOUT;
+    output wire        SIGN_M;
 endmodule
 
 // Round / arithmetic-right-shift / saturate: 64-bit accumulator -> 50-bit P.
@@ -140,7 +148,9 @@ endmodule
 // is then one documented rule for the FASM side.
 (* blackbox *)
 module QL_DSP4_RSS (ACC_IN, ACC_OUT);
-    // [2:0] ROUND, [8:3] SHIFT, [9] SATURATE
+    // The physical mode {SATURATE, SHIFT[5:0], ROUND[2:0]}, bit-reversed by the
+    // techmap: MODE_BITS = {ROUND[0], ROUND[1], ROUND[2], SHIFT[0], ..., SHIFT[5],
+    // SATURATE}
     parameter [9:0] MODE_BITS = 10'b0;
 
     input  wire [63:0] ACC_IN;
@@ -267,18 +277,26 @@ endmodule
 // The single carry-out bank. dsp4_top.v gates it with COUTREG and taps CCOUT
 // off COUT[3] ("CCOUT is a tap of COUT[3], so the single carry-out register
 // bank (COUTREG) serves both outputs"), so this one cell serves both COUT and
-// the carry cascade.
+// the carry cascade. Since dsp4_top.v 4.2.7 it loads only when CEP is high,
+// like the accumulator bank, so a registered carry stays with its P.
 //
-// There were once QL_DSP4_CCO_DFFR and QL_DSP4_SCO_DFFR blackboxes here for a
-// separate carry / sign cascade register. They were removed: no such register
-// exists in the hardware (there is no CCOUTREG parameter anywhere, and
-// SIGNCOUT is unregistered -- `assign SIGNCOUT = p_acc[49]`), they had no VPR
-// model behind them, and the techmap never instantiated them. Confirmed with
-// the arch owner before deletion.
+// There is no CCOUT register: CCOUT is a tap of COUT[3].
 (* blackbox *)
-module QL_DSP4_CO_DFFR_4 (D, R, clk, Q);
+module QL_DSP4_CO_DFFRE_4 (D, E, R, clk, Q);
     input  wire [3:0] D;
+    input  wire       E;
     input  wire       R;
     (* clkbuf_sink *) input wire clk;
     output wire [3:0] Q;
+endmodule
+
+// The product-sign register (SIGNCOUT). Its own 1-bit bank since dsp4_top.v
+// 4.2.7, under the same COUTREG select and CEP enable as the carry bank.
+(* blackbox *)
+module QL_DSP4_SCO_DFFRE (D, E, R, clk, Q);
+    input  wire D;
+    input  wire E;
+    input  wire R;
+    (* clkbuf_sink *) input wire clk;
+    output wire Q;
 endmodule
