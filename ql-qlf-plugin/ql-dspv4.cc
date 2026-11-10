@@ -126,6 +126,22 @@ static SigSpec dspv4_fit(RTLIL::Module *module, SigSpec sig, int width, bool is_
     return sig;
 }
 
+// True when one wire bit is in both signals, after sigmap. Constant bits
+// have no wire and never count. Used to keep an addend that overlaps the
+// multiply's other operand off the X side. The pre-adder computes D +/- X:
+// D comes in on its own port, X on port A or port B through one mux.
+static bool dspv4_operands_overlap(SigMap &sigmap, const SigSpec &a, const SigSpec &b)
+{
+    pool<SigBit> on_a;
+    for (SigBit bit : sigmap(a))
+        if (bit.wire != nullptr)
+            on_a.insert(bit);
+    for (SigBit bit : sigmap(b))
+        if (bit.wire != nullptr && on_a.count(bit))
+            return true;
+    return false;
+}
+
 // Strip an extension the RTL applied to an operand before the multiply.
 //
 // The register walk keys on a flop's exact Q, so an operand written as
@@ -1096,6 +1112,55 @@ struct QlDspV4Pass : public Pass {
                 // than saturating, so a sum that does not fit is a silent wrong
                 // answer -- this bound is the whole guard.
                 int sum_width = preadder_sum_width(preadd);
+                // AD is signed, and signed_width counts an unsigned value's top bit as
+                // its sign, so an unsigned sum needs one more bit. A subtract does not.
+                int signed_sum_width = sum_width + (sum_port_signed || preadd_is_sub ? 0 : 1);
+
+                // Cross-path: the other multiply operand is one of this adder's
+                // own operands. A PREADD word would put it on ports A and B; an
+                // XPATH word reads it once and the tile routes AD to the other
+                // multiplier side. That port is left empty, and unsigned, so
+                // dspv4_fit pads it with zeros rather than x.
+                //
+                // XPATH has add words only, and none with an ALU term. Any other
+                // shape goes on to the PREADD words below.
+                //
+                // A constant has no wire, so it is never the shared operand.
+                bool other_is_signal = !other.is_fully_const();
+                bool shared_first = other_is_signal && sigmapper(other) == sigmapper(first_addend);
+                bool shared_second = other_is_signal && !shared_first && sigmapper(other) == sigmapper(second_addend);
+                if (shared_first || shared_second) {
+                    SigSpec shared = shared_first ? first_addend : second_addend;
+                    bool shared_signed = shared_first ? first_addend_signed : second_addend_signed;
+                    SigSpec d_side = shared_first ? second_addend : first_addend;
+                    bool d_side_signed = shared_first ? second_addend_signed : first_addend_signed;
+                    bool d_fits = fits(GetSize(d_side), d_side_signed, DSPV4_D_WIDTH);
+                    // XPATH_A: the shared operand on A, the sum to the 18-bit B side.
+                    // XPATH_B: the shared operand on B, the sum to the 32-bit A side.
+                    bool xpath_word = st.add == nullptr && !preadd_is_sub && d_fits;
+                    bool xpath_a = xpath_word && signed_sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(shared), shared_signed, DSPV4_A_WIDTH);
+                    bool xpath_b =
+                      !xpath_a && xpath_word && signed_sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(shared), shared_signed, DSPV4_B_WIDTH);
+                    if (xpath_a || xpath_b) {
+                        mode_name = xpath_a ? "XPATH_A" : "XPATH_B";
+                        if (xpath_a) {
+                            ma = shared;
+                            a_signed = shared_signed;
+                            mb = SigSpec();
+                            b_signed = false;
+                        } else {
+                            mb = shared;
+                            b_signed = shared_signed;
+                            ma = SigSpec();
+                            a_signed = false;
+                        }
+                        md = d_side;
+                        d_signed = d_side_signed;
+                        padd_cell = preadd;
+                        ad_flop_cell = ad_flop;
+                        break;
+                    }
+                }
 
                 // $add is commutative, so either operand can take the D port.
                 // The two sides differ in width and in depth -- D is 27 bits
@@ -1106,9 +1171,11 @@ struct QlDspV4Pass : public Pass {
                 //
                 // A subtract never swaps. The hardware computes D - X and has
                 // no X - D (ffb preadder.v:21), so a swap would flip the sign.
+                //
+                // `keep_off_x`, when set, goes on D if the other order fits, even at the cost of a register stage.
                 SigSpec d_operand, x_operand;
                 bool d_operand_signed = false, x_operand_signed = false;
-                auto orient = [&](int x_port) {
+                auto orient = [&](int x_port, const SigSpec &keep_off_x) {
                     auto sides_fit = [&](const SigSpec &d, bool d_sgn, const SigSpec &x, bool x_sgn) {
                         return fits(GetSize(d), d_sgn, DSPV4_D_WIDTH) && fits(GetSize(x), x_sgn, x_port);
                     };
@@ -1121,11 +1188,22 @@ struct QlDspV4Pass : public Pass {
                     };
                     bool written_fits = sides_fit(first_addend, first_addend_signed, second_addend, second_addend_signed);
                     bool swapped_fits = sides_fit(second_addend, second_addend_signed, first_addend, first_addend_signed);
-                    bool swapped_absorbs_more = stages_absorbed(second_addend, first_addend) > stages_absorbed(first_addend, second_addend);
+                    int written_stages = stages_absorbed(first_addend, second_addend);
+                    int swapped_stages = stages_absorbed(second_addend, first_addend);
+                    bool swapped_absorbs_more = swapped_stages > written_stages;
                     bool swap = !preadd_is_sub && swapped_fits && (!written_fits || swapped_absorbs_more);
 
                     chain_kept_on_d = nullptr;
-                    if (written_fits && !swap && swapped_absorbs_more)
+                    bool other_order_fits = swap ? written_fits : swapped_fits;
+                    bool keep_moves_off_x = !keep_off_x.empty() && !preadd_is_sub && other_order_fits &&
+                                            sigmapper(swap ? first_addend : second_addend) == sigmapper(keep_off_x);
+                    if (keep_moves_off_x) {
+                        int stages_before = swap ? swapped_stages : written_stages;
+                        swap = !swap;
+                        if ((swap ? swapped_stages : written_stages) < stages_before)
+                            chain_kept_on_d = "the shared cross-path operand takes D, which holds one register stage, to stay off "
+                                              "ports A and B";
+                    } else if (written_fits && !swap && swapped_absorbs_more)
                         chain_kept_on_d = preadd_is_sub ? "a subtract cannot swap its two-deep register chain off D, "
                                                           "which holds one stage (the DSP has D - X, not X - D)"
                                                         : "the two-deep register chain stays on D: the other operand "
@@ -1165,7 +1243,31 @@ struct QlDspV4Pass : public Pass {
                     continue;
                 }
 
-                if (sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && orient(DSPV4_A_WIDTH)) {
+                // The addend that overlaps the other multiply operand is kept off X; if both overlap, the one equal to it.
+                SigSpec keep_off_x;
+                if (!preadd_is_sub) {
+                    bool first_overlaps = dspv4_operands_overlap(sigmapper, first_addend, other);
+                    bool second_overlaps = dspv4_operands_overlap(sigmapper, second_addend, other);
+                    if (first_overlaps != second_overlaps)
+                        keep_off_x = first_overlaps ? first_addend : second_addend;
+                    else if (first_overlaps && (shared_first || shared_second))
+                        keep_off_x = shared_first ? first_addend : second_addend;
+                }
+                // With an ALU term, a placement that leaves the shared operand on X does not count as fitting.
+                bool cross_path_alu = (shared_first || shared_second) && st.add != nullptr;
+                bool shared_on_x = false;
+                auto placed = [&](int x_port) {
+                    if (!orient(x_port, keep_off_x))
+                        return false;
+                    if (cross_path_alu && sigmapper(x_operand) == sigmapper(other)) {
+                        shared_on_x = true;
+                        chain_kept_on_d = nullptr;
+                        return false;
+                    }
+                    return true;
+                };
+
+                if (signed_sum_width <= DSPV4_AD_A_WIDTH && fits(GetSize(other), other_signed, DSPV4_B_WIDTH) && placed(DSPV4_A_WIDTH)) {
                     // The sum keeps all 32 bits of AD.
                     mode_name = preadd_mode_a;
                     ma = x_operand;
@@ -1178,7 +1280,7 @@ struct QlDspV4Pass : public Pass {
                     ad_flop_cell = ad_flop;
                     break;
                 }
-                if (sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && orient(DSPV4_B_WIDTH)) {
+                if (signed_sum_width <= DSPV4_AD_B_WIDTH && fits(GetSize(other), other_signed, DSPV4_A_WIDTH) && placed(DSPV4_B_WIDTH)) {
                     // AD is truncated to 18 bits here, which is why this path is
                     // tried second and needs the tighter proof.
                     mode_name = preadd_mode_b;
@@ -1192,11 +1294,15 @@ struct QlDspV4Pass : public Pass {
                     ad_flop_cell = ad_flop;
                     break;
                 }
+                if (shared_on_x) {
+                    refuse(preadd, "pre-adder: no cross-path control word for it with an ALU term");
+                    continue;
+                }
                 refuse(preadd, "pre-adder: its sum may exceed the multiplier port");
                 log_debug("  %s: pre-adder not fused -- D +/- X needs %d bits, "
                           "which exceeds AD's %d on the A path and %d on the B "
                           "path once the other operand is placed\n",
-                          log_id(st.mul), sum_width, DSPV4_AD_A_WIDTH, DSPV4_AD_B_WIDTH);
+                          log_id(st.mul), signed_sum_width, DSPV4_AD_A_WIDTH, DSPV4_AD_B_WIDTH);
             }
         }
         if (padd_cell != nullptr && chain_kept_on_d != nullptr)
@@ -2481,6 +2587,10 @@ struct QlDspV4Pass : public Pass {
     } while (0)
         FlopChain chain;
         chain.source = sig;
+        // A cross-path cell leaves one multiplier port empty. With no bits,
+        // every bit "resolves to a flop" and the walk would count empty stages.
+        if (sig.empty())
+            return chain;
         // Seeding pins what this cell has already fixed: the clock, and the
         // reset when M is absorbed -- see FlopChain. The enable is left free:
         // CEP does not constrain CEA/CEB.

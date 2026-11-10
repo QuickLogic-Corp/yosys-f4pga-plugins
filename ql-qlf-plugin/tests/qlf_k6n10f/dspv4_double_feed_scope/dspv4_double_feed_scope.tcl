@@ -1,0 +1,42 @@
+# dspv4_double_feed_scope -- every shared operand here is recognized and
+# routed correctly, not mistaken for something else.
+#
+# Each block shares an operand between two ports. The first three never use
+# the pre-adder, so the bus mux is never in play. Of the other seven, pipe
+# needs the shared operand recognized again after register absorption
+# changes its wire, aa needs it recognized across all four ports,
+# pipe2/two_en/mulr/addr each absorb a register on one side only (or a
+# two-deep chain, pipe2), and cst shares a constant, not a signal, between
+# the two ports: a constant has no wire, so it is not a shared operand. The
+# modes line in the Makefile is the main assertion.
+yosys -import
+if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
+yosys -import
+set PASS_NAME synth_quicklogic
+if { [info commands synth_ql] != {} } { set PASS_NAME synth_ql }
+set LIB [file normalize [file join [file dirname [info script]] .. .. ..]]
+# A stale netlist from an earlier run must not let the x-grep rule pass on
+# nothing: delete it first, so a run that crashes before write_verilog
+# leaves no file for `test -s` to find.
+file delete -force netlist.v
+read_verilog dspv4_double_feed_scope.v
+hierarchy -top dspv4_double_feed_scope
+$PASS_NAME -family qlf_k6n10f -top dspv4_double_feed_scope -dspv4 -no_abc9 -lib_path $LIB/
+yosys cd dspv4_double_feed_scope
+check -assert
+select -assert-count 10 t:QL_DSP4_MULT
+select -assert-count 7 t:QL_DSP4_PREADD
+# pipe is the only block that registers the pre-adder's own sum: AD holds
+# s_r. pipe2 is the only one that registers D, and the only one whose B-side
+# chain is two deep (B1 and B2 both used). The other single-stage B
+# registers (pipe, two_en, mulr) each land in B2, not B1. The single-stage A
+# registers (pipe2, two_en, addr) each land in A2, not A1.
+select -assert-count 1 t:QL_DSP4_AD_DFFR_32
+select -assert-count 1 t:QL_DSP4_D_DFFRE_27
+select -assert-count 1 t:QL_DSP4_B1_DFFRE_18
+select -assert-count 4 t:QL_DSP4_B2_DFFRE_18
+select -assert-count 3 t:QL_DSP4_A2_DFFRE_32
+select -assert-count 0 t:QL_DSP4_A1_DFFRE_32
+select -assert-count 0 t:QL_DSP4_PRESUB
+select -assert-count 0 t:adder_carry
+write_verilog -noattr netlist.v
