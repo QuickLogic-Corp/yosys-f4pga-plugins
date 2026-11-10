@@ -13,9 +13,9 @@ $PASS_NAME -family qlf_k6n10f -top dspv4_preadd_sub_unsigned -dspv4 -no_abc9 -li
 
 yosys cd dspv4_preadd_sub_unsigned
 check -assert
-# Exactly one of the two folds: the narrow-product one. Counting $sub proves
-# nothing -- it is lowered by this point either way, so the surviving carry
-# chain is the evidence the wide one stayed in fabric.
-select -assert-count 1 t:QL_DSP4_PRESUB
+# Two of the three fold: the narrow-product ones (n and g). Counting $sub
+# proves nothing -- it is lowered by this point either way, so the surviving
+# carry chain is the evidence the wide one (w) stayed in fabric.
+select -assert-count 2 t:QL_DSP4_PRESUB
 select -assert-count 0 t:QL_DSP4_PREADD
 select -assert-min 1 t:adder_carry

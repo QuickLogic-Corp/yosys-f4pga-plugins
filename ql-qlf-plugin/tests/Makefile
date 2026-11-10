@@ -61,10 +61,10 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_sub_unsigned \
 	qlf_k6n10f/dspv4_mult_reg_pad \
 	qlf_k6n10f/dspv4_xpath \
-	qlf_k6n10f/dspv4_xpath_sub \
+	qlf_k6n10f/dspv4_xpath_refused \
 	qlf_k6n10f/dspv4_preadd_both \
-	qlf_k6n10f/dspv4_preadd_shared \
 	qlf_k6n10f/dspv4_preadd_square \
+	qlf_k6n10f/dspv4_double_feed_scope \
 	qlf_k6n10f/dspv4_preadd_preg_wrap \
 	qlf_k6n10f/dspv4_preadd_adreg_trunc \
 	qlf_k6n10f/dspv4_preadd_regs \
@@ -150,7 +150,7 @@ qlf_k6n10f-dspv4_macc_dup_verify = grep -q 'the DSP has no register stage after 
 # QL_DSP4_MULT -- so without these the A/B decision is untested. A refused
 # shape must report MULT, not a PREADD mode: that is what says the guard
 # refused rather than folded something it should not have.
-qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
+qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x2' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
 qlf_k6n10f-dspv4_preadd_sub_unsigned_verify += && grep -q '1 x  pre-adder: an unsigned subtract wraps where the DSP signs' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
 qlf_k6n10f-dspv4_mult_reg_pad_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_reg_pad/dspv4_mult_reg_pad.log
 qlf_k6n10f-dspv4_mult_add_self_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_add_self/dspv4_mult_add_self.log
@@ -176,14 +176,91 @@ qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_
 qlf_k6n10f-dspv4_preadd_both_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
 # The sum left behind is named, not just absent from the cell.
 qlf_k6n10f-dspv4_preadd_both_verify += && grep -q '1 x  a second pre-adder sum stays in fabric: the cell has one pre-adder' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
-qlf_k6n10f-dspv4_preadd_shared_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_shared/dspv4_preadd_shared.log
 # Squaring is refused, so no pre-adder mode at all.
 qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
 qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 x  pre-adder: it feeds both multiply operands (squaring)' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
-# The cross-path shape folds to a plain PREADD mode. XPATH has no
-# separate control word -- PREADD_A_MULT_B already covers it.
-qlf_k6n10f-dspv4_xpath_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
-qlf_k6n10f-dspv4_xpath_sub_verify = grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_xpath_sub/dspv4_xpath_sub.log
+# Every cross-path shape that must fold, 46 blocks, nine modes in no fixed
+# order. No block may be refused, and the four blocks that give up a register
+# stage to the bank depth limit must do it for that reason, not a clock/reset
+# mismatch.
+qlf_k6n10f-dspv4_xpath_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){8}$$' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_A x14' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_B x7' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B x6' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B x2' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B_C x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B_C x12' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MACC x2' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_MACC x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MACC_C x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && ! grep -q 'no cross-path control word for it with an ALU term' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && ! grep -q 'one signal on ports A and B' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && ! grep -q 'register chain given up' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q '2 x  the shared cross-path operand takes D, which holds one register stage' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q '4 x  reached the bank depth limit' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+# The overlap blocks' own wiring: the flip must put the overlapping slice (or
+# the whole signal, ovlr) on D, not leave it on X. The pre-adder computes
+# D +/- X: D has its own port, X comes from port A or port B. In the netlist,
+# the pre-adder leaf's I0 is D and its I1 is X. test -s first, so a crash
+# before write_verilog cannot pass on a stale file.
+qlf_k6n10f-dspv4_xpath_verify += && test -s qlf_k6n10f/dspv4_xpath/netlist.v
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovl_d_QL_DSP4_PREADD_I1 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ovl_a\[15:0\] })'
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovlc_d_QL_DSP4_PREADD_I1 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ovlc_a\[15:0\] })'
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovlr_d_QL_DSP4_PREADD_I1 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ovlr_a })'
+# ov2 and ov2r: the same two addends, written in opposite order, must land the
+# same operand (the whole signal) off the X side in both cases.
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2_a_QL_DSP4_PREADD_I0 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2_a\[7:0\] })'
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2r_a_QL_DSP4_PREADD_I0 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2r_a\[7:0\] })'
+# Cross-path shapes the pass refuses, and the reason it prints for each: an
+# ALU term with the shared operand left on X, no control word for the ALU
+# direction, a sum that may exceed the multiplier port, a truncated sum, an
+# unsigned subtract, and multiplies too wide for the ports. No block may print
+# the one-signal-on-ports-A-and-B line: the pass does not refuse that wiring.
+# mul2dsp splits the too-wide multiplies and the pass reads the pieces again,
+# which prints the second "modes inferred" line. The x-grep rule fails if the
+# written netlist holds a constant with x bits: that is what a net whose
+# driver was lost becomes once `opt_clean` has run. `test -s` first, so a run
+# that crashes before `write_verilog` cannot pass on a stale file.
+qlf_k6n10f-dspv4_xpath_refused_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){5}$$' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'modes inferred:.*MULT x2' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'modes inferred:.*MULT_ADD_C x2' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'modes inferred:.*MULT_SUB_C x1' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'modes inferred:.*MULT_RSUB_C x1' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'modes inferred:.*MULT_ACC_SUB x1' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'modes inferred:.*MULT_ACC x1' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -E -q 'modes inferred: [^,]+(, [^,]+){1}$$' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'modes inferred: MULT x15, MULT_ADD_C x1' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '6 x  pre-adder: its sum may exceed the multiplier port' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '3 x  pre-adder: no cross-path control word for it with an ALU term' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '3 x  pre-adder: no control word for it with this ALU direction' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && ! grep -q 'one signal on ports A and B' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '2 x  pre-adder: an unsigned subtract wraps where the DSP signs' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '1 x  pre-adder: it truncates its own sum, which the DSP would not' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'multiply: 20x19 (signed x signed) does not fit the 32x18 ports' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q 'multiply: 33x16 (signed x signed) does not fit the 32x18 ports' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '19x18 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '3 x  multiply: 32x16 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && grep -q '18x20 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_xpath_refused/dspv4_xpath_refused.log
+qlf_k6n10f-dspv4_xpath_refused_verify += && test -s qlf_k6n10f/dspv4_xpath_refused/netlist.v
+qlf_k6n10f-dspv4_xpath_refused_verify += && ! grep -E -q "'[bh][0-9a-f]*x" qlf_k6n10f/dspv4_xpath_refused/netlist.v
+# Three modes, each grepped on its own: the order of the line changes when
+# two modes tie, and a count alone cannot say pipe, aa, pipe2, two_en, mulr,
+# addr and cst each correctly kept PREADD_A_MULT_B rather than something
+# else. cst's own wiring is asserted from the written
+# netlist (test -s first, so a crash before write_verilog cannot pass on a
+# stale file): a constant has no wire, so the cross-path test cannot treat
+# it as the shared operand, and the word keeps the constant on both A and B.
+# The two greps read the leaf cells' ports. The pre-adder's I1 is X, here
+# port A (its I0 is port D). The multiplier's I0 is its 18-bit input, here
+# port B (its I1 is the 32-bit input, here the pre-adder's sum).
+qlf_k6n10f-dspv4_double_feed_scope_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){2}$$' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -q 'modes inferred:.*MULT_ADD_C x2' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B x7' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -q 'modes inferred:.*MULT x1' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && ! grep -q 'one signal on ports A and B' qlf_k6n10f/dspv4_double_feed_scope/dspv4_double_feed_scope.log
+qlf_k6n10f-dspv4_double_feed_scope_verify += && test -s qlf_k6n10f/dspv4_double_feed_scope/netlist.v
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -A3 'QL_DSP4_PREADD ' qlf_k6n10f/dspv4_double_feed_scope/netlist.v | grep -q '\.I1(32.d12345)'
+qlf_k6n10f-dspv4_double_feed_scope_verify += && grep -A3 'QL_DSP4_MULT ' qlf_k6n10f/dspv4_double_feed_scope/netlist.v | grep -q '\.I0(18.h03039)'
 # Phase 4, register absorption into the pre-adder's D and AD banks. The mode
 # has to be asserted here as well as the cell counts: a register absorbed into
 # the wrong bank, or an operand register absorbed after the pre-adder was
