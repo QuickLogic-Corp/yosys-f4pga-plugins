@@ -74,6 +74,7 @@ TESTS = \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
+	qlf_k6n10f/shreg_scopename \
 	qlf_k6n10f/ioff_rst \
 	qlf_k6n10f/ioff_pol \
 	qlf_k6n10f/ioff_flags \
@@ -302,6 +303,7 @@ qlf_k6n10f-dsp_macc_verify = true
 qlf_k6n10f-dsp_madd_verify = true
 qlf_k6n10f-ioff_verify = true
 qlf_k6n10f-sdffr_inst_verify = true
+qlf_k6n10f-shreg_scopename_verify = true
 qlf_k6n10f-ioff_rst_verify = true
 qlf_k6n10f-ioff_pol_verify = true
 qlf_k6n10f-ioff_flags_verify = true
