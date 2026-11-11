@@ -29,3 +29,8 @@ include ../Makefile_plugin.common
 
 # sdc.cc includes <tcl.h>; Yosys >= 0.67's CMake yosys-config no longer passes its include path.
 CXXFLAGS += $(shell pkg-config --cflags tcl 2>/dev/null)
+
+# A Windows DLL must resolve Tcl at link time; that yosys-config no longer adds -ltcl86 either.
+ifneq ($(findstring mingw,$(shell $(CXX) -dumpmachine 2>/dev/null)),)
+LDLIBS += $(shell pkg-config --libs tcl 2>/dev/null)
+endif
