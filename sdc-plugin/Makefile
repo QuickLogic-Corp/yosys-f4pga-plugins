@@ -26,3 +26,6 @@ SOURCES = buffers.cc \
           set_max_delay.cc \
           set_clock_groups.cc
 include ../Makefile_plugin.common
+
+# sdc.cc includes <tcl.h>; Yosys >= 0.67's CMake yosys-config no longer passes its include path.
+CXXFLAGS += $(shell pkg-config --cflags tcl 2>/dev/null)

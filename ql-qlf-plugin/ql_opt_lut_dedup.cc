@@ -52,7 +52,7 @@ struct OptLutDedupPass : public Pass {
                     // Compute new INIT
                     int new_width = width - 1;
                     int new_size = 1 << new_width;
-                    Const new_lut(State::S0, new_size);
+                    std::vector<State> new_bits(new_size, State::S0);
 
                     for (int new_idx = 0; new_idx < new_size; new_idx++) {
                         int old_idx = 0;
@@ -67,8 +67,9 @@ struct OptLutDedupPass : public Pass {
 
                             old_idx |= val << bit;
                         }
-                        new_lut.bits()[new_idx] = lut.bits()[old_idx];
+                        new_bits[new_idx] = lut[old_idx];
                     }
+                    Const new_lut(new_bits);
 
                     log("    INIT after : %d'b%s\n", new_size, new_lut.as_string().c_str());
 
