@@ -1,13 +1,23 @@
 // One small module per QoR option of synth_ql (-mcm, -carry_min_width,
 // -cmp2lut_width, -keep_syn_preserve).
 
-// Constant multiply: a DSP by default, shifts and adds with -mcm.
+// Constant multiply with wide operands: stays on the DSP with -mcm (both
+// operands wider than -mcm_max_width 4); shifts and adds with -mcm_max_width 0.
 module mul_c (
     input clk,
     input [7:0] a,
     output reg [15:0] m
 );
   always @(posedge clk) m <= a * 8'd25;
+endmodule
+
+// Narrow select times a constant (an index offset): leaves the DSP with -mcm.
+module mul_sel (
+    input clk,
+    input [1:0] s,
+    output reg [7:0] m
+);
+  always @(posedge clk) m <= s * 8'd24;
 endmodule
 
 // 9-bit adder: adder_carry by default, LUTs with -carry_min_width above 9.

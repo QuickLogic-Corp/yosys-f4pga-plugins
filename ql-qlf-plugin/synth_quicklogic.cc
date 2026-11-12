@@ -154,7 +154,11 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("    -mcm\n");
         log("        Before DSP mapping, replace multipliers by a constant with a shared\n");
         log("        graph of shifts and adds (Yosys mcm pass, from Yosys 0.70; ignored with\n");
-        log("        a warning on older Yosys).\n");
+        log("        a warning on older Yosys). Only multiplies with an operand of at most\n");
+        log("        -mcm_max_width bits; wider ones stay on the DSP.\n");
+        log("\n");
+        log("    -mcm_max_width <N>\n");
+        log("        Operand width limit for -mcm. Default: 4. 0 means every $mul.\n");
         log("\n");
         log("    -keep_syn_preserve\n");
         log("        Mark flip-flops driving a syn_preserve signal with keep, so register\n");
@@ -227,7 +231,7 @@ struct SynthQuickLogicPass : public ScriptPass {
     }
 
     string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script,
-      de, carry_min_width, cmp2lut_width;
+      de, carry_min_width, cmp2lut_width, mcm_max_width;
     bool mcm;
     bool keepSynPreserve;
     bool nodsp;
@@ -280,6 +284,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         de = "";
         carry_min_width = "";
         cmp2lut_width = "4";
+        mcm_max_width = "4";
         mcm = false;
         keepSynPreserve = false;
         rel_ip_blif_files.clear();
@@ -378,6 +383,7 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-de", &de},
           {"-carry_min_width", &carry_min_width},
           {"-cmp2lut_width", &cmp2lut_width},
+          {"-mcm_max_width", &mcm_max_width},
         };
         const SwitchOption switch_options[] = {
           {"-no_dsp", &nodsp, true},
@@ -462,6 +468,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 log_cmd_error("%s needs a whole number from %d to %d, got '%s'\n", opt, lo, hi, value.c_str());
         };
         check_int("-cmp2lut_width", cmp2lut_width, 1, 8);
+        check_int("-mcm_max_width", mcm_max_width, 0, 64);
         if (!carry_min_width.empty())
             check_int("-carry_min_width", carry_min_width, 1, 128);
 
@@ -965,8 +972,13 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (help_mode || mcm) {
                 // Constant multipliers become shift/add graphs before DSP mapping, so a
                 // `sel * CONST` index does not take a DSP. `mcm` exists from Yosys 0.70.
+                // Only multiplies with a narrow operand: a wide data * coefficient
+                // product is cheaper and faster on the DSP (rgb2ycrcb: 2x the LUTs).
                 if (help_mode || pass_register.count("mcm")) {
-                    run("mcm", "                             (if -mcm)");
+                    std::string n = help_mode ? std::string("<N>") : mcm_max_width;
+                    std::string sel = (!help_mode && mcm_max_width == "0") ? std::string("t:$mul")
+                                                                           : "t:$mul r:A_WIDTH<=" + n + " %i t:$mul r:B_WIDTH<=" + n + " %i %u";
+                    run("mcm " + sel, "(if -mcm)");
                     run("opt_expr", "                        (if -mcm)");
                     run("opt_clean", "                       (if -mcm)");
                 } else {
