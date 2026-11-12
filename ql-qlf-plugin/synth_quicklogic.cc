@@ -21,6 +21,7 @@
 #include "kernel/register.h"
 #include "kernel/rtlil.h"
 #include "kernel/sigtools.h"
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 
@@ -141,6 +142,24 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        By default use adder cells in output netlist.\n");
         log("        Specifying this switch turns it off.\n");
         log("\n");
+        log("    -carry_min_width <N>\n");
+        log("        Map adders and compares ($alu) narrower than N bits to LUT logic\n");
+        log("        instead of adder_carry; wider ones keep the carry chain.\n");
+        log("        Off by default (every $alu uses adder_carry, unless -no_adder).\n");
+        log("\n");
+        log("    -cmp2lut_width <N>\n");
+        log("        Compares of a signal with a constant on up to N bits become LUTs\n");
+        log("        rather than carry logic (cmp2lut LUT_WIDTH). Default: 4.\n");
+        log("\n");
+        log("    -mcm\n");
+        log("        Before DSP mapping, replace multipliers by a constant with a shared\n");
+        log("        graph of shifts and adds (Yosys mcm pass, from Yosys 0.70; ignored with\n");
+        log("        a warning on older Yosys).\n");
+        log("\n");
+        log("    -keep_syn_preserve\n");
+        log("        Mark flip-flops driving a syn_preserve signal with keep, so register\n");
+        log("        copies made for fanout are not merged.\n");
+        log("\n");
         log("    -no_bram\n");
         log("        By default use Block RAM in output netlist.\n");
         log("        Specifying this switch turns it off.\n");
@@ -208,7 +227,9 @@ struct SynthQuickLogicPass : public ScriptPass {
     }
 
     string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script,
-      de;
+      de, carry_min_width, cmp2lut_width;
+    bool mcm;
+    bool keepSynPreserve;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -257,6 +278,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         lib_path = "+/quicklogic/";
         mince_num = "";
         de = "";
+        carry_min_width = "";
+        cmp2lut_width = "4";
+        mcm = false;
+        keepSynPreserve = false;
         rel_ip_blif_files.clear();
     }
 
@@ -351,6 +376,8 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-custom_abc_script", &custom_abc_script},
           {"-mince_num", &mince_num},
           {"-de", &de},
+          {"-carry_min_width", &carry_min_width},
+          {"-cmp2lut_width", &cmp2lut_width},
         };
         const SwitchOption switch_options[] = {
           {"-no_dsp", &nodsp, true},
@@ -368,6 +395,8 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-dspv4", &dspv4, true},
           {"-no_tdpram", &notdpram, true},
           {"-synplify", &synplify, true},
+          {"-mcm", &mcm, true},
+          {"-keep_syn_preserve", &keepSynPreserve, true},
         };
 
         size_t argidx;
@@ -426,6 +455,15 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (family != "pp3" && family != "qlf_k4n8" && family != "qlf_k6n10" && family != "qlf_k6n10f")
             log_cmd_error("Invalid family specified: '%s'\n", family.c_str());
+
+        auto check_int = [](const char *opt, const std::string &value, int lo, int hi) {
+            bool digits = !value.empty() && value.size() <= 3 && std::all_of(value.begin(), value.end(), ::isdigit);
+            if (!digits || std::stoi(value) < lo || std::stoi(value) > hi)
+                log_cmd_error("%s needs a whole number from %d to %d, got '%s'\n", opt, lo, hi, value.c_str());
+        };
+        check_int("-cmp2lut_width", cmp2lut_width, 1, 8);
+        if (!carry_min_width.empty())
+            check_int("-carry_min_width", carry_min_width, 1, 128);
 
         // DSP-V4 reaches hardware two ways, and both end at the same techmap:
         //   -dspv4 -synplify : Synplify infers QL_DSPV2, ql_dspv2_to_dspv4
@@ -890,6 +928,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             } else {
                 run("proc");
                 run("flatten");
+                if (help_mode || keepSynPreserve) {
+                    // Register copies made for fanout carry syn_preserve; opt_merge would fold them.
+                    run("setattr -set keep 1 a:syn_preserve %ci1 t:$*dff* %i", "(if -keep_syn_preserve)");
+                }
                 if (help_mode || family == "pp3") {
                     run("tribuf -logic", "                   (for pp3)");
                 }
@@ -920,6 +962,17 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("map_dsp", "(skip if -no_dsp)")) {
+            if (help_mode || mcm) {
+                // Constant multipliers become shift/add graphs before DSP mapping, so a
+                // `sel * CONST` index does not take a DSP. `mcm` exists from Yosys 0.70.
+                if (help_mode || pass_register.count("mcm")) {
+                    run("mcm", "                             (if -mcm)");
+                    run("opt_expr", "                        (if -mcm)");
+                    run("opt_clean", "                       (if -mcm)");
+                } else {
+                    log_warning("-mcm ignored: this Yosys has no mcm pass (needs >= 0.70).\n");
+                }
+            }
             if (help_mode || family == "qlf_k6n10") {
                 if (help_mode || !nodsp) {
                     run("memory_dff", "                      (for qlf_k6n10)");
@@ -1144,7 +1197,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("coarse")) {
             // if (!synplify) {
-            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=4");
+            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=" + cmp2lut_width, "(4 unless -cmp2lut_width)");
             if (!noOpt) {
                 run("opt_expr");
                 run("opt_clean");
@@ -1221,6 +1274,12 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("map_gates")) {
             // if (!synplify) {
+            if (help_mode || (inferAdder && !carry_min_width.empty())) {
+                // Narrow adders and compares go to LUT logic, where ABC can fold them;
+                // a short adder_carry chain is an opaque box to ABC.
+                run("techmap -map +/techmap.v t:$alu r:Y_WIDTH<" + (help_mode ? std::string("<N>") : carry_min_width) + " %i",
+                    "(if -carry_min_width)");
+            }
             if (help_mode || (inferAdder && (family == "qlf_k4n8" || family == "qlf_k6n10" || family == "qlf_k6n10f"))) {
                 run("techmap -map +/techmap.v -map " + lib_path + family + "/arith_map.v", "(unless -no_adder)");
             } else {
