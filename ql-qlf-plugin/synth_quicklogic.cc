@@ -148,17 +148,13 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        Off by default (every $alu uses adder_carry, unless -no_adder).\n");
         log("\n");
         log("    -cmp2lut_width <N>\n");
-        log("        Compares of a signal with a constant on up to N bits become LUTs\n");
-        log("        rather than carry logic (cmp2lut LUT_WIDTH). Default: 4.\n");
+        log("        Compares (<, <=, >, >=) of a signal with a constant on up to N bits\n");
+        log("        become one LUT rather than carry logic (cmp2lut LUT_WIDTH).\n");
+        log("        Default: the family's LUT size (6 for qlf_k6n10 and qlf_k6n10f, 4 otherwise).\n");
         log("\n");
-        log("    -mcm\n");
-        log("        Before DSP mapping, replace multipliers by a constant with a shared\n");
-        log("        graph of shifts and adds (Yosys mcm pass, from Yosys 0.70; ignored with\n");
-        log("        a warning on older Yosys). Only multiplies with an operand of at most\n");
-        log("        -mcm_max_width bits; wider ones stay on the DSP.\n");
-        log("\n");
-        log("    -mcm_max_width <N>\n");
-        log("        Operand width limit for -mcm. Default: 4. 0 means every $mul.\n");
+        log("    -small_mul_width <N>\n");
+        log("        Before DSP mapping, build multiplies with an operand of at most N bits\n");
+        log("        from logic instead of a DSP. Off by default.\n");
         log("\n");
         log("    -keep_syn_preserve\n");
         log("        Mark flip-flops driving a syn_preserve signal with keep, so register\n");
@@ -231,8 +227,7 @@ struct SynthQuickLogicPass : public ScriptPass {
     }
 
     string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script,
-      de, carry_min_width, cmp2lut_width, mcm_max_width;
-    bool mcm;
+      de, carry_min_width, cmp2lut_width, small_mul_width;
     bool keepSynPreserve;
     bool nodsp;
     bool inferAdder;
@@ -283,9 +278,8 @@ struct SynthQuickLogicPass : public ScriptPass {
         mince_num = "";
         de = "";
         carry_min_width = "";
-        cmp2lut_width = "4";
-        mcm_max_width = "4";
-        mcm = false;
+        cmp2lut_width = "";
+        small_mul_width = "";
         keepSynPreserve = false;
         rel_ip_blif_files.clear();
     }
@@ -383,7 +377,7 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-de", &de},
           {"-carry_min_width", &carry_min_width},
           {"-cmp2lut_width", &cmp2lut_width},
-          {"-mcm_max_width", &mcm_max_width},
+          {"-small_mul_width", &small_mul_width},
         };
         const SwitchOption switch_options[] = {
           {"-no_dsp", &nodsp, true},
@@ -401,7 +395,6 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-dspv4", &dspv4, true},
           {"-no_tdpram", &notdpram, true},
           {"-synplify", &synplify, true},
-          {"-mcm", &mcm, true},
           {"-keep_syn_preserve", &keepSynPreserve, true},
         };
 
@@ -467,8 +460,12 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (!digits || std::stoi(value) < lo || std::stoi(value) > hi)
                 log_cmd_error("%s needs a whole number from %d to %d, got '%s'\n", opt, lo, hi, value.c_str());
         };
+        // A compare of up to K bits with a constant fits one K-input LUT.
+        if (cmp2lut_width.empty())
+            cmp2lut_width = (family == "qlf_k6n10" || family == "qlf_k6n10f") ? "6" : "4";
         check_int("-cmp2lut_width", cmp2lut_width, 1, 8);
-        check_int("-mcm_max_width", mcm_max_width, 0, 64);
+        if (!small_mul_width.empty())
+            check_int("-small_mul_width", small_mul_width, 1, 8);
         if (!carry_min_width.empty())
             check_int("-carry_min_width", carry_min_width, 1, 128);
 
@@ -969,21 +966,13 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("map_dsp", "(skip if -no_dsp)")) {
-            if (help_mode || mcm) {
-                // Constant multipliers become shift/add graphs before DSP mapping, so a
-                // `sel * CONST` index does not take a DSP. `mcm` exists from Yosys 0.70.
-                // Only multiplies with a narrow operand: a wide data * coefficient
-                // product is cheaper and faster on the DSP (rgb2ycrcb: 2x the LUTs).
-                if (help_mode || pass_register.count("mcm")) {
-                    std::string n = help_mode ? std::string("<N>") : mcm_max_width;
-                    std::string sel = (!help_mode && mcm_max_width == "0") ? std::string("t:$mul")
-                                                                           : "t:$mul r:A_WIDTH<=" + n + " %i t:$mul r:B_WIDTH<=" + n + " %i %u";
-                    run("mcm " + sel, "(if -mcm)");
-                    run("opt_expr", "                        (if -mcm)");
-                    run("opt_clean", "                       (if -mcm)");
-                } else {
-                    log_warning("-mcm ignored: this Yosys has no mcm pass (needs >= 0.70).\n");
-                }
+            if (help_mode || !small_mul_width.empty()) {
+                // A multiply with a 1- or 2-bit operand (e.g. `sel * CONST` in an index) is a
+                // few gates; on a DSP it hides that logic from ABC. Wider ones stay on the DSP.
+                std::string n = help_mode ? std::string("<N>") : small_mul_width;
+                run("techmap -map +/techmap.v t:$mul r:A_WIDTH<=" + n + " %i t:$mul r:B_WIDTH<=" + n + " %i %u", "(if -small_mul_width)");
+                run("opt_expr", "(if -small_mul_width)");
+                run("opt_clean", "(if -small_mul_width)");
             }
             if (help_mode || family == "qlf_k6n10") {
                 if (help_mode || !nodsp) {
@@ -1209,7 +1198,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("coarse")) {
             // if (!synplify) {
-            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=" + cmp2lut_width, "(4 unless -cmp2lut_width)");
+            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=" + (help_mode ? std::string("<LUT size>") : cmp2lut_width), "(unless -cmp2lut_width)");
             if (!noOpt) {
                 run("opt_expr");
                 run("opt_clean");
