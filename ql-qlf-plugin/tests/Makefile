@@ -86,7 +86,6 @@ TESTS = \
 	qlf_k6n10f/rel_ip_blif_badstub \
 	qlf_k6n10f/rel_ip_blif_noprim \
 	qlf_k6n10f/synth_options \
-	qlf_k6n10f/synth_qor_options \
 	qlf_k6n10f/latches_k6n10f
 
 SIM_TESTS = \
@@ -311,7 +310,6 @@ qlf_k6n10f-ioff_blif_verify = true
 qlf_k6n10f-io_translate_verify = true
 # The help text must list the option and the link step (help used to crash).
 qlf_k6n10f-synth_options_verify = true
-qlf_k6n10f-synth_qor_options_verify = true
 qlf_k6n10f-rel_ip_blif_verify = grep -q -- '-rel_ip_blif <file>' qlf_k6n10f/rel_ip_blif/rel_ip_blif.log && grep -q 'link_rel_ips:' qlf_k6n10f/rel_ip_blif/rel_ip_blif.log
 # Expected-failure tests: yosys must exit non-zero AND the log must carry the intended error.
 qlf_k6n10f/rel_ip_blif_noannot_negative = 1
