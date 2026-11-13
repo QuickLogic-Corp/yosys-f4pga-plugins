@@ -1,8 +1,8 @@
-// One small module per QoR option of synth_ql (-mcm, -carry_min_width,
+// One small module per QoR option of synth_ql (-small_mul_width, -carry_min_width,
 // -cmp2lut_width, -keep_syn_preserve).
 
-// Constant multiply with wide operands: stays on the DSP with -mcm (both
-// operands wider than -mcm_max_width 4); shifts and adds with -mcm_max_width 0.
+// Constant multiply with wide operands (8 and 5 bits): stays on the DSP with
+// -small_mul_width 4.
 module mul_c (
     input clk,
     input [7:0] a,
@@ -11,7 +11,7 @@ module mul_c (
   always @(posedge clk) m <= a * 8'd25;
 endmodule
 
-// Narrow select times a constant (an index offset): leaves the DSP with -mcm.
+// Narrow select times a constant (an index offset): logic with -small_mul_width 2.
 module mul_sel (
     input clk,
     input [1:0] s,
@@ -29,8 +29,8 @@ module add9 (
   assign s = a + b;
 endmodule
 
-// 6-bit compare with a constant: carry logic by default (cmp2lut width 4),
-// a LUT with -cmp2lut_width 6.
+// 6-bit compare with a constant: one LUT by default on qlf_k6n10f (LUT size 6),
+// carry logic with -cmp2lut_width 4.
 module cmp6 (
     input  [5:0] c,
     output       lt
