@@ -433,10 +433,10 @@ struct QlDspV2ToV4Pass : public Pass {
     static SigSpec invert(RTLIL::Module *module, SigSpec sig)
     {
         if (sig.is_fully_const()) {
-            RTLIL::Const c = sig.as_const();
-            for (auto &b : c.bits())
+            std::vector<State> bits = sig.as_const().to_bits();
+            for (auto &b : bits)
                 b = (b == State::S1) ? State::S0 : (b == State::S0 ? State::S1 : b);
-            return c;
+            return RTLIL::Const(bits);
         }
         return module->Not(NEW_ID, sig);
     }

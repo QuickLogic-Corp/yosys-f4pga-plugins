@@ -1304,6 +1304,8 @@ struct SynthQuickLogicPass : public ScriptPass {
                         run("read_verilog -lib -specify -icells +/quicklogic/pp3/abc9_model.v");
                         // run("techmap -map +/quicklogic/pp3/abc9_map.v");
                         // run("abc9 -maxlut 6 -dff");
+                        // Yosys >= 0.70 defaults abc9 to write_xaiger2, which rejects the adder_carry box.
+                        run("scratchpad -set abc9.xaiger 1");
                         run("abc9 -maxlut 6");
                         // run("techmap -map +/quicklogic/pp3/abc9_unmap.v");
                     } else {
