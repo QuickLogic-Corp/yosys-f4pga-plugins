@@ -150,7 +150,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("    -cmp2lut_width <N>\n");
         log("        Compares (<, <=, >, >=) of a signal with a constant on up to N bits\n");
         log("        become one LUT rather than carry logic (cmp2lut LUT_WIDTH).\n");
-        log("        Default: the family's LUT size (6 for qlf_k6n10 and qlf_k6n10f, 4 otherwise).\n");
+        log("        Default: 4. 6 matches the LUT size of qlf_k6n10 and qlf_k6n10f.\n");
         log("\n");
         log("    -small_mul_width <N>\n");
         log("        Before DSP mapping, build multiplies with an operand of at most N bits\n");
@@ -460,9 +460,8 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (!digits || std::stoi(value) < lo || std::stoi(value) > hi)
                 log_cmd_error("%s needs a whole number from %d to %d, got '%s'\n", opt, lo, hi, value.c_str());
         };
-        // A compare of up to K bits with a constant fits one K-input LUT.
         if (cmp2lut_width.empty())
-            cmp2lut_width = (family == "qlf_k6n10" || family == "qlf_k6n10f") ? "6" : "4";
+            cmp2lut_width = "4";
         check_int("-cmp2lut_width", cmp2lut_width, 1, 8);
         if (!small_mul_width.empty())
             check_int("-small_mul_width", small_mul_width, 1, 8);
@@ -1198,7 +1197,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("coarse")) {
             // if (!synplify) {
-            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=" + (help_mode ? std::string("<LUT size>") : cmp2lut_width), "(unless -cmp2lut_width)");
+            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=" + (help_mode ? std::string("4") : cmp2lut_width), "(unless -cmp2lut_width)");
             if (!noOpt) {
                 run("opt_expr");
                 run("opt_clean");

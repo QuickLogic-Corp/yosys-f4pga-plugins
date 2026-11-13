@@ -30,13 +30,13 @@ select -assert-count 9 t:adder_carry
 synth add9 -carry_min_width 10
 select -assert-none t:adder_carry
 
-# -cmp2lut_width: by default the family's LUT size (6 on qlf_k6n10f), so the
-# 6-bit compare with a constant is one LUT; width 4 leaves it to carry logic.
+# -cmp2lut_width: the default (4) leaves the 6-bit compare with a constant to
+# carry logic; width 6 makes it one LUT.
 synth cmp6
+select -assert-min 1 t:adder_carry
+synth cmp6 -cmp2lut_width 6
 select -assert-none t:adder_carry
 select -assert-count 1 t:\$lut
-synth cmp6 -cmp2lut_width 4
-select -assert-min 1 t:adder_carry
 
 # -keep_syn_preserve: the two syn_preserve copies stay apart.
 synth dup_ff

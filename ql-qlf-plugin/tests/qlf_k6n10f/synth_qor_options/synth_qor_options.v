@@ -29,8 +29,8 @@ module add9 (
   assign s = a + b;
 endmodule
 
-// 6-bit compare with a constant: one LUT by default on qlf_k6n10f (LUT size 6),
-// carry logic with -cmp2lut_width 4.
+// 6-bit compare with a constant: carry logic by default (cmp2lut width 4),
+// one LUT with -cmp2lut_width 6.
 module cmp6 (
     input  [5:0] c,
     output       lt
