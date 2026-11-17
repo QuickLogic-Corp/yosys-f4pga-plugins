@@ -111,10 +111,6 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        write the design to the specified BLIF file. Writing of an output file\n");
         log("        is omitted if this parameter is not specified.\n");
         log("\n");
-        log("    -no_cname\n");
-        log("        do not write .cname lines to the BLIF file. .cname is extended BLIF only;\n");
-        log("        use this when the BLIF is read as plain BLIF.\n");
-        log("\n");
         log("    -rel_ip_blif <file>\n");
         log("        link a pre-synthesized IP netlist (extended BLIF with relative-placement\n");
         log("        .attr annotations) in place of the IP's empty (* blackbox *) stub after\n");
@@ -233,7 +229,6 @@ struct SynthQuickLogicPass : public ScriptPass {
     // Cells that already had a public name before autoname, as write_blif spells them.
     pool<std::string> blif_named_cells;
     bool filter_cnames;
-    bool no_cname;
 
     // write_blif's spelling of a cell name (backends/blif/blif.cc, str()).
     static std::string blif_name(RTLIL::IdString id)
@@ -327,7 +322,6 @@ struct SynthQuickLogicPass : public ScriptPass {
         rel_ip_blif_files.clear();
         blif_named_cells.clear();
         filter_cnames = false;
-        no_cname = false;
     }
 
     pool<RTLIL::Wire *> find_clock_wires(RTLIL::Module *mod)
@@ -451,10 +445,6 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (arg == "-top" && has_value) {
                 top_opt = "-top " + args[++argidx];
-                continue;
-            }
-            if (arg == "-no_cname") {
-                no_cname = true;
                 continue;
             }
             if (arg == "-rel_ip_blif" && has_value) {
@@ -1618,7 +1608,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 // (aurora2#2244); autonamed cells keep their first-output-net name
                 // (drop_autoname_cnames).
                 bool rel_flow = !rel_ip_blif_files.empty();
-                const char *blif_flags = rel_flow ? "-param -attr -iattr -blackbox" : no_cname ? "-param" : "-param -cname";
+                const char *blif_flags = rel_flow ? "-param -attr -iattr -blackbox" : "-param -cname";
                 if (!help_mode && rel_flow) {
                     // Work on a scratch copy: the in-memory netlist is still
                     // needed for -edif and -verilog.
@@ -1626,7 +1616,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                     prepare_rel_blif_scratch();
                 }
                 run(stringf("write_blif %s %s", blif_flags, help_mode ? "<file-name>" : blif_file.c_str()),
-                    "(-cname unless -no_cname; -attr -iattr -blackbox instead with -rel_ip_blif)");
+                    "(-cname; -attr -iattr -blackbox instead with -rel_ip_blif)");
                 if (dspv4 && !help_mode && !blif_file.empty()) {
                     // ---------------------------------------------------------------
                     // DSP-V4 BLIF buffer cleanup (round-trip).
@@ -1667,7 +1657,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run(stringf("write_blif %s %s", blif_flags, blif_file.c_str())); // rewrite the buffer-free BLIF (same flags as the first write)
                     run("design -pop");                                              // restore the real design untouched
                 }
-                if (!help_mode && !rel_flow && !no_cname && filter_cnames)
+                if (!help_mode && !rel_flow && filter_cnames)
                     drop_autoname_cnames(blif_file);
                 if (!help_mode && rel_flow)
                     run("design -pop"); // discard the scratch copy
