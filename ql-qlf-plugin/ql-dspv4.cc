@@ -291,6 +291,83 @@ static const std::map<std::string, std::string> CASCADE_WORD = {
 };
 
 static const char *const CASCADE_READ_UNSIGNED = "link is read unsigned, and PCIN sign-extends";
+static const char *const CASCADE_REGISTERED = "consumer registered the link (CREG), and PCIN has no register";
+static const char *const CASCADE_TOO_NARROW = "RTL sum is too narrow for the source's P range";
+static const char *const CASCADE_NO_FORMULA = "source mode has no P range formula; the full port is assumed";
+
+// The two numbers a mode multiplies. The pre-adder sums D with port A or B.
+enum class ProductOperands { A_TIMES_B, PREADD_A_TIMES_B, PREADD_B_TIMES_A, PREADD_A_TIMES_A, PREADD_B_TIMES_B };
+
+struct PRangeRow {
+    ProductOperands operands;
+    bool adds_c;
+};
+
+// What bounds the P of a cell in each mode with a numeric P range: its own
+// product, plus its C operand when the mode adds one.
+static const std::map<std::string, PRangeRow> P_RANGE_ROWS = {
+  {"MULT", {ProductOperands::A_TIMES_B, false}},
+  {"MULT_ADD_C", {ProductOperands::A_TIMES_B, true}},
+  {"MULT_SUB_C", {ProductOperands::A_TIMES_B, true}},
+  {"MULT_RSUB_C", {ProductOperands::A_TIMES_B, true}},
+  {"PREADD_A_MULT_B", {ProductOperands::PREADD_A_TIMES_B, false}},
+  {"PREADD_A_SUB_B", {ProductOperands::PREADD_A_TIMES_B, false}},
+  {"PREADD_A_MULT_B_C", {ProductOperands::PREADD_A_TIMES_B, true}},
+  {"PREADD_A_SUB_B_C", {ProductOperands::PREADD_A_TIMES_B, true}},
+  {"PREADD_B_MULT_A", {ProductOperands::PREADD_B_TIMES_A, false}},
+  {"PREADD_B_SUB_A", {ProductOperands::PREADD_B_TIMES_A, false}},
+  {"PREADD_B_MULT_A_C", {ProductOperands::PREADD_B_TIMES_A, true}},
+  {"PREADD_B_SUB_A_C", {ProductOperands::PREADD_B_TIMES_A, true}},
+  {"XPATH_A", {ProductOperands::PREADD_A_TIMES_A, false}},
+  {"XPATH_B", {ProductOperands::PREADD_B_TIMES_B, false}},
+};
+
+// Modes that add P back into their own sum. Only the 50-bit port bounds them.
+static const std::set<std::string> ACCUMULATOR_MODES = {
+  "MULT_ACC",          "MULT_ACC_C",          "MULT_ACC_SUB",    "MULT_ACC_RSUB",
+  "PREADD_A_MACC",     "PREADD_A_MACC_C",     "PREADD_B_MACC",   "PREADD_B_MACC_C",
+  "PREADD_A_SUB_MACC", "PREADD_A_SUB_MACC_C", "PREADD_B_SUB_MACC", "PREADD_B_SUB_MACC_C",
+};
+
+// The range of the w1 + w2 bit wire that holds a signed w1 x w2 product: the
+// most negative value it can hold, as a magnitude.
+static uint64_t product_bound(int w1, int w2) { return uint64_t(1) << (w1 + w2 - 1); }
+
+// The fewest bits whose signed range reaches `bound`, at most the P port: a
+// 50-bit read is always exact, since PCIN and the fabric wire wrap alike.
+// `bound` is never 0 here.
+static int bits_for(uint64_t bound)
+{
+    int bits = 64 - __builtin_clzll(bound); // 2^n -> n + 1
+    if (bound & (bound - 1))                // not a power of two: one bit more
+        bits++;
+    return std::min(bits, DSPV4_P_WIDTH);
+}
+
+// The pre-adder's result width, read from the cell: one bit more than the
+// wider of D and the port the pre-adder adds to it.
+static int preadd_width(SigMap &sigmap, RTLIL::Cell *cell, RTLIL::IdString port)
+{
+    return std::max(signed_width(sigmap(cell->getPort(ID(D)))), signed_width(sigmap(cell->getPort(port)))) + 1;
+}
+
+static uint64_t cell_product_bound(SigMap &sigmap, RTLIL::Cell *cell, ProductOperands operands)
+{
+    auto width = [&](RTLIL::IdString port) { return signed_width(sigmap(cell->getPort(port))); };
+    switch (operands) {
+    case ProductOperands::A_TIMES_B:
+        return product_bound(width(ID::A), width(ID::B));
+    case ProductOperands::PREADD_A_TIMES_B:
+        return product_bound(preadd_width(sigmap, cell, ID::A), width(ID::B));
+    case ProductOperands::PREADD_B_TIMES_A:
+        return product_bound(preadd_width(sigmap, cell, ID::B), width(ID::A));
+    case ProductOperands::PREADD_A_TIMES_A:
+        return product_bound(preadd_width(sigmap, cell, ID::A), width(ID::A));
+    case ProductOperands::PREADD_B_TIMES_B:
+        return product_bound(preadd_width(sigmap, cell, ID::B), width(ID::B));
+    }
+    log_abort();
+}
 
 // One DSP's result feeding the next DSP's adder.
 struct CascadeLink {
@@ -354,6 +431,7 @@ struct QlDspV4Pass : public Pass {
         result_bits_of.clear();
         mode_name_of.clear();
         finder_refused.clear();
+        cascade_stall.clear();
         absorb_end_none = 0;
         absorb_end_exhausted = 0;
         shared_replicated = 0;
@@ -470,7 +548,10 @@ struct QlDspV4Pass : public Pass {
             // Only now: every flop a cell absorbed is out of the netlist.
             if (chain_max >= 2) {
                 SigMap sigmap(module);
-                for (const CascadeLink &link : find_links(module, sigmap))
+                std::vector<CascadeLink> links = find_links(module, sigmap);
+                drop_registered_links(links);
+                drop_narrow_links(sigmap, links);
+                for (const CascadeLink &link : links)
                     make_link(module, link);
             }
 
@@ -663,12 +744,136 @@ struct QlDspV4Pass : public Pass {
                     log("  cascade candidate: %s.%s -> %s (%d-bit sum)\n", log_id(module), log_id(source), log_id(consumer), aligned);
                 links.push_back(link);
             } else if (zero_extended) {
-                if (verbose)
-                    log("  cascade link refused: %s.%s -> %s: %s\n", log_id(module), log_id(source), log_id(consumer), CASCADE_READ_UNSIGNED);
+                log_refused_link(link, CASCADE_READ_UNSIGNED);
                 finder_refused.push_back({link, CASCADE_READ_UNSIGNED});
             }
         }
         return links;
+    }
+
+    void log_refused_link(const CascadeLink &link, const std::string &reason)
+    {
+        if (verbose)
+            log("  cascade link refused: %s.%s -> %s: %s\n", log_id(link.source->module), log_id(link.source), log_id(link.consumer),
+                reason.c_str());
+    }
+
+    // Count one refused link under its reason. The caller takes it out of the
+    // candidate list.
+    void refuse_link(const CascadeLink &link, const std::string &reason)
+    {
+        cascade_stall[reason]++;
+        log_refused_link(link, reason);
+    }
+
+    static void remove_links(std::vector<CascadeLink> &links, const pool<const CascadeLink *> &refused)
+    {
+        links.erase(std::remove_if(links.begin(), links.end(), [&](const CascadeLink &link) { return refused.count(&link) != 0; }),
+                    links.end());
+    }
+
+    // Rule 1, first check: PCIN has no register, so a link the consumer
+    // registered stays on C.
+    void drop_registered_links(std::vector<CascadeLink> &links)
+    {
+        pool<const CascadeLink *> registered;
+        for (const CascadeLink &link : links)
+            if (link.consumer->getParam(ID(CREG)).as_bool()) {
+                refuse_link(link, CASCADE_REGISTERED);
+                registered.insert(&link);
+            }
+        remove_links(links, registered);
+    }
+
+    // The links reachable from a head, each after the link into its source. A
+    // head is a source that is no link's consumer. A loop has none, so its
+    // links are not in the list.
+    static std::vector<const CascadeLink *> links_from_heads(const std::vector<CascadeLink> &links)
+    {
+        pool<RTLIL::Cell *> consumers;
+        dict<RTLIL::Cell *, std::vector<const CascadeLink *>> links_out_of;
+        for (const CascadeLink &link : links) {
+            consumers.insert(link.consumer);
+            links_out_of[link.source].push_back(&link);
+        }
+        std::vector<RTLIL::Cell *> cells;
+        pool<RTLIL::Cell *> heads;
+        for (const CascadeLink &link : links)
+            if (!consumers.count(link.source) && heads.insert(link.source).second)
+                cells.push_back(link.source);
+        // A consumer has one link into it, so each cell is added once.
+        std::vector<const CascadeLink *> order;
+        for (size_t i = 0; i < cells.size(); i++) {
+            auto out = links_out_of.find(cells[i]);
+            if (out == links_out_of.end())
+                continue;
+            for (const CascadeLink *link : out->second) {
+                order.push_back(link);
+                cells.push_back(link->consumer);
+            }
+        }
+        return order;
+    }
+
+    // Rule 1, second check, down each chain from its head. A link stays on C
+    // when its RTL sum is too narrow for the source's P range and the consumer
+    // keeps more bits than it reads.
+    void drop_narrow_links(SigMap &sigmap, std::vector<CascadeLink> &links)
+    {
+        pool<const CascadeLink *> refused;
+        // Set for a consumer when its link passes. A source with no entry is a
+        // head, or sits below a refused link: its own C wire bounds it.
+        dict<RTLIL::Cell *, uint64_t> range_of;
+        dict<RTLIL::Cell *, bool> full_port_of;
+        for (const CascadeLink *link : links_from_heads(links)) {
+            RTLIL::Cell *source = link->source;
+            bool is_full_port = full_port_of.count(source) ? full_port_of.at(source) : p_range_is_full_port(source, nullptr, false);
+            uint64_t range = range_of.count(source) ? range_of.at(source) : p_range(sigmap, source, nullptr, 0);
+            int need = is_full_port ? DSPV4_P_WIDTH : bits_for(range);
+            bool sum_holds_range = link->sum_bits >= need;
+            bool keeps_no_more_than_read = result_bits_of.at(link->consumer) <= link->sum_bits;
+            if (!sum_holds_range && !keeps_no_more_than_read) {
+                refuse_link(*link, has_p_range_formula(source) ? CASCADE_TOO_NARROW : CASCADE_NO_FORMULA);
+                refused.insert(link);
+                continue;
+            }
+            range_of[link->consumer] = p_range(sigmap, link->consumer, link, range);
+            full_port_of[link->consumer] = p_range_is_full_port(link->consumer, link, is_full_port);
+        }
+        remove_links(links, refused);
+    }
+
+    // The accumulators have a formula too: the full port.
+    bool has_p_range_formula(RTLIL::Cell *cell)
+    {
+        const std::string &mode = mode_name_of.at(cell);
+        return P_RANGE_ROWS.count(mode) || ACCUMULATOR_MODES.count(mode);
+    }
+
+    // True when only the 50-bit port bounds what the cell's P can reach.
+    bool p_range_is_full_port(RTLIL::Cell *cell, const CascadeLink *incoming, bool source_is_full_port)
+    {
+        if (!P_RANGE_ROWS.count(mode_name_of.at(cell))) // an accumulator, or a mode with no formula
+            return true;
+        return incoming != nullptr && source_is_full_port;
+    }
+
+    // The largest magnitude the cell's P can reach; 0 when only the port bounds
+    // it. `incoming` is the link on its C, or nullptr for a head, and
+    // `source_range` is that link's source's range.
+    uint64_t p_range(SigMap &sigmap, RTLIL::Cell *cell, const CascadeLink *incoming, uint64_t source_range)
+    {
+        auto row = P_RANGE_ROWS.find(mode_name_of.at(cell));
+        if (row == P_RANGE_ROWS.end())
+            return 0;
+        uint64_t range = cell_product_bound(sigmap, cell, row->second.operands);
+        if (incoming != nullptr) {
+            range += source_range;
+            if (incoming->addend_bits > 0)
+                range += uint64_t(1) << (incoming->addend_bits - 1);
+        } else if (row->second.adds_c)
+            range += uint64_t(1) << (signed_width(sigmap(cell->getPort(ID(C)))) - 1);
+        return range;
     }
 
     // Move one link from the consumer's C to the dedicated wire. P is left
@@ -3083,6 +3288,8 @@ struct QlDspV4Pass : public Pass {
     dict<RTLIL::Cell *, std::string> mode_name_of;
     // Links the finder dropped itself, each with its reason.
     std::vector<std::pair<CascadeLink, std::string>> finder_refused;
+    // Links the rules dropped, counted by reason.
+    dict<std::string, int> cascade_stall;
     // A walk that runs out of registers has not refused anything, so it is
     // counted apart from absorb_stall -- see WALK_END.
     int absorb_end_none = 0;

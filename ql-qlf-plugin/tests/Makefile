@@ -336,9 +336,29 @@ qlf_k6n10f-dspv4_casc_links_verify += && test "$$(grep -c 'modes inferred: MULT_
 qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD x4, MULT x1$$' $(casc_links_dir)/_chain_cells.log
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_chain_cells.log,4,0)
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_chain_cells.log,4,0)
+# 50-bit sums of 32 x 18 products: the 50-bit port is the most any link asks.
+qlf_k6n10f-dspv4_casc_links_verify += && test "$$(grep -c 'modes inferred: MULT_ADD x2, MULT_ADD_C x1$$' $(casc_links_dir)/_wide_chain.log)" = 1
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD x2, MULT_ADD_C x1$$' $(casc_links_dir)/_wide_chain_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_wide_chain_cells.log,2,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_wide_chain_cells.log,2,1)
+# A sum too narrow for its range still links when the next stage keeps no more
+# bits than it reads.
+qlf_k6n10f-dspv4_casc_links_verify += && test "$$(grep -c 'modes inferred: MULT_ADD x2, MULT x1$$' $(casc_links_dir)/_trunc.log)" = 1
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD x2, MULT x1$$' $(casc_links_dir)/_trunc_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_trunc_cells.log,2,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_trunc_cells.log,2,0)
 casc_refused_dir = qlf_k6n10f/dspv4_casc_refused
 casc_read_unsigned = cascade link refused: .*: link is read unsigned, and PCIN sign-extends$$
-qlf_k6n10f-dspv4_casc_refused_verify = grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_refused_dir)/_unsigned.log
+# How many of a block's refused links carry this reason: the log, the reason,
+# the count. Double quotes, because a reason can hold an apostrophe.
+casc_reason = test "$$(grep -c "cascade link refused: .*: $(2)$$" $(1))" = $(3)
+casc_registered = consumer registered the link (CREG), and PCIN has no register
+casc_too_narrow = RTL sum is too narrow for the source's P range
+qlf_k6n10f-dspv4_casc_refused_verify = grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_refused_dir)/_reglink.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_reglink.log,2,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_reglink.log,$(casc_registered),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_reglink.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_refused_dir)/_unsigned.log
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_unsigned.log,0,1)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q '$(casc_read_unsigned)' $(casc_refused_dir)/_unsigned.log
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT x1$$' $(casc_refused_dir)/_pad.log
@@ -348,6 +368,41 @@ qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_slice.log,0,0)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT x2, MULT_ADD_C x1$$' $(casc_refused_dir)/_multicell.log
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_multicell.log,0,0)
+# Too narrow: the sum cannot hold the source's P range, and the next stage
+# keeps more bits than it reads.
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD x2, MULT_ADD_C x1, MULT x1$$' $(casc_refused_dir)/_chain_tight.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_chain_tight.log,3,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_chain_tight.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_chain_tight.log,2,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_refused_dir)/_head_addend.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_head_addend.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_head_addend.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_head_addend.log,0,2)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1, MULT_ACC_C x1$$' $(casc_refused_dir)/_full_port_chain.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_full_port_chain.log,2,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_full_port_chain.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_full_port_chain.log,1,2)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x3, MULT_ADD x1$$' $(casc_refused_dir)/_width_reset.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_width_reset.log,3,2)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_width_reset.log,$(casc_too_narrow),2)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_width_reset.log,1,3)
+# The same refusal from a subtracting, a B-path pre-adder and a cross-path source.
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_SUB_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_sub_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_sub_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_sub_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_sub_source.log,0,2)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_B_MULT_A_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_preadd_b_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_preadd_b_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_preadd_b_source.log,0,2)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: XPATH_A x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_xpath_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_xpath_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_xpath_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_xpath_source.log,0,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ACC x1$$' $(casc_refused_dir)/_acc_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_acc_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_acc_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_acc_source.log,0,1)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_SUB_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_sub.log
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_sub.log,0,0)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ACC_C x1$$' $(casc_refused_dir)/_acc_tail.log
