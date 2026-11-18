@@ -73,6 +73,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_leftover_reasons \
 	qlf_k6n10f/dspv4_casc_flags \
 	qlf_k6n10f/dspv4_casc_links \
+	qlf_k6n10f/dspv4_casc_refused \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -312,6 +313,30 @@ qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'ql_dspv4: cascade' $(casc_li
 qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'modes inferred' $(casc_links_dir)/_macro.log
 qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q -E 'connect .(PCIN|PCOUT) ' $(casc_links_dir)/_macro.log
 qlf_k6n10f-dspv4_casc_links_verify += && grep -q -F 'connect \C { \head_p [35]' $(casc_links_dir)/_macro.log
+# What the finder makes of each block: how many candidate links, and how many
+# reads it refuses itself. casc_found takes the block's log and the two counts.
+casc_found = test "$$(grep -c 'cascade candidate:' $(1))" = $(2) && test "$$(grep -c 'cascade link refused:' $(1))" = $(3)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_macro.log,0,0)
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD_C x4, MULT x1$$' $(casc_links_dir)/_chain.log
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_chain.log,4,0)
+casc_refused_dir = qlf_k6n10f/dspv4_casc_refused
+casc_read_unsigned = cascade link refused: .*: link is read unsigned, and PCIN sign-extends$$
+qlf_k6n10f-dspv4_casc_refused_verify = grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_refused_dir)/_unsigned.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_unsigned.log,0,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q '$(casc_read_unsigned)' $(casc_refused_dir)/_unsigned.log
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT x1$$' $(casc_refused_dir)/_pad.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_pad.log,0,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q '$(casc_read_unsigned)' $(casc_refused_dir)/_pad.log
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_refused_dir)/_slice.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_slice.log,0,0)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT x2, MULT_ADD_C x1$$' $(casc_refused_dir)/_multicell.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_multicell.log,0,0)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_SUB_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_sub.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_sub.log,0,0)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ACC_C x1$$' $(casc_refused_dir)/_acc_tail.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_acc_tail.log,0,0)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_B_MULT_A_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_preadd_b.log,0,0)
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
