@@ -330,6 +330,8 @@ struct QlDspV4Pass : public Pass {
         stall_counted.clear();
         output_reg_stall.clear();
         mode_count.clear();
+        emitted_this_run.clear();
+        result_bits_of.clear();
         absorb_end_none = 0;
         absorb_end_exhausted = 0;
         shared_replicated = 0;
@@ -1860,6 +1862,8 @@ struct QlDspV4Pass : public Pass {
         // happened. The tests assert those lines, so they have to mean what
         // they say.
         mode_count[mode_name]++;
+        emitted_this_run.insert(cell);
+        result_bits_of[cell] = GetSize(result);
         for (auto &reason : left_in_fabric)
             note_stall(st.mul, reason);
         for (auto &reason : walk_counts)
@@ -2962,6 +2966,10 @@ struct QlDspV4Pass : public Pass {
     // cannot tell MULT_ACC_C from MULT_ADD_C with the outer add left in fabric,
     // so the mode name is the only record of which way the pass actually went.
     dict<std::string, int> mode_count;
+    // The cells this pass call made, and the width of the RTL wire each one's
+    // P drives. Kept in memory, not as an attribute, so no netlist changes.
+    pool<RTLIL::Cell *> emitted_this_run;
+    dict<RTLIL::Cell *, int> result_bits_of;
     // A walk that runs out of registers has not refused anything, so it is
     // counted apart from absorb_stall -- see WALK_END.
     int absorb_end_none = 0;

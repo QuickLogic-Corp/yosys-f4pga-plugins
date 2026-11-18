@@ -72,6 +72,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
 	qlf_k6n10f/dspv4_casc_flags \
+	qlf_k6n10f/dspv4_casc_links \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -303,6 +304,14 @@ qlf_k6n10f-dspv4_casc_flags_verify += $(foreach b,_off_ref _off _n1,&& test "$$(
 qlf_k6n10f-dspv4_casc_flags_verify += $(foreach b,_off_ref _off _n1,&& ! grep -q 'ql_dspv4: cascade' $(casc_flags_dir)/$(b).log)
 qlf_k6n10f-dspv4_casc_flags_verify += && cmp $(casc_flags_dir)/_off_ref.blif $(casc_flags_dir)/_off.blif
 qlf_k6n10f-dspv4_casc_flags_verify += && cmp $(casc_flags_dir)/_off.blif $(casc_flags_dir)/_n1.blif
+# A chain the user instantiated is not the pass's to link: no cell inferred,
+# no chain report, and the second cell still reads the first on C.
+casc_links_dir = qlf_k6n10f/dspv4_casc_links
+qlf_k6n10f-dspv4_casc_links_verify = grep -q 'inferred 0 QL_DSP4 cell(s)' $(casc_links_dir)/_macro.log
+qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'ql_dspv4: cascade' $(casc_links_dir)/_macro.log
+qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'modes inferred' $(casc_links_dir)/_macro.log
+qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q -E 'connect .(PCIN|PCOUT) ' $(casc_links_dir)/_macro.log
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q -F 'connect \C { \head_p [35]' $(casc_links_dir)/_macro.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
