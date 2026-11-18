@@ -28,3 +28,21 @@ proc block {name top flags} {
 block _off_ref chain4 {}
 block _off     chain4 {-chain_max 0}
 block _n1      chain4 {-chain_max 1}
+
+# _reset: two pass calls in one run, the first with -chain_max 12 and the second
+# with no option. The second must make no link. Each call gets a module of its
+# own, prepared up to the pass and saved, so that both have cells to work on.
+proc prepare {top saved} {
+    global PASS_NAME LIB
+    design -load read
+    hierarchy -top $top
+    $PASS_NAME -family qlf_k6n10f -top $top -dspv4 -no_abc9 -run :map_dsp -lib_path $LIB/
+    wreduce t:\$mul
+    design -save $saved
+}
+prepare chain_a prep_a
+prepare chain_b prep_b
+design -load prep_a
+tee -o _reset_call1.log ql_dspv4 -chain_max 12
+design -load prep_b
+tee -o _reset_call2.log ql_dspv4

@@ -335,20 +335,37 @@ qlf_k6n10f-dspv4_casc_flags_verify += $(foreach b,_off_ref _off _n1,&& test "$$(
 qlf_k6n10f-dspv4_casc_flags_verify += $(foreach b,_off_ref _off _n1,&& ! grep -q 'ql_dspv4: cascade' $(casc_flags_dir)/$(b).log)
 qlf_k6n10f-dspv4_casc_flags_verify += && cmp $(casc_flags_dir)/_off_ref.blif $(casc_flags_dir)/_off.blif
 qlf_k6n10f-dspv4_casc_flags_verify += && cmp $(casc_flags_dir)/_off.blif $(casc_flags_dir)/_n1.blif
-# A chain the user instantiated is not the pass's to link: no cell inferred,
-# no chain report, and the second cell still reads the first on C.
-casc_links_dir = qlf_k6n10f/dspv4_casc_links
-qlf_k6n10f-dspv4_casc_links_verify = grep -q 'inferred 0 QL_DSP4 cell(s)' $(casc_links_dir)/_macro.log
-qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'ql_dspv4: cascade' $(casc_links_dir)/_macro.log
-qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'modes inferred' $(casc_links_dir)/_macro.log
-qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q -E 'connect .(PCIN|PCOUT) ' $(casc_links_dir)/_macro.log
-qlf_k6n10f-dspv4_casc_links_verify += && grep -q -F 'connect \C { \head_p [35]' $(casc_links_dir)/_macro.log
+# The option does not carry over to the next pass call: the first call links
+# three stages, the second links none.
+qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD x3, MULT_ADD_C x1$$' $(casc_flags_dir)/_reset_call1.log
+qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD_C x4$$' $(casc_flags_dir)/_reset_call2.log
 # What the finder makes of each block: how many candidate links, and how many
 # reads it refuses itself. casc_found takes the block's log and the two counts.
 casc_found = test "$$(grep -c 'cascade candidate:' $(1))" = $(2) && test "$$(grep -c 'cascade link refused:' $(1))" = $(3)
-qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_macro.log,0,0)
-qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD_C x4, MULT x1$$' $(casc_links_dir)/_chain.log
-qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_chain.log,4,0)
+# How a block's cells are wired, from the dump in its log: casc_wired takes the
+# log, the number of cells that read PCIN and the number that read C. Every
+# PCIN has a PCOUT, on the same wire.
+casc_port = grep 'connect .$(2) ' $(1) | awk '{print $$3}' | sort
+casc_wired = test "$$($(call casc_port,$(1),PCIN) | wc -l)" = $(2) && test "$$($(call casc_port,$(1),PCIN))" = "$$($(call casc_port,$(1),PCOUT))" && test "$$($(call casc_port,$(1),C) | wc -l)" = $(3)
+# A chain the user instantiated is not the pass's to link: no cell inferred,
+# no chain report, and the second cell still reads the first on C.
+casc_links_dir = qlf_k6n10f/dspv4_casc_links
+qlf_k6n10f-dspv4_casc_links_verify = grep -q 'inferred 0 QL_DSP4 cell(s)' $(casc_links_dir)/_macro_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'ql_dspv4: cascade' $(casc_links_dir)/_macro_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'modes inferred' $(casc_links_dir)/_macro_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q -F 'connect \C { \head_p [35]' $(casc_links_dir)/_macro_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_macro_cells.log,0,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_macro_cells.log,0,1)
+# A chain the pass made: every stage after the first reads PCIN, in mode
+# MULT_ADD. The mode line is counted, once, in the whole flow's log.
+qlf_k6n10f-dspv4_casc_links_verify += && test "$$(grep -c 'modes inferred: MULT_ADD x1, MULT x1$$' $(casc_links_dir)/_two.log)" = 1
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD x1, MULT x1$$' $(casc_links_dir)/_two_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_two_cells.log,1,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_two_cells.log,1,0)
+qlf_k6n10f-dspv4_casc_links_verify += && test "$$(grep -c 'modes inferred: MULT_ADD x4, MULT x1$$' $(casc_links_dir)/_chain.log)" = 1
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD x4, MULT x1$$' $(casc_links_dir)/_chain_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_chain_cells.log,4,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_chain_cells.log,4,0)
 casc_refused_dir = qlf_k6n10f/dspv4_casc_refused
 casc_read_unsigned = cascade link refused: .*: link is read unsigned, and PCIN sign-extends$$
 qlf_k6n10f-dspv4_casc_refused_verify = grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_refused_dir)/_unsigned.log
