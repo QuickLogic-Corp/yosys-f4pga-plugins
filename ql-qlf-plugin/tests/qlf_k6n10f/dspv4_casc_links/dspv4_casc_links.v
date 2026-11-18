@@ -59,3 +59,29 @@ module _two (
     wire signed [36:0] s = a1 * b1 + prev;
     assign s_out = s;
 endmodule
+
+// Three 32 x 18 stages, every sum 50 bits. By the formula the head's range
+// already needs 51 bits; the 50-bit port is the ceiling.
+module _wide_chain (
+    input  signed [31:0] a0, a1, a2,
+    input  signed [17:0] b0, b1, b2, c0,
+    output signed [49:0] s2_out
+);
+    wire signed [49:0] prev = a0 * b0 + c0;
+    wire signed [49:0] s1 = a1 * b1 + prev;
+    wire signed [49:0] s2 = a2 * b2 + s1;
+    assign s2_out = s2;
+endmodule
+
+// Three stages. The tail keeps 36 bits and reads 36 bits of a 37-bit sum.
+module _trunc (
+    input  signed [17:0] a0, b0, a1, b1, a2, b2,
+    output signed [36:0] s0_out,
+    output signed [35:0] s1_out
+);
+    wire signed [35:0] p0 = a0 * b0;
+    wire signed [36:0] s0 = a1 * b1 + p0;
+    assign s0_out = s0;
+    wire signed [35:0] s1 = a2 * b2 + s0;
+    assign s1_out = s1;
+endmodule

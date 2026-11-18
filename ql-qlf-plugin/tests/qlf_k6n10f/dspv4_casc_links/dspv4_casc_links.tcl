@@ -61,3 +61,19 @@ stopped_block _chain
 select -assert-count 5 t:QL_DSP4
 select -assert-count 4 t:QL_DSP4 r:OPMODE=9'b000010101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i
+
+# ---- 32 x 18 stages, every sum 50 bits: two links. 000110101 is MULT_ADD_C. --
+
+full_block _wide_chain
+stopped_block _wide_chain
+select -assert-count 3 t:QL_DSP4
+select -assert-count 2 t:QL_DSP4 r:OPMODE=9'b000010101 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i
+
+# ---- The tail keeps 36 bits and reads 36 of a 37-bit sum: two links. ---------
+
+full_block _trunc
+stopped_block _trunc
+select -assert-count 3 t:QL_DSP4
+select -assert-count 2 t:QL_DSP4 r:OPMODE=9'b000010101 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i

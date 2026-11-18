@@ -18,16 +18,39 @@ design -save read
 # Stop the flow before the leaf techmap, so the QL_DSP4 cells can still be
 # read, then call the pass the way the flow would. -verbose names each link
 # the pass finds or refuses.
-proc stopped_block {name} {
+proc stop_and_link {name} {
     global PASS_NAME LIB
-    design -load read
     hierarchy -top $name
     $PASS_NAME -family qlf_k6n10f -top $name -dspv4 -no_abc9 -run :map_dsp -lib_path $LIB/
     wreduce t:\$mul
     tee -o $name.log ql_dspv4 -chain_max 12 -verbose
     tee -a $name.log dump t:QL_DSP4
     yosys cd $name
+    check -assert
 }
+
+proc stopped_block {name} {
+    design -load read
+    stop_and_link $name
+}
+
+# A block whose module is the one module of its own file.
+proc own_file_block {name file} {
+    design -reset
+    read_verilog $file
+    stop_and_link $name
+}
+
+# Control words: 000000101 MULT, 000010101 MULT_ADD, 000110101 MULT_ADD_C,
+# 000100101 MULT_ACC, 110100101 MULT_ACC_C.
+
+# ---- A registered link: refused, the head's link made. -----------------------
+
+stopped_block _reglink
+select -assert-count 3 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:CREG=1'b1 %i
+select -assert-count 3 t:QL_DSP4 r:PREG=1'b0 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
 
 # ---- Read unsigned: found, and refused with a reason. ------------------------
 
@@ -45,6 +68,42 @@ select -assert-count 2 t:QL_DSP4
 stopped_block _multicell
 select -assert-count 3 t:QL_DSP4
 
+# ---- A sum too narrow for the source's P range, read into a wider result. ----
+# The last three sources are a subtract, a B-path pre-adder and a cross-path cell.
+
+stopped_block _chain_tight
+select -assert-count 4 t:QL_DSP4
+select -assert-count 2 t:QL_DSP4 r:OPMODE=9'b000010101 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i
+
+stopped_block _head_addend
+select -assert-count 2 t:QL_DSP4
+select -assert-count 2 t:QL_DSP4 r:OPMODE=9'b000110101 %i
+
+stopped_block _full_port_chain
+select -assert-count 3 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b110100101 %i
+
+stopped_block _width_reset
+select -assert-count 4 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
+select -assert-count 3 t:QL_DSP4 r:OPMODE=9'b000110101 %i
+
+stopped_block _sub_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:ALUMODE=2'b11 %i
+
+stopped_block _preadd_b_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREADDINSEL=1'b1 %i
+
+stopped_block _xpath_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i
+
 # ---- A stage in a mode that has no PCIN form: the finder does not look. ------
 
 stopped_block _sub
@@ -55,3 +114,10 @@ select -assert-count 2 t:QL_DSP4
 
 stopped_block _preadd_b
 select -assert-count 2 t:QL_DSP4
+
+# ---- An accumulating source, read through 40 bits into a 41-bit result. ------
+
+own_file_block _acc_source dspv4_casc_acc_source.v
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000100101 %i
