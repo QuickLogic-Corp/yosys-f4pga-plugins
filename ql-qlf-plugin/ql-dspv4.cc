@@ -306,6 +306,10 @@ struct QlDspV4Pass : public Pass {
         log("        Report each inferred cell. Use -debug as well for the\n");
         log("        shapes that were not fused and why.\n");
         log("\n");
+        log("    -chain_max <number>\n");
+        log("        The most DSPs one PCIN chain may hold. 0 and 1 mean no chain,\n");
+        log("        and 0 is the default.\n");
+        log("\n");
     }
 
     bool replace_existing_pass() const override { return true; }
@@ -317,6 +321,8 @@ struct QlDspV4Pass : public Pass {
     void clear_flags() override
     {
         verbose = false;
+        // The option must be given on every call.
+        chain_max = 0;
         left_soft = 0;
         absorbed_regs = 0;
         absorb_stall.clear();
@@ -340,6 +346,10 @@ struct QlDspV4Pass : public Pass {
         for (argidx = 1; argidx < a_Args.size(); argidx++) {
             if (a_Args[argidx] == "-verbose") {
                 verbose = true;
+                continue;
+            }
+            if (a_Args[argidx] == "-chain_max" && argidx + 1 < a_Args.size()) {
+                chain_max = atoi(a_Args[++argidx].c_str());
                 continue;
             }
             break;
@@ -3025,6 +3035,7 @@ struct QlDspV4Pass : public Pass {
     std::vector<RTLIL::Cell *> pending_removal;
 
     bool verbose = false;
+    int chain_max = 0;
     int left_soft = 0;
     int absorbed_regs = 0;
 
