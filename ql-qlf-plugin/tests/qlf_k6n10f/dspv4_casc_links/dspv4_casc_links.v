@@ -49,3 +49,13 @@ module _chain (
     wire signed [38:0] s5 = (a5 * b5) + s4;
     assign p_out = s5;
 endmodule
+
+// Two stages: a bare product, then a multiply that adds it.
+module _two (
+    input  signed [17:0] a0, b0, a1, b1,
+    output signed [36:0] s_out
+);
+    wire signed [35:0] prev = a0 * b0;
+    wire signed [36:0] s = a1 * b1 + prev;
+    assign s_out = s;
+endmodule

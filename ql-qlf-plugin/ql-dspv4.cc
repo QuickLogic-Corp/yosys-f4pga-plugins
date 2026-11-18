@@ -284,17 +284,11 @@ static bool dspv4_flop_attrs_block(RTLIL::Cell *ff)
     return false;
 }
 
-// True when the cell carries this mode's control word.
-static bool dspv4_cell_has_mode(const RTLIL::Cell *cell, const Dspv4Mode &m)
-{
-    auto field = [&](const RTLIL::IdString &name) { return cell->getParam(name).as_int(); };
-    return field(ID(OPMODE)) == m.opmode && field(ID(ALUMODE)) == m.alumode && field(ID(INMODE)) == m.inmode &&
-           field(ID(CARRYINSEL)) == m.carryinsel && field(ID(USE_SIMD)) == m.use_simd && field(ID(AMULTSEL)) == m.amultsel &&
-           field(ID(BMULTSEL)) == m.bmultsel && field(ID(PREADDINSEL)) == m.preaddinsel;
-}
-
-// The modes whose C operand may become a PCIN link.
-static const char *const CASCADE_CONSUMER_MODES[] = {"MULT_ADD_C"};
+// The modes whose C operand may become a PCIN link, each with the mode the
+// cell takes once it reads PCIN instead.
+static const std::map<std::string, std::string> CASCADE_WORD = {
+  {"MULT_ADD_C", "MULT_ADD"},
+};
 
 static const char *const CASCADE_READ_UNSIGNED = "link is read unsigned, and PCIN sign-extends";
 
@@ -358,6 +352,7 @@ struct QlDspV4Pass : public Pass {
         mode_count.clear();
         emitted_this_run.clear();
         result_bits_of.clear();
+        mode_name_of.clear();
         finder_refused.clear();
         absorb_end_none = 0;
         absorb_end_exhausted = 0;
@@ -419,10 +414,6 @@ struct QlDspV4Pass : public Pass {
                         total++;
                 });
             }
-            if (chain_max >= 2) {
-                SigMap sigmap(module);
-                find_links(module, sigmap);
-            }
             for (auto ff : pending_removal)
                 module->remove(ff);
             pending_removal.clear();
@@ -475,6 +466,13 @@ struct QlDspV4Pass : public Pass {
                 shared_dropped += dropped;
             }
             shared_claimed.clear();
+
+            // Only now: every flop a cell absorbed is out of the netlist.
+            if (chain_max >= 2) {
+                SigMap sigmap(module);
+                for (const CascadeLink &link : find_links(module, sigmap))
+                    make_link(module, link);
+            }
 
             // IN-7 for the P bank: name every result register that ended up in
             // fabric. Counted from the survivors for the same reason as the
@@ -617,15 +615,6 @@ struct QlDspV4Pass : public Pass {
         return st.add_mul_port == ID(B) ? "MULT_SUB_C" : "MULT_RSUB_C";
     }
 
-    // The consumer mode this cell is in, or nullptr when it is in none.
-    const char *cascade_consumer_mode(const RTLIL::Cell *cell)
-    {
-        for (const char *name : CASCADE_CONSUMER_MODES)
-            if (dspv4_cell_has_mode(cell, dspv4_mode(name)))
-                return name;
-        return nullptr;
-    }
-
     // Every C operand of this module that is another emitted cell's P, bit 0 on
     // bit 0 and sign-extended above. A zero-extended read goes to
     // finder_refused. Any other read of a P is not a link and is not recorded.
@@ -645,8 +634,8 @@ struct QlDspV4Pass : public Pass {
 
         std::vector<CascadeLink> links;
         for (auto consumer : cells) {
-            const char *mode = cascade_consumer_mode(consumer);
-            if (mode == nullptr || !consumer->hasPort(ID(C)))
+            const std::string &mode = mode_name_of.at(consumer);
+            if (!CASCADE_WORD.count(mode) || !consumer->hasPort(ID(C)))
                 continue;
             SigSpec c = sigmap(consumer->getPort(ID(C)));
             auto driver = driver_of_bit_0.find(c[0]);
@@ -680,6 +669,29 @@ struct QlDspV4Pass : public Pass {
             }
         }
         return links;
+    }
+
+    // Move one link from the consumer's C to the dedicated wire. P is left
+    // alone: it keeps driving whatever else reads it.
+    void make_link(RTLIL::Module *module, const CascadeLink &link)
+    {
+        RTLIL::Wire *wire = module->addWire(NEW_ID, DSPV4_P_WIDTH);
+        link.source->setPort(ID(PCOUT), wire);
+        link.consumer->setPort(ID(PCIN), wire);
+        link.consumer->unsetPort(ID(C));
+        change_mode(link.consumer, CASCADE_WORD.at(link.consumer_mode));
+    }
+
+    // Give an emitted cell a new mode, and move it in the tally that the
+    // `modes inferred` line prints.
+    void change_mode(RTLIL::Cell *cell, const std::string &new_name)
+    {
+        std::string &name = mode_name_of.at(cell);
+        dspv4_apply_mode(cell, dspv4_mode(new_name.c_str()));
+        if (--mode_count[name] == 0)
+            mode_count.erase(name);
+        mode_count[new_name]++;
+        name = new_name;
     }
 
     bool emit(ql_dspv4_pm &pm, RTLIL::Module *module)
@@ -1960,6 +1972,7 @@ struct QlDspV4Pass : public Pass {
         mode_count[mode_name]++;
         emitted_this_run.insert(cell);
         result_bits_of[cell] = GetSize(result);
+        mode_name_of[cell] = mode_name;
         for (auto &reason : left_in_fabric)
             note_stall(st.mul, reason);
         for (auto &reason : walk_counts)
@@ -3062,10 +3075,12 @@ struct QlDspV4Pass : public Pass {
     // cannot tell MULT_ACC_C from MULT_ADD_C with the outer add left in fabric,
     // so the mode name is the only record of which way the pass actually went.
     dict<std::string, int> mode_count;
-    // The cells this pass call made, and the width of the RTL wire each one's
-    // P drives. Kept in memory, not as an attribute, so no netlist changes.
+    // The cells this pass call made, the width of the RTL wire each one's P
+    // drives, and the mode each one is in now. Kept in memory, not as an
+    // attribute, so no netlist changes.
     pool<RTLIL::Cell *> emitted_this_run;
     dict<RTLIL::Cell *, int> result_bits_of;
+    dict<RTLIL::Cell *, std::string> mode_name_of;
     // Links the finder dropped itself, each with its reason.
     std::vector<std::pair<CascadeLink, std::string>> finder_refused;
     // A walk that runs out of registers has not refused anything, so it is
