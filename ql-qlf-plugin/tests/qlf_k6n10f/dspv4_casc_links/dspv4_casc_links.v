@@ -35,3 +35,17 @@ module _macro (
         .P(tail_p)
     );
 endmodule
+
+// Five stages. Each sum is as wide as the range of the wires added so far
+// needs: 36, 37, 38, 38 and 39 bits.
+module _chain (
+    input  signed [17:0] a1, b1, a2, b2, a3, b3, a4, b4, a5, b5,
+    output signed [38:0] p_out
+);
+    wire signed [35:0] s1 = a1 * b1;
+    wire signed [36:0] s2 = (a2 * b2) + s1;
+    wire signed [37:0] s3 = (a3 * b3) + s2;
+    wire signed [37:0] s4 = (a4 * b4) + s3;
+    wire signed [38:0] s5 = (a5 * b5) + s4;
+    assign p_out = s5;
+endmodule

@@ -15,14 +15,15 @@ read_verilog dspv4_casc_links.v
 design -save read
 
 # Stop the flow before the leaf techmap, so the QL_DSP4 cells can still be
-# read, then call the pass the way the flow would.
+# read, then call the pass the way the flow would. -verbose names each link
+# the pass finds.
 proc stopped_block {name} {
     global PASS_NAME LIB
     design -load read
     hierarchy -top $name
     $PASS_NAME -family qlf_k6n10f -top $name -dspv4 -no_abc9 -run :map_dsp -lib_path $LIB/
     wreduce t:\$mul
-    tee -o $name.log ql_dspv4 -chain_max 12
+    tee -o $name.log ql_dspv4 -chain_max 12 -verbose
     tee -a $name.log dump t:QL_DSP4
     yosys cd $name
 }
@@ -33,3 +34,8 @@ stopped_block _macro
 select -assert-count 2 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i
+
+# ---- Five stages, four links to find. ----------------------------------------
+
+stopped_block _chain
+select -assert-count 5 t:QL_DSP4
