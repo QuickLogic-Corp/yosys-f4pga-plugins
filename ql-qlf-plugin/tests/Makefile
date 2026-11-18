@@ -90,6 +90,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
+	qlf_k6n10f/dspv4_casc_flags \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -323,6 +324,15 @@ qlf_k6n10f-dspv4_trunc_verify = grep -q '1 x  adder: the RTL cuts the product to
 # The accumulator over a cut product: its register is not on any DSP result,
 # so it must not be called "not offered" -- that line came from a losing offer.
 qlf_k6n10f-dspv4_trunc_verify += && ! grep -q 'the pattern did not offer it' qlf_k6n10f/dspv4_trunc/dspv4_trunc.log
+# -chain_max 0 and 1 are off: the option is accepted, the netlist is the one the
+# pass gives with no option, and there is no chain report. The fold is counted,
+# once per log, because the flow calls the pass twice.
+casc_flags_dir = qlf_k6n10f/dspv4_casc_flags
+qlf_k6n10f-dspv4_casc_flags_verify = true
+qlf_k6n10f-dspv4_casc_flags_verify += $(foreach b,_off_ref _off _n1,&& test "$$(grep -c 'modes inferred: MULT_ADD_C x4$$' $(casc_flags_dir)/$(b).log)" = 1)
+qlf_k6n10f-dspv4_casc_flags_verify += $(foreach b,_off_ref _off _n1,&& ! grep -q 'ql_dspv4: cascade' $(casc_flags_dir)/$(b).log)
+qlf_k6n10f-dspv4_casc_flags_verify += && cmp $(casc_flags_dir)/_off_ref.blif $(casc_flags_dir)/_off.blif
+qlf_k6n10f-dspv4_casc_flags_verify += && cmp $(casc_flags_dir)/_off.blif $(casc_flags_dir)/_n1.blif
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true

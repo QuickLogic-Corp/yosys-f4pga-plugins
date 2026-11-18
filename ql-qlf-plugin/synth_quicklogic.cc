@@ -200,6 +200,11 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        multiplies too wide for one cell's 32x18 ports are split with\n");
         log("        mul2dsp.v and inferred piecewise.\n");
         log("\n");
+        log("    -chain_max <number>\n");
+        log("        With -dspv4 and without -synplify: the most DSPs one PCIN chain\n");
+        log("        may hold. Passed to ql_dspv4. 0 and 1 mean no chain, and 0 is\n");
+        log("        the default.\n");
+        log("\n");
         log("    -no_tdpram\n");
         log("        By default infer TDP BRAM for architectures that support them.\n");
         log("        Specifying this switch infer SDP BRAM only.\n");
@@ -220,8 +225,8 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("\n");
     }
 
-    string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script,
-      de;
+    string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, chain_max,
+      custom_abc_script, de;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -271,6 +276,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         use_dsp_cfg_params = "";
         lib_path = "+/quicklogic/";
         mince_num = "";
+        chain_max = "";
         de = "";
         rel_ip_blif_files.clear();
         owner_table = "";
@@ -355,6 +361,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
     }
 
+    // -chain_max goes on every ql_dspv4 call: the pass resets its own copy
+    // between calls.
+    std::string chain_max_option() const { return chain_max.empty() ? "" : " -chain_max " + chain_max; }
+
     // Fill the option members from the command line. Returns the index of
     // the first non-option argument.
     size_t parse_options(const std::vector<std::string> &args, std::string &run_from, std::string &run_to)
@@ -368,6 +378,7 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-clocks_file", &clocks_file},
           {"-custom_abc_script", &custom_abc_script},
           {"-mince_num", &mince_num},
+          {"-chain_max", &chain_max},
           {"-de", &de},
           {"-owner_table", &owner_table},
           {"-owner_front_end", &owner_front_end},
@@ -1031,7 +1042,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                             //
                             // Multiplies the DSP cannot hold stay as $mul for the
                             // ordinary soft path, each named by a log_debug (IN-7).
-                            run("ql_dspv4");
+                            run("ql_dspv4" + chain_max_option());
 
                             // Wide multiplies. ql_dspv4 above only takes what
                             // fits one cell's 32x18 ports, so a 48x32 was still
@@ -1079,7 +1090,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                                 run("wreduce");
                             }
                             run("select -clear");
-                            run("ql_dspv4");
+                            run("ql_dspv4" + chain_max_option());
                             // Restore the multiplies mul2dsp declined as too
                             // narrow. Last, so they stay a distinct type across
                             // the run above and MINWIDTH keeps meaning something
