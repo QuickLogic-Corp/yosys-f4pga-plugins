@@ -410,6 +410,21 @@ qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD_C x2,
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_fanout_longest_cells.log,3,1)
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_reason,$(casc_links_dir)/_fanout_longest_cells.log,$(casc_shorter),1)
 qlf_k6n10f-dspv4_casc_links_verify += && test "$$($(call casc_cells,$(casc_links_dir)/_fanout_longest_cells.log) | awk '$$2 + $$3 == 2' | wc -l)" = 1
+# The longer chain's link is registered and its register cannot move: rule 1
+# refuses that link before rule 3 picks, so the source links to the other stage.
+qlf_k6n10f-dspv4_casc_links_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_C x2, MULT_ADD x2$$' $(casc_links_dir)/_fanout_filtered.log)" = 1
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x2$$' $(casc_links_dir)/_fanout_filtered_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_fanout_filtered_cells.log,3,1)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_reason,$(casc_links_dir)/_fanout_filtered_cells.log,$(casc_registered),1)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_not_moved,$(casc_links_dir)/_fanout_filtered_cells.log,$(casc_other_reader),1)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_moved,$(casc_links_dir)/_fanout_filtered_cells.log,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_fanout_filtered_cells.log,2,2)
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& $(call casc_report,$(casc_links_dir)/$(l).log,2,2,2,12))
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& grep -q '^ql_dspv4: link registers not moved:$$' $(casc_links_dir)/$(l).log)
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& $(call casc_ranked,$(casc_links_dir)/$(l).log,1,$(casc_other_reader)))
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& $(call casc_ranked,$(casc_links_dir)/$(l).log,1,$(casc_registered)))
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& ! grep -q '$(casc_shorter)' $(casc_links_dir)/$(l).log)
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& ! grep -q 'link register(s) moved' $(casc_links_dir)/$(l).log)
 # The head's P keeps its port; PCOUT is a wire of its own.
 qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_links_dir)/_head_fanout_cells.log
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_head_fanout_cells.log,1,0)

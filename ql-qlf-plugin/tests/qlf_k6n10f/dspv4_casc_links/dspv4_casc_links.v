@@ -253,3 +253,22 @@ module _chains_unequal (
     wire signed [36:0] t2 = a6 * b6 + t1;
     assign q_out = t2;
 endmodule
+
+// One result read by two stages. The stage that heads the longer chain reads
+// it through a register, which cannot move into the source: the other stage
+// reads the source's result too. So the link goes to the other stage.
+module _fanout_filtered (
+    input                clk,
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3, c0,
+    output signed [37:0] y_b,
+    output signed [38:0] z
+);
+    reg  signed [36:0] prev_r;
+    wire signed [37:0] y_a = a1 * b1 + prev_r;
+    assign z = a3 * b3 + y_a;
+    wire signed [36:0] prev = a0 * b0 + c0;
+    assign y_b = a2 * b2 + prev;
+    always @(posedge clk) begin
+        prev_r <= prev;
+    end
+endmodule
