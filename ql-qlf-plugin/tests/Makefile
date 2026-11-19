@@ -414,6 +414,9 @@ casc_other_reader = the source's P has another reader
 casc_has_preg = the source already has a P register
 casc_other_clock = the source is on another clock
 casc_differently = the source's readers register it differently (different CLK, CEC, or RSTN)
+casc_loop = links form a loop
+# The OPMODE of the QL_DSP4 cell whose name sorts first as text, from the dump.
+casc_first_opmode = awk '/^  cell .QL_DSP4/{n=$$3} /parameter .OPMODE /{print n, $$3}' $(1) | LC_ALL=C sort | awk 'NR==1{print $$2}'
 qlf_k6n10f-dspv4_casc_refused_verify = grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_refused_dir)/_reglink.log
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_reglink.log,2,1)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_reglink.log,$(casc_registered),1)
@@ -497,6 +500,25 @@ qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_acc_source.log,1,1)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_acc_source.log,$(casc_too_narrow),1)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_acc_source.log,0,1)
+# A loop loses one registered link, the one into the cell first in name order.
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_refused_dir)/_loop.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_loop.log,2,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_loop.log,$(casc_loop),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_loop.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_moved,$(casc_refused_dir)/_loop.log,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && ! grep -q 'not moved' $(casc_refused_dir)/_loop.log
+qlf_k6n10f-dspv4_casc_refused_verify += && test "$$($(call casc_first_opmode,$(casc_refused_dir)/_loop.log))" = "9'000110101"
+# A loop no rule 1 check touches: the link into the cell with PREG is dropped.
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_refused_dir)/_loop_acc.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_loop_acc.log,2,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_loop_acc.log,$(casc_loop),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_loop_acc.log,1,1)
+# After the drop, the width walk runs from the new head, and out of the loop.
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_refused_dir)/_loop_head_walk.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_loop_head_walk.log,3,2)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_loop_head_walk.log,$(casc_loop),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_loop_head_walk.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_loop_head_walk.log,1,2)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_SUB_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_sub.log
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_sub.log,0,0)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ACC_C x1$$' $(casc_refused_dir)/_acc_tail.log
