@@ -294,6 +294,7 @@ static const char *const CASCADE_READ_UNSIGNED = "link is read unsigned, and PCI
 static const char *const CASCADE_REGISTERED = "consumer registered the link (CREG), and PCIN has no register";
 static const char *const CASCADE_TOO_NARROW = "RTL sum is too narrow for the source's P range";
 static const char *const CASCADE_NO_FORMULA = "source mode has no P range formula; the full port is assumed";
+static const char *const CASCADE_LOOP = "links form a loop";
 
 // The two numbers a mode multiplies. The pre-adder sums D with port A or B.
 enum class ProductOperands { A_TIMES_B, PREADD_A_TIMES_B, PREADD_B_TIMES_A, PREADD_A_TIMES_A, PREADD_B_TIMES_B };
@@ -562,6 +563,7 @@ struct QlDspV4Pass : public Pass {
                 sigmap.set(module); // a removed fabric copy left a connect() behind
                 drop_registered_links(links);
                 drop_narrow_links(sigmap, links);
+                break_loops(sigmap, links);
                 for (const CascadeLink &link : links)
                     make_link(module, link);
             }
@@ -987,21 +989,31 @@ struct QlDspV4Pass : public Pass {
         remove_links(links, registered);
     }
 
-    // The links reachable from a head, each after the link into its source. A
-    // head is a source that is no link's consumer. A loop has none, so its
-    // links are not in the list.
-    static std::vector<const CascadeLink *> links_from_heads(const std::vector<CascadeLink> &links)
+    // The sources that are no link's consumer.
+    static pool<RTLIL::Cell *> heads_of(const std::vector<CascadeLink> &links)
     {
-        pool<RTLIL::Cell *> consumers;
-        dict<RTLIL::Cell *, std::vector<const CascadeLink *>> links_out_of;
-        for (const CascadeLink &link : links) {
-            consumers.insert(link.consumer);
-            links_out_of[link.source].push_back(&link);
-        }
-        std::vector<RTLIL::Cell *> cells;
-        pool<RTLIL::Cell *> heads;
+        pool<RTLIL::Cell *> consumers, heads;
         for (const CascadeLink &link : links)
-            if (!consumers.count(link.source) && heads.insert(link.source).second)
+            consumers.insert(link.consumer);
+        for (const CascadeLink &link : links)
+            if (!consumers.count(link.source))
+                heads.insert(link.source);
+        return heads;
+    }
+
+    // The links reachable from a head, each after the link into its source;
+    // from the heads in `starts` only, when it is given. A loop has no head,
+    // so its links are not in the list.
+    static std::vector<const CascadeLink *> links_from_heads(const std::vector<CascadeLink> &links, const pool<RTLIL::Cell *> *starts)
+    {
+        pool<RTLIL::Cell *> heads = heads_of(links);
+        dict<RTLIL::Cell *, std::vector<const CascadeLink *>> links_out_of;
+        for (const CascadeLink &link : links)
+            links_out_of[link.source].push_back(&link);
+        std::vector<RTLIL::Cell *> cells;
+        pool<RTLIL::Cell *> added;
+        for (const CascadeLink &link : links)
+            if (heads.count(link.source) && (starts == nullptr || starts->count(link.source)) && added.insert(link.source).second)
                 cells.push_back(link.source);
         // A consumer has one link into it, so each cell is added once.
         std::vector<const CascadeLink *> order;
@@ -1020,14 +1032,14 @@ struct QlDspV4Pass : public Pass {
     // Rule 1, second check, down each chain from its head. A link stays on C
     // when its RTL sum is too narrow for the source's P range and the consumer
     // keeps more bits than it reads.
-    void drop_narrow_links(SigMap &sigmap, std::vector<CascadeLink> &links)
+    void drop_narrow_links(SigMap &sigmap, std::vector<CascadeLink> &links, const pool<RTLIL::Cell *> *starts = nullptr)
     {
         pool<const CascadeLink *> refused;
         // Set for a consumer when its link passes. A source with no entry is a
         // head, or sits below a refused link: its own C wire bounds it.
         dict<RTLIL::Cell *, uint64_t> range_of;
         dict<RTLIL::Cell *, bool> full_port_of;
-        for (const CascadeLink *link : links_from_heads(links)) {
+        for (const CascadeLink *link : links_from_heads(links, starts)) {
             RTLIL::Cell *source = link->source;
             bool is_full_port = full_port_of.count(source) ? full_port_of.at(source) : p_range_is_full_port(source, nullptr, false);
             uint64_t range = range_of.count(source) ? range_of.at(source) : p_range(sigmap, source, nullptr, 0);
@@ -1043,6 +1055,68 @@ struct QlDspV4Pass : public Pass {
             full_port_of[link->consumer] = p_range_is_full_port(link->consumer, link, is_full_port);
         }
         remove_links(links, refused);
+    }
+
+    // Rule 2: a loop of links has no head, and could not be placed. Each loop
+    // loses one link whose source has a P register; of several, the one into
+    // the cell first in name order. The cell it entered is then a head, so
+    // rule 1's width walk runs again from the new heads.
+    void break_loops(SigMap &sigmap, std::vector<CascadeLink> &links)
+    {
+        pool<RTLIL::Cell *> heads_before = heads_of(links);
+        dict<RTLIL::Cell *, const CascadeLink *> link_into;
+        for (const CascadeLink &link : links)
+            link_into[link.consumer] = &link;
+        pool<const CascadeLink *> on_a_cut_loop, cut;
+        for (const CascadeLink &start : links) {
+            if (on_a_cut_loop.count(&start))
+                continue;
+            std::vector<const CascadeLink *> walked = {&start};
+            RTLIL::Cell *cell = start.source;
+            // Bounded, so a walk that enters a loop it did not start on ends.
+            for (size_t steps = 0; steps < links.size(); steps++) {
+                if (cell == start.consumer) {
+                    const CascadeLink *dropped = registered_link_on_loop(walked);
+                    for (const CascadeLink *link : walked)
+                        on_a_cut_loop.insert(link);
+                    cut.insert(dropped);
+                    refuse_link(*dropped, CASCADE_LOOP);
+                    break;
+                }
+                auto in = link_into.find(cell);
+                if (in == link_into.end())
+                    break;
+                walked.push_back(in->second);
+                cell = in->second->source;
+            }
+        }
+        remove_links(links, cut);
+
+        pool<RTLIL::Cell *> new_heads;
+        for (auto head : heads_of(links))
+            if (!heads_before.count(head)) {
+                new_heads.insert(head);
+                if (verbose)
+                    log("  cascade: %s.%s is a head now: its loop lost a link\n", log_id(head->module), log_id(head));
+            }
+        if (!new_heads.empty())
+            drop_narrow_links(sigmap, links, &new_heads);
+    }
+
+    // The loop link to drop: one whose source has a P register, the one into
+    // the cell first in name order. Rule 1 has dropped every CREG link, so a
+    // loop's register is a PREG.
+    static const CascadeLink *registered_link_on_loop(const std::vector<const CascadeLink *> &loop)
+    {
+        const CascadeLink *chosen = nullptr;
+        for (const CascadeLink *link : loop) {
+            if (!link->source->getParam(ID(PREG)).as_bool())
+                continue;
+            if (chosen == nullptr || strcmp(link->consumer->name.c_str(), chosen->consumer->name.c_str()) < 0)
+                chosen = link;
+        }
+        log_assert(chosen != nullptr);
+        return chosen;
     }
 
     // The accumulators have a formula too: the full port.

@@ -242,6 +242,16 @@ module _xpath_source (
     assign s_out = s;
 endmodule
 
+// Two registered sums that feed each other: a loop of two links.
+module _loop (
+    input                    clk, rst,
+    input      signed [17:0] a, b, c, d,
+    output reg signed [36:0] p1, p2
+);
+    always @(posedge clk) if (rst) p1 <= 0; else p1 <= a * b + p2;
+    always @(posedge clk) if (rst) p2 <= 0; else p2 <= c * d + p1;
+endmodule
+
 // A stage that subtracts. There is no PCIN mode for it.
 module _sub (
     input  signed [17:0] a0, b0, a1, b1, c0,

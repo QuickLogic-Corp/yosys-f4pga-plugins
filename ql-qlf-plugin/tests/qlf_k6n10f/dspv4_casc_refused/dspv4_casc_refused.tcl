@@ -136,6 +136,16 @@ stopped_block _xpath_source
 select -assert-count 2 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i
 
+# ---- A loop of two registered links: step 0 moves the one C register, and
+# rule 2 drops the link into the cell first in name order. --------------------
+
+stopped_block _loop
+select -assert-count 2 t:QL_DSP4
+select -assert-count 2 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 2 t:QL_DSP4 r:CREG=1'b0 %i
+select -assert-count 0 t:\$dff t:\$sdff t:\$dffe t:\$sdffe %u
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i
+
 # ---- A stage in a mode that has no PCIN form: the finder does not look. ------
 
 stopped_block _sub
@@ -153,3 +163,12 @@ own_file_block _acc_source dspv4_casc_acc_source.v
 select -assert-count 2 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000100101 %i
+
+# ---- Accumulating loops, each from a file of its own, _loop_acc last. ---------
+
+own_file_block _loop_head_walk dspv4_casc_loop_head_walk.v
+select -assert-count 3 t:QL_DSP4 r:CREG=1'b0 %i
+
+own_file_block _loop_acc dspv4_casc_loop_acc.v
+select -assert-count 2 t:QL_DSP4 r:CREG=1'b0 %i
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i r:OPMODE=9'b000010101 %i
