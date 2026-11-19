@@ -45,9 +45,10 @@ module _reglink_clock (
     always @(posedge clk2) s1_r <= s1;
 endmodule
 
-// Two consumers, each with its own register on another enable.
+// Two consumers, each with its own register on another enable. Both
+// registers reset, so the RTL and the netlist start alike.
 module _reglink_two_consumers_diff (
-    input clk, en1, en2,
+    input clk, rst, en1, en2,
     input signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3,
     output signed [37:0] y1, y2
 );
@@ -55,8 +56,12 @@ module _reglink_two_consumers_diff (
     assign y1 = a2 * b2 + s1_ra;
     assign y2 = a3 * b3 + s1_rb;
     wire signed [36:0] s1 = a1 * b1 + a0 * b0;
-    always @(posedge clk) if (en1) s1_ra <= s1;
-    always @(posedge clk) if (en2) s1_rb <= s1;
+    always @(posedge clk)
+        if (rst) s1_ra <= 0;
+        else if (en1) s1_ra <= s1;
+    always @(posedge clk)
+        if (rst) s1_rb <= 0;
+        else if (en2) s1_rb <= s1;
 endmodule
 
 // Two consumers on one enable, read both ways.
@@ -284,4 +289,107 @@ module _preadd_b (
 );
     wire signed [36:0] prev = a0 * b0 + c0;
     assign y = (d + b) * a + prev;
+endmodule
+
+// One source per P range row that had no block. In each, the next stage reads
+// one bit fewer than the row's range needs, into a wider result: the row
+// refuses the link, and a row with a smaller range would make it.
+
+// A reverse-subtracting source, A*B - C. Its range holds its C operand.
+module _rsub_source (
+    input  signed [17:0] a0, b0, a1, b1, c0,
+    output signed [37:0] s_out
+);
+    wire signed [35:0] prev = a0 * b0 - c0;
+    wire signed [37:0] s = a1 * b1 + prev;
+    assign s_out = s;
+endmodule
+
+// An A-path pre-adder that subtracts: (d0 - a0) is 19 bits, so the product
+// is one bit wider than a0 * b0.
+module _preadd_a_sub_source (
+    input  signed [17:0] d0, a0, b0, a1, b1,
+    output signed [36:0] prev_out,
+    output signed [37:0] s_out
+);
+    wire signed [36:0] prev = (d0 - a0) * b0;
+    assign prev_out = prev;
+    wire signed [37:0] s = a1 * b1 + $signed(prev[35:0]);
+    assign s_out = s;
+endmodule
+
+// The same with a C operand.
+module _preadd_a_sub_c_source (
+    input  signed [17:0] d0, a0, b0, c0, a1, b1,
+    output signed [38:0] s_out
+);
+    wire signed [36:0] prev = (d0 - a0) * b0 + c0;
+    wire signed [38:0] s = a1 * b1 + prev;
+    assign s_out = s;
+endmodule
+
+// A B-path pre-adder with no C: a0 is too wide for the B port, so d0 + b0
+// goes there.
+module _preadd_b_mult_source (
+    input  signed [19:0] a0,
+    input  signed [16:0] d0, b0,
+    input  signed [17:0] a1, b1,
+    output signed [37:0] prev_out,
+    output signed [38:0] s_out
+);
+    wire signed [37:0] prev = (d0 + b0) * a0;
+    assign prev_out = prev;
+    wire signed [38:0] s = a1 * b1 + $signed(prev[36:0]);
+    assign s_out = s;
+endmodule
+
+// The same, subtracting.
+module _preadd_b_sub_source (
+    input  signed [19:0] a0,
+    input  signed [16:0] d0, b0,
+    input  signed [17:0] a1, b1,
+    output signed [37:0] prev_out,
+    output signed [38:0] s_out
+);
+    wire signed [37:0] prev = (d0 - b0) * a0;
+    assign prev_out = prev;
+    wire signed [38:0] s = a1 * b1 + $signed(prev[36:0]);
+    assign s_out = s;
+endmodule
+
+// The same, subtracting, with a C operand.
+module _preadd_b_sub_c_source (
+    input  signed [19:0] a0,
+    input  signed [16:0] d0, b0,
+    input  signed [17:0] c0, a1, b1,
+    output signed [39:0] s_out
+);
+    wire signed [37:0] prev = (d0 - b0) * a0 + c0;
+    wire signed [39:0] s = a1 * b1 + prev;
+    assign s_out = s;
+endmodule
+
+// A cross-path source with the shared operand on B: d0 + b0 is 19 bits, too
+// wide for the B side, so the sum goes to the A side.
+module _xpath_b_source (
+    input  signed [17:0] b0, d0, a1, b1,
+    output signed [36:0] prev_out,
+    output signed [37:0] s_out
+);
+    wire signed [36:0] prev = b0 * (d0 + b0);
+    assign prev_out = prev;
+    wire signed [37:0] s = a1 * b1 + $signed(prev[35:0]);
+    assign s_out = s;
+endmodule
+
+// One source, two consumers. One reads the source whole; the other reads 36
+// of its 37 bits into a 38-bit result, so the width rule refuses that link
+// before rule 3 sees it.
+module _fanout_narrow (
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, c0,
+    output signed [37:0] y1, y2
+);
+    wire signed [36:0] prev = a0 * b0 + c0;
+    assign y1 = a1 * b1 + prev;
+    assign y2 = a2 * b2 + $signed(prev[35:0]);
 endmodule
