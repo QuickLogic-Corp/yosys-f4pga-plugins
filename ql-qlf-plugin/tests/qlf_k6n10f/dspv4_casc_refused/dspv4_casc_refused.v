@@ -406,3 +406,13 @@ module _preadd_a_mult_source (
     wire signed [37:0] s = a1 * b1 + $signed(prev[35:0]);
     assign s_out = s;
 endmodule
+
+// The same with a C operand.
+module _preadd_a_mult_c_source (
+    input  signed [17:0] d0, a0, b0, c0, a1, b1,
+    output signed [38:0] s_out
+);
+    wire signed [36:0] prev = (d0 + a0) * b0 + c0;
+    wire signed [38:0] s = a1 * b1 + prev;
+    assign s_out = s;
+endmodule
