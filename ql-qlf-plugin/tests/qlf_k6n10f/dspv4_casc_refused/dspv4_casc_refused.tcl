@@ -158,6 +158,53 @@ stopped_block _xpath_source
 select -assert-count 2 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i
 
+# The remaining P range rows, one source each. Each select pins the source's
+# control word: ALUMODE 01 is the reverse subtract, INMODE 01100 a subtracting
+# pre-adder, 00100 an adding one, and AMULTSEL or BMULTSEL the side the
+# pre-adder feeds.
+
+full_block _rsub_source
+stopped_block _rsub_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:ALUMODE=2'b01 %i
+
+full_block _preadd_a_sub_source
+stopped_block _preadd_a_sub_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:AMULTSEL=1'b1 %i r:INMODE=5'b01100 %i r:OPMODE=9'b000000101 %i
+
+full_block _preadd_a_sub_c_source
+stopped_block _preadd_a_sub_c_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:AMULTSEL=1'b1 %i r:INMODE=5'b01100 %i r:OPMODE=9'b000110101 %i
+
+full_block _preadd_b_mult_source
+stopped_block _preadd_b_mult_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:BMULTSEL=1'b1 %i r:INMODE=5'b00100 %i r:OPMODE=9'b000000101 %i
+
+full_block _preadd_b_sub_source
+stopped_block _preadd_b_sub_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:BMULTSEL=1'b1 %i r:INMODE=5'b01100 %i r:OPMODE=9'b000000101 %i
+
+full_block _preadd_b_sub_c_source
+stopped_block _preadd_b_sub_c_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:BMULTSEL=1'b1 %i r:INMODE=5'b01100 %i r:OPMODE=9'b000110101 %i
+
+full_block _xpath_b_source
+stopped_block _xpath_b_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREADDINSEL=1'b1 %i r:AMULTSEL=1'b1 %i r:BMULTSEL=1'b0 %i
+
+# One source, two consumers: the width rule refuses one link, so rule 3 has
+# one left and refuses nothing.
+
+full_block _fanout_narrow
+stopped_block _fanout_narrow
+select -assert-count 3 t:QL_DSP4
+
 # ---- A loop of two registered links: step 0 moves the one C register, and
 # rule 2 drops the link into the cell first in name order. --------------------
 

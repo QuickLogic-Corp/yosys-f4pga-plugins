@@ -743,6 +743,84 @@ qlf_k6n10f-dspv4_casc_refused_verify += && ! grep -q 'cascade links refused' $(c
 qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: PREADD_B_MULT_A_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b_flow.log)" = 1
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_b_flow.log,0,0,0,12)
 qlf_k6n10f-dspv4_casc_refused_verify += && ! grep -q 'cascade links refused' $(casc_refused_dir)/_preadd_b_flow.log
+# The remaining P range rows: each source's one link refused as too narrow,
+# on the stopped run and in the whole flow.
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_RSUB_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_rsub_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_rsub_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_rsub_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_rsub_source.log,0,2)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_rsub_source.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_rsub_source.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: MULT_RSUB_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_rsub_source_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_rsub_source_flow.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_rsub_source_flow.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_A_SUB_B x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_a_sub_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_preadd_a_sub_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_preadd_a_sub_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_preadd_a_sub_source.log,0,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_a_sub_source.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_a_sub_source.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: PREADD_A_SUB_B x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_a_sub_source_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_a_sub_source_flow.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_a_sub_source_flow.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_A_SUB_B_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_a_sub_c_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_preadd_a_sub_c_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_preadd_a_sub_c_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_preadd_a_sub_c_source.log,0,2)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_a_sub_c_source.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_a_sub_c_source.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: PREADD_A_SUB_B_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_a_sub_c_source_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_a_sub_c_source_flow.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_a_sub_c_source_flow.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_B_MULT_A x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b_mult_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_preadd_b_mult_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_preadd_b_mult_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_preadd_b_mult_source.log,0,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_b_mult_source.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_b_mult_source.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: PREADD_B_MULT_A x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b_mult_source_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_b_mult_source_flow.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_b_mult_source_flow.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_B_SUB_A x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b_sub_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_preadd_b_sub_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_preadd_b_sub_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_preadd_b_sub_source.log,0,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_b_sub_source.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_b_sub_source.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: PREADD_B_SUB_A x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b_sub_source_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_b_sub_source_flow.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_b_sub_source_flow.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_B_SUB_A_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b_sub_c_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_preadd_b_sub_c_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_preadd_b_sub_c_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_preadd_b_sub_c_source.log,0,2)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_b_sub_c_source.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_b_sub_c_source.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: PREADD_B_SUB_A_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b_sub_c_source_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_b_sub_c_source_flow.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_b_sub_c_source_flow.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: XPATH_B x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_xpath_b_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_xpath_b_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_xpath_b_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_xpath_b_source.log,0,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_xpath_b_source.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_xpath_b_source.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: XPATH_B x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_xpath_b_source_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_xpath_b_source_flow.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_xpath_b_source_flow.log,1,$(casc_too_narrow))
+# A fan-out source whose narrow link the width rule refuses: one link, one
+# refusal, and no rule 3 refusal.
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_refused_dir)/_fanout_narrow.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_fanout_narrow.log,2,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_fanout_narrow.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_fanout_narrow.log,$(casc_shorter),0)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_fanout_narrow.log,1,2)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_fanout_narrow.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_fanout_narrow.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_refused_dir)/_fanout_narrow_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_fanout_narrow_flow.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_fanout_narrow_flow.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && ! grep -q '$(casc_shorter)' $(casc_refused_dir)/_fanout_narrow_flow.log
 qlf_k6n10f-dspv4_casc_refused_verify += && ! grep -q 'cascade links refused' $(casc_refused_dir)/_acc_tail.log
 qlf_k6n10f-dspv4_casc_refused_verify += && ! grep -q 'cascade links refused' $(casc_refused_dir)/_preadd_b.log
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_SUB_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_sub.log
