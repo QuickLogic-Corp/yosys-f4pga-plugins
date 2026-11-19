@@ -110,6 +110,7 @@ select -assert-count 0 t:\$dff t:\$dffe t:\$sdff t:\$sdffe %u
 # ---- One source, two consumers: one link, to the longer chain or the first
 # name. ------------------------------------------------------------------------
 
+full_block _fanout
 stopped_block _fanout
 select -assert-count 3 t:QL_DSP4
 
