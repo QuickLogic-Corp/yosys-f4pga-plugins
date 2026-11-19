@@ -18,9 +18,8 @@ design -save read
 # Stop the flow before the leaf techmap, so the QL_DSP4 cells and the $add
 # cells can still be read, then call the pass the way the flow would.
 # -verbose names each link, each refusal and each declined grouping.
-proc stopped_block {name} {
+proc stop_and_link {name} {
     global PASS_NAME LIB
-    design -load read
     hierarchy -top $name
     $PASS_NAME -family qlf_k6n10f -top $name -dspv4 -no_abc9 -run :map_dsp -lib_path $LIB/
     wreduce t:\$mul
@@ -28,6 +27,18 @@ proc stopped_block {name} {
     tee -a $name.log dump t:QL_DSP4
     yosys cd $name
     check -assert
+}
+
+proc stopped_block {name} {
+    design -load read
+    stop_and_link $name
+}
+
+# A block whose module is the one module of its own file.
+proc own_file_block {name file} {
+    design -reset
+    read_verilog $file
+    stop_and_link $name
 }
 
 # The whole flow, with the option going through the wrapper, which calls the
@@ -42,7 +53,7 @@ proc full_block {name} {
 }
 
 # Control words: 000000101 MULT, 000010101 MULT_ADD, 000110101 MULT_ADD_C,
-# 110010101 MULT_ADD_C_CASC.
+# 110010101 MULT_ADD_C_CASC, 000100101 MULT_ACC.
 
 # The blocks run in the order of test-plan-blocks.md §5's table.
 
@@ -116,5 +127,12 @@ select -assert-count 2 t:QL_DSP4
 
 stopped_block _addend_g1_wide_y
 select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
+select -assert-count 1 t:\$add
+
+# Grouping 1 below an accumulator, from a file of its own, last.
+own_file_block _addend_g1_full_port dspv4_casc_addend_g1_full_port.v
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000100101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
 select -assert-count 1 t:\$add

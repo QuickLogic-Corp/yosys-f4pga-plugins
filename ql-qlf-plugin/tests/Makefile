@@ -966,6 +966,16 @@ qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_shared,$(casc_other_adder_reader))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_unsigned,$(casc_addend_unsigned))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_wide_y,$(casc_addend_wide))
+# Grouping 1 below an accumulator: s must hold the whole 50-bit port, so a
+# 40-bit s declines the fold in rule 1's walk, after the finder took it.
+casc_full_port_log = $(casc_addend_refused_dir)/_addend_g1_full_port.log
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && grep -q 'modes inferred: MULT_ADD x1, MULT_ACC x1$$' $(casc_full_port_log)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_found,$(casc_full_port_log),1,0)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_wired,$(casc_full_port_log),1,0)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_report,$(casc_full_port_log),1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && test "$$(grep -c 'grouping 1, .* folds' $(casc_full_port_log))" = 1
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_declined,$(casc_full_port_log),1,$(casc_addend_narrow))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'cascade links refused' $(casc_full_port_log)
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
