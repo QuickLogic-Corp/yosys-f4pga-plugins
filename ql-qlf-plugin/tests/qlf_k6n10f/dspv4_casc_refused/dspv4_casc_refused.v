@@ -393,3 +393,16 @@ module _fanout_narrow (
     assign y1 = a1 * b1 + prev;
     assign y2 = a2 * b2 + $signed(prev[35:0]);
 endmodule
+
+// An A-path pre-adder that adds, with no C: (d0 + a0) is 19 bits, so the
+// product is one bit wider than a0 * b0.
+module _preadd_a_mult_source (
+    input  signed [17:0] d0, a0, b0, a1, b1,
+    output signed [36:0] prev_out,
+    output signed [37:0] s_out
+);
+    wire signed [36:0] prev = (d0 + a0) * b0;
+    assign prev_out = prev;
+    wire signed [37:0] s = a1 * b1 + $signed(prev[35:0]);
+    assign s_out = s;
+endmodule

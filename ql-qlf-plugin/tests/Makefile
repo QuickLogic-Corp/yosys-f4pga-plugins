@@ -498,6 +498,13 @@ qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'cascade links refused' $(cas
 qlf_k6n10f-dspv4_casc_links_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_links_dir)/_fanout.log)" = 1
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_report,$(casc_links_dir)/_fanout.log,1,1,2,12)
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_ranked,$(casc_links_dir)/_fanout.log,1,$(casc_shorter))
+# Two chains of four cells and two: the report's longest is the larger, 4.
+qlf_k6n10f-dspv4_casc_links_verify += && test "$$(grep -c 'modes inferred: MULT_ADD x4, MULT x2$$' $(casc_links_dir)/_chains_unequal.log)" = 1
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_report,$(casc_links_dir)/_chains_unequal.log,4,2,4,12)
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD x4, MULT x2$$' $(casc_links_dir)/_chains_unequal_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_chains_unequal_cells.log,4,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_chains_unequal_cells.log,4,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_report,$(casc_links_dir)/_chains_unequal_cells.log,4,2,4,12)
 casc_refused_dir = qlf_k6n10f/dspv4_casc_refused
 casc_read_unsigned = cascade link refused: .*: link is read unsigned, and PCIN sign-extends$$
 # How many of a block's refused links carry this reason: the log, the reason,
@@ -808,6 +815,15 @@ qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir
 qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: XPATH_B x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_xpath_b_source_flow.log)" = 1
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_xpath_b_source_flow.log,0,0,0,12)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_xpath_b_source_flow.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_A_MULT_B x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_a_mult_source.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_preadd_a_mult_source.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_preadd_a_mult_source.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_preadd_a_mult_source.log,0,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_a_mult_source.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_a_mult_source.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_refused_verify += && test "$$(grep -c 'modes inferred: PREADD_A_MULT_B x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_a_mult_source_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_report,$(casc_refused_dir)/_preadd_a_mult_source_flow.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_ranked,$(casc_refused_dir)/_preadd_a_mult_source_flow.log,1,$(casc_too_narrow))
 # A fan-out source whose narrow link the width rule refuses: one link, one
 # refusal, and no rule 3 refusal.
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_refused_dir)/_fanout_narrow.log

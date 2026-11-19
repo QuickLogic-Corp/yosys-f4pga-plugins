@@ -198,6 +198,11 @@ stopped_block _xpath_b_source
 select -assert-count 2 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:PREADDINSEL=1'b1 %i r:AMULTSEL=1'b1 %i r:BMULTSEL=1'b0 %i
 
+full_block _preadd_a_mult_source
+stopped_block _preadd_a_mult_source
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:AMULTSEL=1'b1 %i r:INMODE=5'b00100 %i r:OPMODE=9'b000000101 %i
+
 # One source, two consumers: the width rule refuses one link, so rule 3 has
 # one left and refuses nothing.
 
