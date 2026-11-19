@@ -295,6 +295,7 @@ static const char *const CASCADE_REGISTERED = "consumer registered the link (CRE
 static const char *const CASCADE_TOO_NARROW = "RTL sum is too narrow for the source's P range";
 static const char *const CASCADE_NO_FORMULA = "source mode has no P range formula; the full port is assumed";
 static const char *const CASCADE_LOOP = "links form a loop";
+static const char *const CASCADE_SHORTER = "source already feeds a chain at least as long";
 
 // The two numbers a mode multiplies. The pre-adder sums D with port A or B.
 enum class ProductOperands { A_TIMES_B, PREADD_A_TIMES_B, PREADD_B_TIMES_A, PREADD_A_TIMES_A, PREADD_B_TIMES_B };
@@ -564,6 +565,7 @@ struct QlDspV4Pass : public Pass {
                 drop_registered_links(links);
                 drop_narrow_links(sigmap, links);
                 break_loops(sigmap, links);
+                one_consumer_per_source(links);
                 for (const CascadeLink &link : links)
                     make_link(module, link);
             }
@@ -1112,12 +1114,61 @@ struct QlDspV4Pass : public Pass {
         for (const CascadeLink *link : loop) {
             if (!link->source->getParam(ID(PREG)).as_bool())
                 continue;
-            if (chosen == nullptr || strcmp(link->consumer->name.c_str(), chosen->consumer->name.c_str()) < 0)
+            if (chosen == nullptr || name_sorts_first(link->consumer, chosen->consumer))
                 chosen = link;
         }
         log_assert(chosen != nullptr);
         return chosen;
     }
+
+    // Rule 3: a source with several consumers keeps the link to the one whose
+    // chain below is longest; of equal ones, the consumer first in name order.
+    // Lengths are counted on the links rules 1 and 2 left, before any is made.
+    void one_consumer_per_source(std::vector<CascadeLink> &links)
+    {
+        dict<RTLIL::Cell *, std::vector<const CascadeLink *>> links_out_of;
+        for (const CascadeLink &link : links)
+            links_out_of[link.source].push_back(&link);
+        dict<RTLIL::Cell *, int> length_of;
+        pool<const CascadeLink *> dropped;
+        for (auto &it : links_out_of) {
+            if (GetSize(it.second) < 2)
+                continue;
+            const CascadeLink *kept = it.second[0];
+            for (const CascadeLink *link : it.second) {
+                int length = chain_length_from(link->consumer, links_out_of, length_of);
+                int kept_length = chain_length_from(kept->consumer, links_out_of, length_of);
+                if (length > kept_length || (length == kept_length && name_sorts_first(link->consumer, kept->consumer)))
+                    kept = link;
+            }
+            for (const CascadeLink *link : it.second)
+                if (link != kept) {
+                    dropped.insert(link);
+                    refuse_link(*link, CASCADE_SHORTER);
+                }
+        }
+        remove_links(links, dropped);
+    }
+
+    // The cells on the longest chain that starts at `cell`. Rule 2 has cut
+    // every loop, so the walk ends.
+    static int chain_length_from(RTLIL::Cell *cell, const dict<RTLIL::Cell *, std::vector<const CascadeLink *>> &links_out_of,
+                                 dict<RTLIL::Cell *, int> &length_of)
+    {
+        auto known = length_of.find(cell);
+        if (known != length_of.end())
+            return known->second;
+        int longest = 0;
+        auto out = links_out_of.find(cell);
+        if (out != links_out_of.end())
+            for (const CascadeLink *link : out->second)
+                longest = std::max(longest, chain_length_from(link->consumer, links_out_of, length_of));
+        return length_of[cell] = longest + 1;
+    }
+
+    // Name order is text order, never IdString order, which is the order the
+    // names were first made in the run.
+    static bool name_sorts_first(RTLIL::Cell *a, RTLIL::Cell *b) { return RTLIL::sort_by_name_str<RTLIL::Cell>()(a, b); }
 
     // The accumulators have a formula too: the full port.
     bool has_p_range_formula(RTLIL::Cell *cell)

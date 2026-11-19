@@ -106,3 +106,42 @@ select -assert-count 3 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
 select -assert-count 3 t:QL_DSP4 r:CREG=1'b0 %i
 select -assert-count 0 t:\$dff t:\$dffe t:\$sdff t:\$sdffe %u
+
+# ---- One source, two consumers: one link, to the longer chain or the first
+# name. ------------------------------------------------------------------------
+
+stopped_block _fanout
+select -assert-count 3 t:QL_DSP4
+
+stopped_block _fanout_longest
+select -assert-count 4 t:QL_DSP4
+
+# The head's P keeps driving its port beside PCOUT.
+stopped_block _head_fanout
+select -assert-count 2 t:QL_DSP4
+
+stopped_block _mreg
+select -assert-count 3 t:QL_DSP4
+select -assert-count 3 t:QL_DSP4 r:MREG=1'b1 %i
+select -assert-count 3 t:QL_DSP4 r:PREG=1'b0 %i
+
+# ---- Two consumers register one sum alike: one register moves for both. ------
+
+stopped_block _reglink_two_consumers
+select -assert-count 4 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 4 t:QL_DSP4 r:CREG=1'b0 %i
+
+stopped_block _reglink_two_consumers_neg
+select -assert-count 4 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 4 t:QL_DSP4 r:CREG=1'b0 %i
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i %ci2:+\[CEP\]:+\[Y\] t:\$not %i
+select -assert-count 1 i:en_n %co1 t:\$not %i %co1:+\[Y\] %co1:+\[CEP\] t:QL_DSP4 %i
+select -assert-count 0 t:QL_DSP4 %ci2:+\[CEC\]:+\[Y\] t:\$not %i
+
+stopped_block _reglink_two_consumers_rst
+select -assert-count 4 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 4 t:QL_DSP4 r:CREG=1'b0 %i
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i %ci2:+\[ACCRSTN\]:+\[Y\] t:\$not %i

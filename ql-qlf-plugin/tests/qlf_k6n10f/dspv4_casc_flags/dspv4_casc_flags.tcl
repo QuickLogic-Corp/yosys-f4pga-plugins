@@ -29,6 +29,11 @@ block _off_ref chain4 {}
 block _off     chain4 {-chain_max 0}
 block _n1      chain4 {-chain_max 1}
 
+# _fanout_det: the same design twice at -chain_max 12. Rule 3 picks one of two
+# consumers, the same one each run, so the two netlists are one.
+block _fanout_det_run1 fanout_det {-chain_max 12}
+block _fanout_det_run2 fanout_det {-chain_max 12}
+
 # _reset: two pass calls in one run, the first with -chain_max 12 and the second
 # with no option. The second must make no link. Each call gets a module of its
 # own, prepared up to the pass and saved, so that both have cells to work on.
