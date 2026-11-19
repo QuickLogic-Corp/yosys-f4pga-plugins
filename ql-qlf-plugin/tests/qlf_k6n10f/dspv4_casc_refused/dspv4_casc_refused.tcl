@@ -1,5 +1,5 @@
 # dspv4_casc_refused -- reads of another DSP's result that must stay on C, at
-# -chain_max 12. One block per module, each with its own log; the Makefile's
+# -chain_max 12. One block per module, each with its own logs; the Makefile's
 # verify line reads the logs.
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
@@ -32,6 +32,17 @@ proc stop_and_link {name} {
 proc stopped_block {name} {
     design -load read
     stop_and_link $name
+}
+
+# The whole flow, with the option going through the wrapper, which calls the
+# pass twice. The log is <name>_flow.log.
+proc full_block {name} {
+    global PASS_NAME LIB
+    design -load read
+    hierarchy -top $name
+    tee -o ${name}_flow.log $PASS_NAME -family qlf_k6n10f -top $name -dspv4 -no_abc9 -chain_max 12 -lib_path $LIB/
+    yosys cd $name
+    check -assert
 }
 
 # A block whose module is the one module of its own file.
@@ -86,52 +97,63 @@ select -assert-count 1 t:\$sdffe %ci1:+\[EN\] i:other_en %i
 
 # ---- Read unsigned: found, and refused with a reason. ------------------------
 
+full_block _unsigned
 stopped_block _unsigned
 select -assert-count 2 t:QL_DSP4
 
+full_block _pad
 stopped_block _pad
 select -assert-count 2 t:QL_DSP4
 
 # ---- Not a whole result read from bit 0: not a link, and no reason. ----------
 
+full_block _slice
 stopped_block _slice
 select -assert-count 2 t:QL_DSP4
 
+full_block _multicell
 stopped_block _multicell
 select -assert-count 3 t:QL_DSP4
 
 # ---- A sum too narrow for the source's P range, read into a wider result. ----
 # The last three sources are a subtract, a B-path pre-adder and a cross-path cell.
 
+full_block _chain_tight
 stopped_block _chain_tight
 select -assert-count 4 t:QL_DSP4
 select -assert-count 2 t:QL_DSP4 r:OPMODE=9'b000010101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i
 
+full_block _head_addend
 stopped_block _head_addend
 select -assert-count 2 t:QL_DSP4
 select -assert-count 2 t:QL_DSP4 r:OPMODE=9'b000110101 %i
 
+full_block _full_port_chain
 stopped_block _full_port_chain
 select -assert-count 3 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b110100101 %i
 
+full_block _width_reset
 stopped_block _width_reset
 select -assert-count 4 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
 select -assert-count 3 t:QL_DSP4 r:OPMODE=9'b000110101 %i
 
+full_block _sub_source
 stopped_block _sub_source
 select -assert-count 2 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:ALUMODE=2'b11 %i
 
+full_block _preadd_b_source
 stopped_block _preadd_b_source
 select -assert-count 2 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:PREADDINSEL=1'b1 %i
 
+full_block _xpath_source
 stopped_block _xpath_source
 select -assert-count 2 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i
@@ -148,12 +170,15 @@ select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i
 
 # ---- A stage in a mode that has no PCIN form: the finder does not look. ------
 
+full_block _sub
 stopped_block _sub
 select -assert-count 2 t:QL_DSP4
 
+full_block _acc_tail
 stopped_block _acc_tail
 select -assert-count 2 t:QL_DSP4
 
+full_block _preadd_b
 stopped_block _preadd_b
 select -assert-count 2 t:QL_DSP4
 

@@ -444,6 +444,9 @@ struct QlDspV4Pass : public Pass {
         cascade_stall.clear();
         registers_moved = 0;
         register_not_moved.clear();
+        links_made = 0;
+        chains_made = 0;
+        longest_chain = 0;
         absorb_end_none = 0;
         absorb_end_exhausted = 0;
         shared_replicated = 0;
@@ -568,6 +571,9 @@ struct QlDspV4Pass : public Pass {
                 break_loops(sigmap, links);
                 one_consumer_per_source(links);
                 limit_chain_length(links);
+                links_made += GetSize(links);
+                chains_made += GetSize(heads_of(links));
+                longest_chain = std::max(longest_chain, longest_chain_in(links));
                 for (const CascadeLink &link : links)
                     make_link(module, link);
             }
@@ -632,6 +638,10 @@ struct QlDspV4Pass : public Pass {
                 modes += stringf("%s%s x%d", modes.empty() ? "" : ", ", it.second.c_str(), it.first);
             log("ql_dspv4: modes inferred: %s\n", modes.c_str());
         }
+        // A call that made no cell has nothing to report: the flow calls the pass
+        // twice, and an empty second line would hide the first.
+        if (chain_max >= 2 && !emitted_this_run.empty())
+            log_cascade_report();
         if (!absorb_stall.empty()) {
             // Ranked, because the top line is the one worth acting on.
             std::vector<std::pair<int, std::string>> ranked;
@@ -677,6 +687,36 @@ struct QlDspV4Pass : public Pass {
                 "take (not stalls): %d with no register on the operand, %d having "
                 "absorbed every stage present.\n",
                 absorb_end_none, absorb_end_exhausted);
+    }
+
+    // The chain report: the links made, the registers step 0 moved or kept, and
+    // every refused link, the finder's among them, by reason.
+    void log_cascade_report()
+    {
+        for (auto &it : finder_refused)
+            cascade_stall[it.second]++;
+        log("ql_dspv4: cascade: %d PCIN link(s) in %d chain(s), longest %d (limit %d)\n", links_made, chains_made, longest_chain, chain_max);
+        if (registers_moved > 0)
+            log("ql_dspv4: cascade: %d link register(s) moved to the source's PREG\n", registers_moved);
+        if (!register_not_moved.empty()) {
+            log("ql_dspv4: link registers not moved:\n");
+            log_ranked(register_not_moved);
+        }
+        if (!cascade_stall.empty()) {
+            log("ql_dspv4: cascade links refused:\n");
+            log_ranked(cascade_stall);
+        }
+    }
+
+    // Larger count first; of equal counts, the reason that sorts later first.
+    static void log_ranked(const dict<std::string, int> &reasons)
+    {
+        std::vector<std::pair<int, std::string>> ranked;
+        for (auto &it : reasons)
+            ranked.push_back({it.second, it.first});
+        std::sort(ranked.rbegin(), ranked.rend());
+        for (auto &r : ranked)
+            log("  %8d x  %s\n", r.first, r.second.c_str());
     }
 
     // Map a matched shape to a mode name, or nullptr if this shape has no
@@ -1184,6 +1224,19 @@ struct QlDspV4Pass : public Pass {
             for (const CascadeLink *link : out->second)
                 longest = std::max(longest, chain_length_from(link->consumer, links_out_of, length_of));
         return length_of[cell] = longest + 1;
+    }
+
+    // The cells in the longest chain the links form; 0 when there is none.
+    static int longest_chain_in(const std::vector<CascadeLink> &links)
+    {
+        dict<RTLIL::Cell *, std::vector<const CascadeLink *>> links_out_of;
+        for (const CascadeLink &link : links)
+            links_out_of[link.source].push_back(&link);
+        dict<RTLIL::Cell *, int> length_of;
+        int longest = 0;
+        for (auto head : heads_of(links))
+            longest = std::max(longest, chain_length_from(head, links_out_of, length_of));
+        return longest;
     }
 
     // Name order is text order, never IdString order, which is the order the
@@ -3641,6 +3694,11 @@ struct QlDspV4Pass : public Pass {
     // others stayed, one count per link.
     int registers_moved = 0;
     dict<std::string, int> register_not_moved;
+    // The links made and the chains they form, summed over this call's modules,
+    // and the cells in the longest of those chains.
+    int links_made = 0;
+    int chains_made = 0;
+    int longest_chain = 0;
     // A walk that runs out of registers has not refused anything, so it is
     // counted apart from absorb_stall -- see WALK_END.
     int absorb_end_none = 0;
