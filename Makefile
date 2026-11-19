@@ -59,8 +59,10 @@ endef
 
 $(foreach plugin,$(PLUGIN_LIST),$(eval $(call install_plugin,$(plugin))))
 
-pmgen.py:
-	wget -nc -O $@ https://raw.githubusercontent.com/YosysHQ/yosys/refs/tags/v0.70/passes/pmgen/pmgen.py
+# pmgen-<tag>.py: pmgen.py from that Yosys tag. The tag is in the name so a version bump
+# downloads a new file instead of reusing one an existing clone already has.
+pmgen-%.py:
+	wget -O $@.tmp https://raw.githubusercontent.com/YosysHQ/yosys/refs/tags/$*/passes/pmgen/pmgen.py && mv $@.tmp $@
 
 .PHONY: plugins
 plugins: $(PLUGINS)

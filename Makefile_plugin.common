@@ -159,7 +159,8 @@ $(sort $(_ALL_BUILD_SUBDIRS)):
 $(YOSYS_PLUGINS_DIR):
 	@mkdir -p $@
 
-PMGEN_PY := $(TOP_DIR)/pmgen.py
+# Must match the Yosys version the plugins build against; a parent build may pass its own copy.
+PMGEN_PY ?= $(TOP_DIR)/pmgen-v0.70.py
 
 $(PMGEN_PY):
-	@$(MAKE) -C $(TOP_DIR) pmgen.py
+	@$(MAKE) -C $(TOP_DIR) $(notdir $(PMGEN_PY))
