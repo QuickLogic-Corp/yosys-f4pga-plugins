@@ -34,6 +34,24 @@ block _n1      chain4 {-chain_max 1}
 block _fanout_det_run1 fanout_det {-chain_max 12}
 block _fanout_det_run2 fanout_det {-chain_max 12}
 
+# _too_long, _too_long_2: chains longer than N = 4. The pass is called by hand
+# after the flow stops before the leaf techmap, so -verbose names each refusal.
+proc limited_block {name top} {
+    global PASS_NAME LIB
+    design -load read
+    hierarchy -top $top
+    $PASS_NAME -family qlf_k6n10f -top $top -dspv4 -no_abc9 -run :map_dsp -lib_path $LIB/
+    wreduce t:\$mul
+    tee -o $name.log ql_dspv4 -chain_max 4 -verbose
+    tee -a $name.log dump t:QL_DSP4
+    yosys cd $top
+    check -assert
+}
+limited_block _too_long chain5
+select -assert-count 5 t:QL_DSP4
+limited_block _too_long_2 chain9
+select -assert-count 9 t:QL_DSP4
+
 # _reset: two pass calls in one run, the first with -chain_max 12 and the second
 # with no option. The second must make no link. Each call gets a module of its
 # own, prepared up to the pass and saved, so that both have cells to work on.

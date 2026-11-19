@@ -308,6 +308,15 @@ qlf_k6n10f-dspv4_casc_flags_verify += && cmp $(casc_flags_dir)/_off.blif $(casc_
 # One source, two consumers, twice: the same netlist both times.
 qlf_k6n10f-dspv4_casc_flags_verify += $(foreach r,run1 run2,&& test "$$(grep -c 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_flags_dir)/_fanout_det_$(r).log)" = 1)
 qlf_k6n10f-dspv4_casc_flags_verify += && cmp $(casc_flags_dir)/_fanout_det_run1.blif $(casc_flags_dir)/_fanout_det_run2.blif
+# A chain longer than N = 4 is cut after every fourth cell.
+qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD x3, MULT_ADD_C x2$$' $(casc_flags_dir)/_too_long.log
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_found,$(casc_flags_dir)/_too_long.log,4,1)
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_reason,$(casc_flags_dir)/_too_long.log,$(casc_too_long),1)
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_wired,$(casc_flags_dir)/_too_long.log,3,2)
+qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD x6, MULT_ADD_C x3$$' $(casc_flags_dir)/_too_long_2.log
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_found,$(casc_flags_dir)/_too_long_2.log,8,2)
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_reason,$(casc_flags_dir)/_too_long_2.log,$(casc_too_long),2)
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_wired,$(casc_flags_dir)/_too_long_2.log,6,3)
 # The option does not carry over to the next pass call: the first call links
 # three stages, the second links none.
 qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD x3, MULT_ADD_C x1$$' $(casc_flags_dir)/_reset_call1.log
@@ -428,6 +437,7 @@ casc_other_clock = the source is on another clock
 casc_differently = the source's readers register it differently (different CLK, CEC, or RSTN)
 casc_loop = links form a loop
 casc_shorter = source already feeds a chain at least as long
+casc_too_long = chain would exceed the device limit
 # Each QL_DSP4 cell of a dump: its name, whether it reads PCIN, whether it drives PCOUT.
 casc_cells = awk '/^  cell /{if(n!="")print n, i, o; n=$$3; i=o=0} /connect .PCIN /{i=1} /connect .PCOUT /{o=1} END{if(n!="")print n, i, o}' $(1)
 # The OPMODE of the QL_DSP4 cell whose name sorts first as text, from the dump.
