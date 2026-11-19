@@ -346,6 +346,7 @@ static const char *const CASCADE_TOO_NARROW = "RTL sum is too narrow for the sou
 static const char *const CASCADE_NO_FORMULA = "source mode has no P range formula; the full port is assumed";
 static const char *const CASCADE_LOOP = "links form a loop";
 static const char *const CASCADE_SHORTER = "source already feeds a chain at least as long";
+static const char *const CASCADE_TOO_LONG = "chain would exceed the device limit";
 
 // The two numbers a mode multiplies. The pre-adder sums D with port A or B.
 enum class ProductOperands { A_TIMES_B, PREADD_A_TIMES_B, PREADD_B_TIMES_A, PREADD_A_TIMES_A, PREADD_B_TIMES_B };
@@ -616,6 +617,7 @@ struct QlDspV4Pass : public Pass {
                 drop_narrow_links(sigmap, links);
                 break_loops(sigmap, links);
                 one_consumer_per_source(links);
+                limit_chain_length(links);
                 for (const CascadeLink &link : links)
                     make_link(module, link);
             }
@@ -1198,6 +1200,24 @@ struct QlDspV4Pass : public Pass {
                 }
         }
         remove_links(links, dropped);
+    }
+
+    // Rule 4: a chain holds at most chain_max cells. The link that would make it
+    // longer stays on C, and the count starts again below it.
+    void limit_chain_length(std::vector<CascadeLink> &links)
+    {
+        pool<const CascadeLink *> cut;
+        dict<RTLIL::Cell *, int> cells_up_to;
+        for (const CascadeLink *link : links_from_heads(links, nullptr)) {
+            int cells = cells_up_to.count(link->source) ? cells_up_to.at(link->source) : 1;
+            if (cells >= chain_max) {
+                cut.insert(link);
+                refuse_link(*link, CASCADE_TOO_LONG);
+                cells_up_to[link->consumer] = 1;
+            } else
+                cells_up_to[link->consumer] = cells + 1;
+        }
+        remove_links(links, cut);
     }
 
     // The cells on the longest chain that starts at `cell`. Rule 2 has cut

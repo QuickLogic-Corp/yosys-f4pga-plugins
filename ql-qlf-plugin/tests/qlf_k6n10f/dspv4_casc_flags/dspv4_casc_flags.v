@@ -47,3 +47,31 @@ module fanout_det (
     assign y1 = a1 * b1 + prev;
     assign y2 = a2 * b2 + prev;
 endmodule
+
+// Five stages and nine stages, each sum as wide as its range needs, for a
+// limit of four cells per chain.
+module chain5 (
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3, a4, b4, c0,
+    output signed [38:0] y
+);
+    wire signed [36:0] s0 = a0 * b0 + c0;
+    wire signed [37:0] s1 = a1 * b1 + s0;
+    wire signed [37:0] s2 = a2 * b2 + s1;
+    wire signed [38:0] s3 = a3 * b3 + s2;
+    assign y = a4 * b4 + s3;
+endmodule
+
+module chain9 (
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3, a4, b4, a5, b5, a6, b6, a7, b7, a8, b8, c0,
+    output signed [39:0] y
+);
+    wire signed [36:0] s0 = a0 * b0 + c0;
+    wire signed [37:0] s1 = a1 * b1 + s0;
+    wire signed [37:0] s2 = a2 * b2 + s1;
+    wire signed [38:0] s3 = a3 * b3 + s2;
+    wire signed [38:0] s4 = a4 * b4 + s3;
+    wire signed [38:0] s5 = a5 * b5 + s4;
+    wire signed [38:0] s6 = a6 * b6 + s5;
+    wire signed [39:0] s7 = a7 * b7 + s6;
+    assign y = a8 * b8 + s7;
+endmodule
