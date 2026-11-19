@@ -77,3 +77,32 @@ stopped_block _trunc
 select -assert-count 3 t:QL_DSP4
 select -assert-count 2 t:QL_DSP4 r:OPMODE=9'b000010101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i
+
+# ---- A registered link: the register ends in the source's P bank. -----------
+
+stopped_block _reglink_preg
+select -assert-count 3 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 3 t:QL_DSP4 r:CREG=1'b0 %i
+
+stopped_block _reglink_move
+select -assert-count 3 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 3 t:QL_DSP4 r:CREG=1'b0 %i
+
+# The moved register keeps its enable (CEP is en) and its reset (ACCRSTN is the
+# inverted rst). No consumer's CEC is en any more.
+stopped_block _reglink_move_en
+select -assert-count 3 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 3 t:QL_DSP4 r:CREG=1'b0 %i
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i %ci1:+\[CEP\] i:en %i
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i %ci2:+\[ACCRSTN\]:+\[Y\] t:\$not %i
+select -assert-count 0 t:QL_DSP4 %ci1:+\[CEC\] i:en %i
+
+# The fabric copy of the register is removed: no flop is left.
+stopped_block _reglink_matcher_copy
+select -assert-count 3 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 3 t:QL_DSP4 r:CREG=1'b0 %i
+select -assert-count 0 t:\$dff t:\$dffe t:\$sdff t:\$sdffe %u
