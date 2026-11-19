@@ -16,6 +16,87 @@ module _reglink (
     assign s1_out = s1;
 endmodule
 
+// Two registers on the link: the source already has a P register.
+module _reglink_two_regs (
+    input clk,
+    input signed [17:0] a0, b0, a1, b1, a2, b2,
+    output signed [37:0] y
+);
+    reg signed [36:0] s1_r, s1_rr;
+    assign y = a2 * b2 + s1_rr;
+    wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    always @(posedge clk) begin
+        s1_r <= s1;
+        s1_rr <= s1_r;
+    end
+endmodule
+
+// The link register is on another clock than the source's product register.
+module _reglink_clock (
+    input clk1, clk2,
+    input signed [17:0] a0, b0, a1, b1, a2, b2,
+    output signed [37:0] y
+);
+    reg signed [36:0] s1_r;
+    assign y = a2 * b2 + s1_r;
+    reg signed [35:0] m1;
+    always @(posedge clk1) m1 <= a1 * b1;
+    wire signed [36:0] s1 = m1 + a0 * b0;
+    always @(posedge clk2) s1_r <= s1;
+endmodule
+
+// Two consumers, each with its own register on another enable.
+module _reglink_two_consumers_diff (
+    input clk, en1, en2,
+    input signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3,
+    output signed [37:0] y1, y2
+);
+    reg signed [36:0] s1_ra, s1_rb;
+    assign y1 = a2 * b2 + s1_ra;
+    assign y2 = a3 * b3 + s1_rb;
+    wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    always @(posedge clk) if (en1) s1_ra <= s1;
+    always @(posedge clk) if (en2) s1_rb <= s1;
+endmodule
+
+// Two consumers on one enable, read both ways.
+module _reglink_two_consumers_neg_diff (
+    input clk, rst, en,
+    input signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3,
+    output signed [37:0] y1, y2
+);
+    reg signed [36:0] s1_ra, s1_rb;
+    assign y1 = a2 * b2 + s1_ra;
+    assign y2 = a3 * b3 + s1_rb;
+    wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    always @(posedge clk)
+        if (rst) s1_ra <= 0;
+        else if (en) s1_ra <= s1;
+    always @(posedge clk)
+        if (rst) s1_rb <= 0;
+        else if (!en) s1_rb <= s1;
+endmodule
+
+// A second register of the sum, behind a port, on another enable than the
+// consumer's: it is no copy of the consumer's register.
+module _reglink_copy_diff_en (
+    input clk, rst, clk_en, other_en,
+    input signed [17:0] a0, b0, a1, b1, a2, b2,
+    output signed [37:0] y,
+    output signed [36:0] s1_out
+);
+    reg signed [36:0] s1_r, s1_q;
+    assign y = a2 * b2 + s1_r;
+    wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    always @(posedge clk)
+        if (rst) s1_r <= 0;
+        else if (clk_en) s1_r <= s1;
+    always @(posedge clk)
+        if (rst) s1_q <= 0;
+        else if (other_en) s1_q <= s1;
+    assign s1_out = s1_q;
+endmodule
+
 // An unsigned sum. The second stage reads it zero-extended, and PCIN would
 // sign-extend it.
 module _unsigned (

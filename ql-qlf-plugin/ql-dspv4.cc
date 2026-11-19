@@ -431,6 +431,13 @@ struct CascadeLink {
     int addend_bits = 0;
 };
 
+// One thing that reads a source's P: a cell's port, or a module output (cell
+// is nullptr, port is the output wire's name).
+struct PReader {
+    RTLIL::Cell *cell;
+    RTLIL::IdString port;
+};
+
 struct QlDspV4Pass : public Pass {
 
     QlDspV4Pass() : Pass("ql_dspv4", "Infer QL_DSP4 cells from generic RTL") {}
@@ -482,6 +489,8 @@ struct QlDspV4Pass : public Pass {
         mode_name_of.clear();
         finder_refused.clear();
         cascade_stall.clear();
+        registers_moved = 0;
+        register_not_moved.clear();
         absorb_end_none = 0;
         absorb_end_exhausted = 0;
         shared_replicated = 0;
@@ -599,6 +608,8 @@ struct QlDspV4Pass : public Pass {
             if (chain_max >= 2) {
                 SigMap sigmap(module);
                 std::vector<CascadeLink> links = find_links(module, sigmap);
+                move_link_registers(module, sigmap, links);
+                sigmap.set(module); // a removed fabric copy left a connect() behind
                 drop_registered_links(links);
                 drop_narrow_links(sigmap, links);
                 for (const CascadeLink &link : links)
@@ -820,6 +831,197 @@ struct QlDspV4Pass : public Pass {
     {
         links.erase(std::remove_if(links.begin(), links.end(), [&](const CascadeLink &link) { return refused.count(&link) != 0; }),
                     links.end());
+    }
+
+    // Step 0: move a source's link register from its consumers' C banks into
+    // its own P bank, when every check passes. A register that stays is
+    // refused by rule 1's CREG check.
+    void move_link_registers(RTLIL::Module *module, SigMap &sigmap, const std::vector<CascadeLink> &links)
+    {
+        dict<RTLIL::Cell *, std::vector<const CascadeLink *>> registered_links_of;
+        for (const CascadeLink &link : links)
+            if (link.consumer->getParam(ID(CREG)).as_bool())
+                registered_links_of[link.source].push_back(&link);
+        dict<SigBit, RTLIL::Cell *> not_driving = not_cells_by_output(module, sigmap);
+        for (auto &it : registered_links_of) {
+            RTLIL::Cell *source = it.first;
+            std::vector<RTLIL::Cell *> fabric_copies;
+            std::string reason = why_register_stays(module, sigmap, not_driving, source, it.second, fabric_copies);
+            if (!reason.empty()) {
+                register_not_moved[reason] += GetSize(it.second);
+                if (verbose)
+                    log("  cascade: register into %s.%s not moved: %s\n", log_id(module), log_id(source), reason.c_str());
+                continue;
+            }
+            move_register(source, it.second);
+            if (verbose)
+                log("  cascade: register into %s.%s moved\n", log_id(module), log_id(source));
+            for (auto flop : fabric_copies)
+                remove_fabric_copy(module, flop);
+            registers_moved++;
+        }
+    }
+
+    // The first of step 0's checks that fails, or "" when all pass. Each
+    // check returns on its own line.
+    std::string why_register_stays(RTLIL::Module *module, SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving,
+                                   RTLIL::Cell *source, const std::vector<const CascadeLink *> &registered,
+                                   std::vector<RTLIL::Cell *> &fabric_copies)
+    {
+        RTLIL::Cell *first = registered[0]->consumer;
+        if (source->getParam(ID(PREG)).as_bool())
+            return "the source already has a P register";
+        pool<RTLIL::Cell *> registered_consumers;
+        for (auto link : registered)
+            registered_consumers.insert(link->consumer);
+        for (auto &reader : readers_of_p(module, sigmap, source)) {
+            if (reader.port == ID(C) && registered_consumers.count(reader.cell))
+                continue;
+            if (reader.cell != nullptr && reader.port == ID::D && is_matcher_flop(reader.cell)) {
+                fabric_copies.push_back(reader.cell); // decided below, once the consumers agree
+                continue;
+            }
+            return "the source's P has another reader";
+        }
+        for (auto link : registered)
+            if (!same_c_register(sigmap, not_driving, first, link->consumer))
+                return "the source's readers register it differently (different CLK, CEC, or RSTN)";
+        for (auto flop : fabric_copies)
+            if (!is_copy_of_c_register(sigmap, not_driving, flop, source, first))
+                return "the source's P has another reader";
+        if (source->hasPort(ID(CLK)) && sigmap(source->getPort(ID(CLK))) != sigmap(first->getPort(ID(CLK))))
+            return "the source is on another clock";
+        return "";
+    }
+
+    // Everything that reads the source's P: each cell port that holds one of
+    // its bits, and each module output that does. The P port itself is not.
+    static std::vector<PReader> readers_of_p(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *source)
+    {
+        pool<SigBit> p_bits;
+        for (auto bit : sigmap(source->getPort(ID(P))))
+            if (bit.wire != nullptr)
+                p_bits.insert(bit);
+        std::vector<PReader> readers;
+        for (auto cell : module->cells())
+            for (auto &conn : cell->connections()) {
+                if (cell == source && conn.first == ID(P))
+                    continue;
+                for (auto bit : sigmap(conn.second))
+                    if (p_bits.count(bit)) {
+                        readers.push_back({cell, conn.first});
+                        break;
+                    }
+            }
+        for (auto wire : module->wires())
+            if (wire->port_output)
+                for (auto bit : sigmap(wire))
+                    if (p_bits.count(bit)) {
+                        readers.push_back({nullptr, wire->name});
+                        break;
+                    }
+        return readers;
+    }
+
+    // The output of each one-bit $not, after sigmap.
+    static dict<SigBit, RTLIL::Cell *> not_cells_by_output(RTLIL::Module *module, SigMap &sigmap)
+    {
+        dict<SigBit, RTLIL::Cell *> not_driving;
+        for (auto cell : module->cells())
+            if (cell->type == ID($not) && GetSize(cell->getPort(ID::Y)) == 1)
+                not_driving[sigmap(cell->getPort(ID::Y))[0]] = cell;
+        return not_driving;
+    }
+
+    // A net as the RTL wrote it. The pass puts one $not of its own in front of
+    // an active-low enable or an active-high reset, so look through it.
+    static std::pair<bool, SigSpec> net_as_written(SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, const SigSpec &raw)
+    {
+        SigSpec net = sigmap(raw);
+        if (GetSize(net) == 1 && not_driving.count(net[0]))
+            return {true, sigmap(not_driving.at(net[0])->getPort(ID::A))};
+        return {false, net};
+    }
+
+    static std::pair<bool, SigSpec> as_written(SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *cell,
+                                               RTLIL::IdString port)
+    {
+        return net_as_written(sigmap, not_driving, cell->getPort(port));
+    }
+
+    // Two consumers' C registers are one register: one clock, and one enable
+    // and one reset as the RTL wrote them.
+    static bool same_c_register(SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *x, RTLIL::Cell *y)
+    {
+        return sigmap(x->getPort(ID(CLK))) == sigmap(y->getPort(ID(CLK))) &&
+               as_written(sigmap, not_driving, x, ID(CEC)) == as_written(sigmap, not_driving, y, ID(CEC)) &&
+               as_written(sigmap, not_driving, x, ID(RSTN)) == as_written(sigmap, not_driving, y, ID(RSTN));
+    }
+
+    // The flop types the matcher takes into a register bank.
+    static bool is_matcher_flop(RTLIL::Cell *cell) { return cell->type.in(ID($dff), ID($dffe), ID($sdff), ID($sdffe)); }
+
+    // A flop's enable or reset as a DSP port would carry it, in as_written()'s
+    // form. `inverted_at_dsp`: the DSP port holds the inverse of the flop's
+    // net. A flop with no such port matches the DSP's constant 1.
+    static std::pair<bool, SigSpec> flop_control_as_written(SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *flop,
+                                                            RTLIL::IdString port, bool inverted_at_dsp)
+    {
+        if (!flop->hasPort(port))
+            return {false, SigSpec(State::S1)};
+        auto written = net_as_written(sigmap, not_driving, flop->getPort(port));
+        return {written.first != inverted_at_dsp, written.second};
+    }
+
+    // True when `flop` is a copy of `consumer`'s C register that the source's
+    // P bank can stand for: the matcher's own rules for a P register, D from
+    // the source's P, and the same clock, enable and reset.
+    static bool is_copy_of_c_register(SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *flop, RTLIL::Cell *source,
+                                      RTLIL::Cell *consumer)
+    {
+        if (!flop->getParam(ID(CLK_POLARITY)).as_bool())
+            return false;
+        if (dspv4_flop_attrs_block(flop))
+            return false;
+        if (flop->hasPort(ID(SRST)) && !flop->getParam(ID(SRST_VALUE)).is_fully_zero())
+            return false;
+        pool<SigBit> p_bits;
+        for (auto bit : sigmap(source->getPort(ID(P))))
+            p_bits.insert(bit);
+        for (auto bit : sigmap(flop->getPort(ID::D)))
+            if (bit.wire == nullptr || !p_bits.count(bit))
+                return false;
+        bool enable_inverted = flop->hasPort(ID::EN) && !flop->getParam(ID(EN_POLARITY)).as_bool();
+        bool reset_inverted = flop->hasPort(ID(SRST)) && flop->getParam(ID(SRST_POLARITY)).as_bool();
+        return sigmap(flop->getPort(ID::CLK)) == sigmap(consumer->getPort(ID(CLK))) &&
+               flop_control_as_written(sigmap, not_driving, flop, ID::EN, enable_inverted) == as_written(sigmap, not_driving, consumer, ID(CEC)) &&
+               flop_control_as_written(sigmap, not_driving, flop, ID(SRST), reset_inverted) == as_written(sigmap, not_driving, consumer, ID(RSTN));
+    }
+
+    // The source's P bank takes the consumers' C register, with its clock,
+    // enable and reset. Each consumer keeps its CLK and RSTN for its other banks.
+    static void move_register(RTLIL::Cell *source, const std::vector<const CascadeLink *> &registered)
+    {
+        RTLIL::Cell *first = registered[0]->consumer;
+        source->setParam(ID(PREG), RTLIL::Const(1, 1));
+        source->setPort(ID(CLK), first->getPort(ID(CLK)));
+        source->setPort(ID(CEP), first->getPort(ID(CEC)));
+        source->setPort(ID(ACCRSTN), first->getPort(ID(RSTN)));
+        for (auto link : registered) {
+            link->consumer->setParam(ID(CREG), RTLIL::Const(0, 1));
+            link->consumer->setPort(ID(CEC), SigSpec(State::S1));
+        }
+    }
+
+    // The flop's D is the source's P, which is registered now, so each Q bit
+    // becomes the D bit it used to register.
+    void remove_fabric_copy(RTLIL::Module *module, RTLIL::Cell *flop)
+    {
+        if (verbose)
+            log("  cascade: fabric copy %s of the link register removed\n", log_id(flop));
+        RTLIL::SigSpec q = flop->getPort(ID::Q), d = flop->getPort(ID::D);
+        module->remove(flop);
+        module->connect(q, d);
     }
 
     // Rule 1, first check: PCIN has no register, so a link the consumer
@@ -3364,6 +3566,10 @@ struct QlDspV4Pass : public Pass {
     std::vector<std::pair<CascadeLink, std::string>> finder_refused;
     // Links the rules dropped, counted by reason.
     dict<std::string, int> cascade_stall;
+    // Step 0: link registers moved into a source's P bank, and the reasons the
+    // others stayed, one count per link.
+    int registers_moved = 0;
+    dict<std::string, int> register_not_moved;
     // A walk that runs out of registers has not refused anything, so it is
     // counted apart from absorb_stall -- see WALK_END.
     int absorb_end_none = 0;

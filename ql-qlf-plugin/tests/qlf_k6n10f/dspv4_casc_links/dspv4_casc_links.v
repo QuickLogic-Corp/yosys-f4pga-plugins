@@ -85,3 +85,61 @@ module _trunc (
     wire signed [35:0] s1 = a2 * b2 + s0;
     assign s1_out = s1;
 endmodule
+
+// A registered link, the consumer written first: the matcher puts the register
+// in the consumer's C bank, and step 0 moves it to the source's P bank.
+module _reglink_move (
+    input clk,
+    input signed [17:0] a0, b0, a1, b1, a2, b2,
+    output signed [37:0] y
+);
+    reg signed [36:0] s1_r;
+    assign y = a2 * b2 + s1_r;
+    wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    always @(posedge clk) s1_r <= s1;
+endmodule
+
+// The same, with an enable and a reset on the register, and a product register
+// in the source on the same clock.
+module _reglink_move_en (
+    input clk, rst, en,
+    input signed [17:0] a0, b0, a1, b1, a2, b2,
+    output signed [37:0] y
+);
+    reg signed [36:0] s1_r;
+    assign y = a2 * b2 + s1_r;
+    reg signed [35:0] m1;
+    always @(posedge clk) m1 <= a1 * b1;
+    wire signed [36:0] s1 = m1 + a0 * b0;
+    always @(posedge clk)
+        if (rst) s1_r <= 0;
+        else if (en) s1_r <= s1;
+endmodule
+
+// The same, with the registered sum also on a port: the matcher leaves a copy
+// of the register in fabric for it.
+module _reglink_matcher_copy (
+    input clk,
+    input signed [17:0] a0, b0, a1, b1, a2, b2,
+    output signed [37:0] y,
+    output signed [36:0] s1_out
+);
+    reg signed [36:0] s1_r;
+    assign y = a2 * b2 + s1_r;
+    wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    always @(posedge clk) s1_r <= s1;
+    assign s1_out = s1_r;
+endmodule
+
+// A registered link, the source written first: the matcher already puts the
+// register in the source's P bank.
+module _reglink_preg (
+    input clk,
+    input signed [17:0] a0, b0, a1, b1, a2, b2,
+    output signed [37:0] y
+);
+    wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    reg signed [36:0] s1_r;
+    always @(posedge clk) s1_r <= s1;
+    assign y = a2 * b2 + s1_r;
+endmodule
