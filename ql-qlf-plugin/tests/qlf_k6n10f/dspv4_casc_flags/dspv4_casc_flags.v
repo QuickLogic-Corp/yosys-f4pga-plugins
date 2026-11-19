@@ -37,3 +37,13 @@ module chain_b (
     wire signed [37:0] s2 = a2 * b2 + s1;
     assign y = a3 * b3 + s2;
 endmodule
+
+// One result read by two stages, for two runs that must give one netlist.
+module fanout_det (
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, c0,
+    output signed [37:0] y1, y2
+);
+    wire signed [36:0] prev = a0 * b0 + c0;
+    assign y1 = a1 * b1 + prev;
+    assign y2 = a2 * b2 + prev;
+endmodule

@@ -143,3 +143,96 @@ module _reglink_preg (
     always @(posedge clk) s1_r <= s1;
     assign y = a2 * b2 + s1_r;
 endmodule
+
+// One result read by two stages. Each stage's own adder keeps the head from
+// claiming it.
+module _fanout (
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, c0,
+    output signed [37:0] y1, y2
+);
+    wire signed [36:0] prev = a0 * b0 + c0;
+    assign y1 = a1 * b1 + prev;
+    assign y2 = a2 * b2 + prev;
+endmodule
+
+// The head's result also leaves on a port.
+module _head_fanout (
+    input  signed [17:0] a0, b0, a1, b1, c0,
+    output signed [36:0] prev_out,
+    output signed [37:0] y
+);
+    wire signed [36:0] prev = a0 * b0 + c0;
+    assign prev_out = prev;
+    assign y = a1 * b1 + prev;
+endmodule
+
+// A product register in every stage.
+module _mreg (
+    input                clk,
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, c0,
+    output signed [38:0] y
+);
+    reg signed [35:0] m0, m1, m2;
+    always @(posedge clk) begin
+        m0 <= a0 * b0;
+        m1 <= a1 * b1;
+        m2 <= a2 * b2;
+    end
+    wire signed [36:0] s0 = m0 + c0;
+    wire signed [37:0] s1 = m1 + s0;
+    assign y = m2 + s1;
+endmodule
+
+// Two consumers that register one sum the same way: one register serves both.
+module _reglink_two_consumers (
+    input                clk,
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3,
+    output signed [37:0] y1, y2
+);
+    reg signed [36:0] s1_r;
+    assign y1 = a2 * b2 + s1_r;
+    assign y2 = a3 * b3 + s1_r;
+    wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    always @(posedge clk) s1_r <= s1;
+endmodule
+
+// The same behind an active-low enable: one signal, one $not per consumer.
+module _reglink_two_consumers_neg (
+    input                clk, en_n,
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3,
+    output signed [37:0] y1, y2
+);
+    reg signed [36:0] s1_r;
+    assign y1 = a2 * b2 + s1_r;
+    assign y2 = a3 * b3 + s1_r;
+    wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    always @(posedge clk) if (!en_n) s1_r <= s1;
+endmodule
+
+// The same behind a sync reset: one signal, one $not per consumer.
+module _reglink_two_consumers_rst (
+    input                clk, rst,
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3,
+    output signed [37:0] y1, y2
+);
+    reg signed [36:0] s1_r;
+    assign y1 = a2 * b2 + s1_r;
+    assign y2 = a3 * b3 + s1_r;
+    wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    always @(posedge clk)
+        if (rst) s1_r <= 0;
+        else     s1_r <= s1;
+endmodule
+
+// One result read by two stages, one of which feeds a third: the link goes to
+// the longer chain, though its consumer's name sorts after the other's.
+module _fanout_longest (
+    input  signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3, c0,
+    output signed [37:0] y2,
+    output signed [38:0] z
+);
+    wire signed [36:0] prev = a0 * b0 + c0;
+    assign y2 = a2 * b2 + prev;
+    wire signed [37:0] y1 = a1 * b1 + prev;
+    assign z = a3 * b3 + y1;
+endmodule
