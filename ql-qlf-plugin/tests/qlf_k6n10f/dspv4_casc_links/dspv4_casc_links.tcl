@@ -146,3 +146,11 @@ select -assert-count 4 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
 select -assert-count 4 t:QL_DSP4 r:CREG=1'b0 %i
 select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i %ci2:+\[ACCRSTN\]:+\[Y\] t:\$not %i
+
+# ---- Two chains of unequal length: four links, two chains, longest 4. ---------
+
+full_block _chains_unequal
+stopped_block _chains_unequal
+select -assert-count 6 t:QL_DSP4
+select -assert-count 4 t:QL_DSP4 r:OPMODE=9'b000010101 %i
+select -assert-count 2 t:QL_DSP4 r:OPMODE=9'b000000101 %i

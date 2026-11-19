@@ -236,3 +236,20 @@ module _fanout_longest (
     wire signed [37:0] y1 = a1 * b1 + prev;
     assign z = a3 * b3 + y1;
 endmodule
+
+// Two chains of unequal length in one module: four stages and two. The report
+// names the longer one.
+module _chains_unequal (
+    input  signed [17:0] a1, b1, a2, b2, a3, b3, a4, b4, a5, b5, a6, b6,
+    output signed [37:0] p_out,
+    output signed [36:0] q_out
+);
+    wire signed [35:0] s1 = a1 * b1;
+    wire signed [36:0] s2 = (a2 * b2) + s1;
+    wire signed [37:0] s3 = (a3 * b3) + s2;
+    wire signed [37:0] s4 = (a4 * b4) + s3;
+    assign p_out = s4;
+    wire signed [35:0] t1 = a5 * b5;
+    wire signed [36:0] t2 = a6 * b6 + t1;
+    assign q_out = t2;
+endmodule
