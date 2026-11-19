@@ -69,3 +69,12 @@ design -load prep_a
 tee -o _reset_call1.log ql_dspv4 -chain_max 12
 design -load prep_b
 tee -o _reset_call2.log ql_dspv4
+
+# _declined_reset: the same for the list of declined addend groupings. The
+# first call declines one, the second declines none and must not list it.
+prepare declined_a prep_declined_a
+prepare declined_b prep_declined_b
+design -load prep_declined_a
+tee -o _declined_reset_call1.log ql_dspv4 -chain_max 12 -verbose
+design -load prep_declined_b
+tee -o _declined_reset_call2.log ql_dspv4 -chain_max 12 -verbose
