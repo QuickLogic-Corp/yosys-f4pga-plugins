@@ -76,6 +76,8 @@ TESTS = \
 	qlf_k6n10f/dspv4_casc_refused \
 	qlf_k6n10f/dspv4_casc_addend \
 	qlf_k6n10f/dspv4_casc_addend_refused \
+	qlf_k6n10f/dspv4_casc_preadd \
+	qlf_k6n10f/dspv4_casc_preadd_refused \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -991,6 +993,61 @@ qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_report,$(casc_full
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && test "$$(grep -c 'grouping 1, .* folds' $(casc_full_port_log))" = 1
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_declined,$(casc_full_port_log),1,$(casc_addend_narrow))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'cascade links refused' $(casc_full_port_log)
+# Pre-adder stages. How many candidates a log has on a sum of this many bits.
+casc_sum = test "$$(grep -c 'cascade candidate: .* ($(2)-bit sum)$$' $(1))" = $(3)
+casc_preadd_dir = qlf_k6n10f/dspv4_casc_preadd
+# A pre-adder stage that reads the whole sum above it takes PCIN and keeps its
+# pre-adder: PREADD_A_MULT_B_CASC.
+qlf_k6n10f-dspv4_casc_preadd_verify = test "$$(grep -c 'modes inferred: PREADD_A_MULT_B_CASC x3, MULT_ADD_C x1$$' $(casc_preadd_dir)/_preadd_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_report,$(casc_preadd_dir)/_preadd_flow.log,3,1,4,12)
+qlf_k6n10f-dspv4_casc_preadd_verify += && grep -q 'modes inferred: PREADD_A_MULT_B_CASC x3, MULT_ADD_C x1$$' $(casc_preadd_dir)/_preadd.log
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_found,$(casc_preadd_dir)/_preadd.log,3,0)
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_wired,$(casc_preadd_dir)/_preadd.log,3,1)
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_report,$(casc_preadd_dir)/_preadd.log,3,1,4,12)
+qlf_k6n10f-dspv4_casc_preadd_verify += $(foreach w,37 38 39,&& $(call casc_sum,$(casc_preadd_dir)/_preadd.log,$(w),1))
+# Three pre-adder stages: the link out of the second needs 39 bits, and s2 has them.
+qlf_k6n10f-dspv4_casc_preadd_verify += && test "$$(grep -c 'modes inferred: PREADD_A_MULT_B_CASC x2, PREADD_A_MULT_B_C x1$$' $(casc_preadd_dir)/_preadd_38_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_report,$(casc_preadd_dir)/_preadd_38_flow.log,2,1,3,12)
+qlf_k6n10f-dspv4_casc_preadd_verify += && grep -q 'modes inferred: PREADD_A_MULT_B_CASC x2, PREADD_A_MULT_B_C x1$$' $(casc_preadd_dir)/_preadd_38.log
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_found,$(casc_preadd_dir)/_preadd_38.log,2,0)
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_wired,$(casc_preadd_dir)/_preadd_38.log,2,1)
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_report,$(casc_preadd_dir)/_preadd_38.log,2,1,3,12)
+qlf_k6n10f-dspv4_casc_preadd_verify += $(foreach w,38 39,&& $(call casc_sum,$(casc_preadd_dir)/_preadd_38.log,$(w),1))
+# A $add on the pre-adder stage's result: a plain link, and no grouping tried.
+qlf_k6n10f-dspv4_casc_preadd_verify += && grep -q 'modes inferred: PREADD_A_MULT_B_CASC x1, MULT_ADD_C x1$$' $(casc_preadd_dir)/_preadd_addend_g1.log
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_found,$(casc_preadd_dir)/_preadd_addend_g1.log,1,0)
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_wired,$(casc_preadd_dir)/_preadd_addend_g1.log,1,1)
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_report,$(casc_preadd_dir)/_preadd_addend_g1.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_preadd_verify += && ! grep -q 'grouping 1' $(casc_preadd_dir)/_preadd_addend_g1.log
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_no_declined,$(casc_preadd_dir)/_preadd_addend_g1.log)
+# The same with a MULT_ADD_C stage below, which takes the $add as grouping 2.
+qlf_k6n10f-dspv4_casc_preadd_verify += && grep -q 'modes inferred: PREADD_A_MULT_B_CASC x1, MULT_ADD_C_CASC x1, MULT_ADD_C x1$$' $(casc_preadd_dir)/_preadd_addend_mixed.log
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_found,$(casc_preadd_dir)/_preadd_addend_mixed.log,2,0)
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_wired,$(casc_preadd_dir)/_preadd_addend_mixed.log,2,2)
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_report,$(casc_preadd_dir)/_preadd_addend_mixed.log,2,1,3,12)
+qlf_k6n10f-dspv4_casc_preadd_verify += && $(call casc_sum,$(casc_preadd_dir)/_preadd_addend_mixed.log,37,1)
+qlf_k6n10f-dspv4_casc_preadd_verify += && test "$$(grep -c 'cascade candidate: .* (38-bit sum, addend grouping 2)$$' $(casc_preadd_dir)/_preadd_addend_mixed.log)" = 1
+# No block here refuses a link.
+qlf_k6n10f-dspv4_casc_preadd_verify += && ! grep -q 'cascade link' $(casc_preadd_dir)/*.log
+casc_preadd_refused_dir = qlf_k6n10f/dspv4_casc_preadd_refused
+# s2 one bit short of two pre-adder products: the link out of the second stage
+# is refused, and the link into it is made.
+qlf_k6n10f-dspv4_casc_preadd_refused_verify = test "$$(grep -c 'modes inferred: PREADD_A_MULT_B_C x2, PREADD_A_MULT_B_CASC x1$$' $(casc_preadd_refused_dir)/_preadd_37_flow.log)" = 1
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_report,$(casc_preadd_refused_dir)/_preadd_37_flow.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_ranked,$(casc_preadd_refused_dir)/_preadd_37_flow.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && grep -q 'modes inferred: PREADD_A_MULT_B_C x2, PREADD_A_MULT_B_CASC x1$$' $(casc_preadd_refused_dir)/_preadd_37.log
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_found,$(casc_preadd_refused_dir)/_preadd_37.log,2,1)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_reason,$(casc_preadd_refused_dir)/_preadd_37.log,$(casc_too_narrow),1)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_wired,$(casc_preadd_refused_dir)/_preadd_37.log,1,2)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_report,$(casc_preadd_refused_dir)/_preadd_37.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_ranked,$(casc_preadd_refused_dir)/_preadd_37.log,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_sum,$(casc_preadd_refused_dir)/_preadd_37.log,38,2)
+# C is a fabric $add's sum: no candidate and no reason.
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && grep -q 'modes inferred: PREADD_A_MULT_B_C x1, MULT_ADD_C x1$$' $(casc_preadd_refused_dir)/_preadd_addend_g2.log
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_found,$(casc_preadd_refused_dir)/_preadd_addend_g2.log,0,0)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_wired,$(casc_preadd_refused_dir)/_preadd_addend_g2.log,0,2)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_report,$(casc_preadd_refused_dir)/_preadd_addend_g2.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && ! grep -q 'cascade links refused' $(casc_preadd_refused_dir)/_preadd_addend_g2.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
