@@ -84,7 +84,8 @@ select -assert-count 1 t:sdffre %x1:+\[E\] t:sdffre %d
 synth -no_ff_map
 select -assert-none t:sdffre
 select -assert-count 32 t:\$_DFF_P_
-select -assert-count 16 t:\$_SDFFE_PP0P_
+# Reset polarity of the unmapped cell differs by Yosys version (0.55: PP0P, 0.70: PN0P).
+select -assert-count 16 t:\$_SDFFE_P*0P_
 
 # BRAM typing.
 synth -bram_types
@@ -95,8 +96,10 @@ synth -bram_types -bramecc
 select -assert-count 1 t:TDP36K
 select -assert-none t:TDP36K_BRAM_A_X18_B_X18_nonsplit
 
-# DSP variants.
-synth -dspv2
+# DSP variants. -dspv2 maps $__QL_MUL32X18 only with the device's V2 dsp_map.v
+# (-lib_path); this library has none, so check the V2 split and stop there.
+synth -dspv2 -run begin:coarse
+select -assert-count 1 t:\$__QL_MUL32X18
 select -assert-none t:QL_DSP2_MULT
 synth -dspv4
 select -assert-none t:QL_DSP2_MULT

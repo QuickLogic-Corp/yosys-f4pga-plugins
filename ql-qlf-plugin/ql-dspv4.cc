@@ -828,7 +828,7 @@ struct QlDspV4Pass : public Pass {
         // offered an M register at all. Without this the pass is silent about a
         // product register it did not take, which is indistinguishable from
         // there not being one.
-        if (log_force_debug && st.mff == nullptr) {
+        if (ys_debug() && st.mff == nullptr) {
             SigSpec muly = sigmapper(st.mul->getPort(ID::Y));
             for (auto c : module->cells()) {
                 if (!c->hasPort(ID::D) || !c->hasPort(ID::Q))
