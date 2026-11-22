@@ -111,6 +111,19 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        write the design to the specified BLIF file. Writing of an output file\n");
         log("        is omitted if this parameter is not specified.\n");
         log("\n");
+        log("    -owner_table <file>\n");
+        log("        write the owner table (schema version 2) for the BLIF: which RTL instance\n");
+        log("        owns each atom, by ql_fp_owner's rule, and the instance tree. Needs -blif.\n");
+        log("\n");
+        log("    -owner_front_end <name>\n");
+        log("        the front end named in the owner table: yosys (default), verific or\n");
+        log("        synplify (the default with -synplify).\n");
+        log("\n");
+        log("    -no_iname\n");
+        log("        write .cname for named cells only, so VPR names LUTs after their output\n");
+        log("        net as before. With it, atom names in the owner table and in VPR can\n");
+        log("        differ.\n");
+        log("\n");
         log("    -rel_ip_blif <file>\n");
         log("        link a pre-synthesized IP netlist (extended BLIF with relative-placement\n");
         log("        .attr annotations) in place of the IP's empty (* blackbox *) stub after\n");
@@ -226,68 +239,8 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool noOpt;
     bool synplify;
     std::vector<std::string> rel_ip_blif_files;
-    // Cells that already had a public name before autoname, as write_blif spells them.
-    pool<std::string> blif_named_cells;
-    bool filter_cnames;
-
-    // write_blif's spelling of a cell name (backends/blif/blif.cc, str()).
-    static std::string blif_name(RTLIL::IdString id)
-    {
-        std::string s = RTLIL::unescape_id(id);
-        for (char &c : s)
-            if (c == '#' || c == '=' || c == '<' || c == '>')
-                c = '?';
-        return s;
-    }
-
-    // The RTL instance a private cell came from, dotted, or "" when unknown. flatten
-    // -scopename records it in the scopename attribute (space separated); cells created
-    // from a flattened one keep it in their name instead: $flatten\a.\b.$auto$... -> a.b.
-    static std::string rtl_scope(RTLIL::Cell *cell)
-    {
-        std::string scope = cell->get_string_attribute(ID(scopename));
-        if (!scope.empty()) {
-            for (char &c : scope)
-                if (c == ' ')
-                    c = '.';
-            return scope;
-        }
-        static const std::string prefix = "$flatten";
-        const std::string &name = cell->name.str();
-        size_t leaf = name.find(".$");
-        if (name.compare(0, prefix.size(), prefix) != 0 || leaf == std::string::npos)
-            return "";
-        for (char c : name.substr(prefix.size(), leaf - prefix.size()))
-            if (c != '\\')
-                scope += c;
-        return scope;
-    }
-
-    // Keep .cname only for cells with a name of their own or a known RTL instance. The
-    // rest (LUTs abc creates without attributes) are left to VPR, which names them after
-    // their output net.
-    void drop_autoname_cnames(const std::string &file)
-    {
-        std::ifstream in(file);
-        if (!in)
-            log_error("Can't open %s to filter its .cname lines\n", file.c_str());
-        std::string text, line;
-        int kept = 0, dropped = 0;
-        while (std::getline(in, line)) {
-            if (line.rfind(".cname ", 0) == 0) {
-                if (!blif_named_cells.count(line.substr(7))) {
-                    dropped++;
-                    continue;
-                }
-                kept++;
-            }
-            text += line + "\n";
-        }
-        in.close();
-        std::ofstream out(file);
-        out << text;
-        log("Kept %d .cname line(s) of named cells, dropped %d of autonamed cells in %s\n", kept, dropped, file.c_str());
-    }
+    std::string owner_table, owner_front_end;
+    bool no_iname;
 
     void clear_flags() override
     {
@@ -320,8 +273,9 @@ struct SynthQuickLogicPass : public ScriptPass {
         mince_num = "";
         de = "";
         rel_ip_blif_files.clear();
-        blif_named_cells.clear();
-        filter_cnames = false;
+        owner_table = "";
+        owner_front_end = "";
+        no_iname = false;
     }
 
     pool<RTLIL::Wire *> find_clock_wires(RTLIL::Module *mod)
@@ -415,6 +369,8 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-custom_abc_script", &custom_abc_script},
           {"-mince_num", &mince_num},
           {"-de", &de},
+          {"-owner_table", &owner_table},
+          {"-owner_front_end", &owner_front_end},
         };
         const SwitchOption switch_options[] = {
           {"-no_dsp", &nodsp, true},
@@ -432,6 +388,7 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-dspv4", &dspv4, true},
           {"-no_tdpram", &notdpram, true},
           {"-synplify", &synplify, true},
+          {"-no_iname", &no_iname, true},
         };
 
         size_t argidx;
@@ -524,6 +481,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             log_cmd_error("This command only operates on fully selected designs!\n");
 
         finalize_options(design);
+        if (!owner_table.empty() && blif_file.empty())
+            log_cmd_error("-owner_table needs -blif: the table describes the BLIF\n");
+        if (owner_front_end.empty())
+            owner_front_end = synplify ? "synplify" : "yosys";
 
         log_header(design, "Executing SYNTH_QUICKLOGIC pass.\n");
         log_push();
@@ -794,7 +755,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         if (help_mode) {
             run("read_blif -wideports <file>", "(for each -rel_ip_blif file)");
             run("setattr -set keep 1 a:REL_MACRO_TYPE");
-            run("flatten");
+            run("flatten -scopename");
             run("opt_expr");
             run("opt_lut", "(unless -no_opt)");
             run("setattr -unset keep a:REL_MACRO_TYPE");
@@ -820,7 +781,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         // keep stops opt_lut from merging an annotated LUT into a neighbour.
         run("setattr -set keep 1 a:REL_MACRO_TYPE");
-        run("flatten");
+        run("flatten -scopename");
         // Fold the constants the linked netlist still carries. opt_expr never
         // rewrites $lut cells, so the annotated LUTs are safe.
         run("opt_expr");
@@ -944,7 +905,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                 // "Subckt instantiates model 'dff'".
                 run("ql_io_translate");
                 run("proc");
-                run("flatten");
+                if (help_mode || !owner_table.empty())
+                    run("ql_fp_owner -tree", "(if -owner_table)");
+                run("flatten -scopename");
+                if (help_mode || !owner_table.empty())
+                    run("ql_fp_owner -record", "(if -owner_table)");
                 run("opt -nodffe -nosdff");
                 run("fsm");
                 run("wreduce");
@@ -953,7 +918,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                 run("share");
             } else {
                 run("proc");
-                run("flatten");
+                if (help_mode || !owner_table.empty())
+                    run("ql_fp_owner -tree", "(if -owner_table)");
+                run("flatten -scopename");
+                if (help_mode || !owner_table.empty())
+                    run("ql_fp_owner -record", "(if -owner_table)");
                 if (help_mode || family == "pp3") {
                     run("tribuf -logic", "                   (for pp3)");
                 }
@@ -1178,6 +1147,10 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // dsp4_logical operating-mode leaf cells (mult / alu /
                             // pre-adder / rss / bit-sliced registers) so the netlist
                             // packs onto the DSPV4 tile. Pure Verilog techmap.
+                            // Its leaves are named after the QL_DSP4 they replace, so
+                            // record that name's owner first.
+                            if (help_mode || !owner_table.empty())
+                                run("ql_fp_owner -record", "(if -owner_table)");
                             run("techmap -map " + lib_path + family + "/dsp4_logical_map.v");
                             run("opt_clean -purge");
                         } else {
@@ -1378,7 +1351,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                             else {
                                 if (synplify) {
                                     std::string family_path = " " + lib_path + family;
-                                    run("flatten");
+                                    run("flatten -scopename");
                                     run("techmap -map" + family_path + "/synplify_map.v");
                                     run("techmap");
                                 }
@@ -1503,28 +1476,11 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("check")) {
             if (!synplify) {
-                dict<RTLIL::Cell *, std::string> scoped;
-                if (!help_mode) {
-                    for (auto module : active_design->selected_modules())
-                        for (auto cell : module->cells()) {
-                            if (cell->name.isPublic())
-                                blif_named_cells.insert(blif_name(cell->name));
-                            else if (!rtl_scope(cell).empty())
-                                scoped[cell] = rtl_scope(cell);
-                        }
-                    filter_cnames = true;
-                }
+                // Before autoname, which renames the private cells whose names still say
+                // where they came from.
+                if (help_mode || !owner_table.empty())
+                    run("ql_fp_owner -assign", "(if -owner_table)");
                 run("autoname");
-                // autoname names a cell after a connected wire, often the parent's port
-                // wire. Move each cell whose RTL instance is known back under it.
-                for (auto &it : scoped) {
-                    RTLIL::Cell *cell = it.first;
-                    std::string name = RTLIL::unescape_id(cell->name);
-                    std::string prefix = it.second + ".";
-                    if (name.compare(0, prefix.size(), prefix) != 0)
-                        cell->module->rename(cell, cell->module->uniquify("\\" + prefix + name.substr(name.rfind('.') + 1)));
-                    blif_named_cells.insert(blif_name(cell->name));
-                }
                 run("hierarchy -check");
                 run("stat");
                 run("check -noinit");
@@ -1603,20 +1559,21 @@ struct SynthQuickLogicPass : public ScriptPass {
                 // The relative-placement flow: -attr/-iattr keep the REL_*
                 // annotations, -blackbox writes a .model per primitive (the
                 // constraint generator derives VPR atom names from them).
-                // Otherwise -cname makes VPR name a named cell's atom after the cell,
-                // which keeps the RTL instance prefix that region constraints match on
-                // (aurora2#2244); autonamed cells keep their first-output-net name
-                // (drop_autoname_cnames).
+                // Otherwise -cname -iname makes VPR name every atom after its cell,
+                // so the owner table and VPR use the same names.
                 bool rel_flow = !rel_ip_blif_files.empty();
-                const char *blif_flags = rel_flow ? "-param -attr -iattr -blackbox" : "-param -cname";
+                const char *blif_flags = rel_flow ? "-param -attr -iattr -blackbox" : no_iname ? "-param -cname" : "-param -cname -iname";
                 if (!help_mode && rel_flow) {
                     // Work on a scratch copy: the in-memory netlist is still
                     // needed for -edif and -verilog.
                     run("design -push-copy");
                     prepare_rel_blif_scratch();
+                    run("setattr -unset ql_owner -unset ql_owner_rule");
                 }
+                if (!rel_flow)
+                    run("ql_fp_owner -guard", "(unless -rel_ip_blif)");
                 run(stringf("write_blif %s %s", blif_flags, help_mode ? "<file-name>" : blif_file.c_str()),
-                    "(-cname; -attr -iattr -blackbox instead with -rel_ip_blif)");
+                    "(-cname -iname; -attr -iattr -blackbox instead with -rel_ip_blif)");
                 if (dspv4 && !help_mode && !blif_file.empty()) {
                     // ---------------------------------------------------------------
                     // DSP-V4 BLIF buffer cleanup (round-trip).
@@ -1657,10 +1614,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                     run(stringf("write_blif %s %s", blif_flags, blif_file.c_str())); // rewrite the buffer-free BLIF (same flags as the first write)
                     run("design -pop");                                              // restore the real design untouched
                 }
-                if (!help_mode && !rel_flow && filter_cnames)
-                    drop_autoname_cnames(blif_file);
                 if (!help_mode && rel_flow)
                     run("design -pop"); // discard the scratch copy
+                if (help_mode || !owner_table.empty())
+                    run(stringf("ql_fp_owner -write %s -blif %s -front_end %s", help_mode ? "<table>" : owner_table.c_str(),
+                                help_mode ? "<file-name>" : blif_file.c_str(), help_mode ? "<name>" : owner_front_end.c_str()),
+                        "(if -owner_table)");
             }
         }
 

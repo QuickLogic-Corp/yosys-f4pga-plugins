@@ -20,6 +20,9 @@ TESTS = \
 	dffs \
 	shreg \
 	full_adder \
+	fp_owner \
+	fp_owner_clash \
+	fp_owner_dspv4 \
 	qlf_k6n10f/dsp_mult \
 	qlf_k6n10f/dsp_simd \
 	qlf_k6n10f/dsp_macc \

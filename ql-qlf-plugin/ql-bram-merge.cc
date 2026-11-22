@@ -22,8 +22,29 @@
 #include "kernel/rtlil.h"
 #include "kernel/sigtools.h"
 
+#include <set>
+
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
+
+// A merged BRAM holds two memories, so it keeps both RTL owners ql_fp_owner recorded
+// (newline-separated, sorted).
+static void merge_owners(RTLIL::Cell *merged, RTLIL::Cell *bram1, RTLIL::Cell *bram2)
+{
+    std::set<std::string> owners;
+    for (auto bram : {bram1, bram2})
+        if (bram->has_attribute(ID(ql_owner))) {
+            std::string text = bram->get_string_attribute(ID(ql_owner)) + "\n";
+            for (size_t start = 0, end; (end = text.find('\n', start)) != std::string::npos; start = end + 1)
+                owners.insert(text.substr(start, end - start));
+        }
+    if (owners.empty())
+        return;
+    std::string joined;
+    for (auto &owner : owners)
+        joined += (&owner == &*owners.begin() ? "" : "\n") + owner;
+    merged->set_string_attribute(ID(ql_owner), joined);
+}
 
 // ============================================================================
 
@@ -125,6 +146,7 @@ struct QlSDPBramMergeWorker {
         for (auto attr : bram2->attributes)
             if (!merged->has_attribute(attr.first))
                 merged->attributes.insert(attr);
+        merge_owners(merged, bram1, bram2);
 
         // memory_libmap names each BRAM after its memory (core.u_mem.mem.0.0, or
         // $flatten\core.\u_rom.$...0.0 for a private one); keep it, so synth_ql can still
@@ -284,6 +306,7 @@ struct QlTDPBramMergeWorker {
         for (auto attr : bram2->attributes)
             if (!merged->has_attribute(attr.first))
                 merged->attributes.insert(attr);
+        merge_owners(merged, bram1, bram2);
 
         // memory_libmap names each BRAM after its memory (core.u_mem.mem.0.0, or
         // $flatten\core.\u_rom.$...0.0 for a private one); keep it, so synth_ql can still

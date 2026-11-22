@@ -1359,6 +1359,8 @@ struct QlDspV4Pass : public Pass {
         const Dspv4Mode &m = dspv4_mode(mode_name);
         RTLIL::Cell *cell = module->addCell(dspv4_cell_name(module, st.mul), ID(QL_DSP4));
         dspv4_apply_mode(cell, m);
+        if (st.mul->has_attribute(ID(ql_owner)))
+            cell->set_string_attribute(ID(ql_owner), st.mul->get_string_attribute(ID(ql_owner)));
 
         // C is the adder operand that is neither the product nor the
         // accumulator feedback. Where it comes from depends on the shape:
