@@ -139,13 +139,11 @@ module QL_DSP4 #(
     localparam Z_CONN = (Z_SEL != 3'b000) && (Z_SEL != 3'b111);
     localparam Z_ACC  = (Z_SEL == 3'b010);         // kept: used by the ACC block
 
-    // Any operand taking the P feedback node. dsp4_top.v:390 has
-    // `p_acc = PREG ? p_reg : alu_result`, so selecting P without a P register
-    // closes a combinational loop through the ALU -- reject it.
-    // Z = 110 (P>>17) reads p_reg just as 010 does, so it is a P-feedback mode
-    // too and needs PREG -- without this the combinational-loop guard below
-    // would let it through. Z = 100 (MACC_EXT) does NOT read P: it is the pure
-    // sign word {64{SIGNCIN}} (ffb 4.2.6 correctness fix).
+    // Any operand taking the P feedback node. The W/X/Z feedback paths always
+    // read p_reg (the internal accumulator register), whatever PREG is -- ffb
+    // clarified this in 5698dfd. PREG only controls what appears on P output.
+    // Z = 110 (P>>17) reads p_reg just as 010 does. Z = 100 (MACC_EXT) does
+    // NOT read P: it is {64{SIGNCIN}} (ffb 4.2.6).
     localparam Z_READS_P = Z_ACC || (Z_SEL == 3'b110);
     localparam USES_P = (W_SEL == 2'b01) || (X_SEL == 2'b10) || Z_READS_P;
 
@@ -202,9 +200,7 @@ module QL_DSP4 #(
         || (Y_SEL == 2'b10)                             // reserved Y encoding
         || (A_IN_SEL || B_IN_SEL)                       // ACIN / BCIN inputs
         || (INMODE[0] || INMODE[4])                     // reg-path select, see below
-        // Combinational P feedback. Tests PREG, *not* USE_PREG, so a lone MREG can
-        // never satisfy it: dsp4_top.v has `p_acc = PREG ? p_reg : alu_result`.
-        || (USES_P && !PREG);                           // combinational P feedback
+        ;
 
     wire _TECHMAP_FAIL_ = UNSUPPORTED;
 
@@ -386,8 +382,14 @@ module QL_DSP4 #(
         end else if (USE_PREG) begin : g_acc
             QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(CEP), .R(ACCRSTN), .clk(CLK), .Q(acc_q));
             assign p_node = acc_q;
+        end else if (USES_P) begin : g_acc_fb
+            // PREG=0 with P feedback: p_reg always exists in silicon and the
+            // ALU's W/X/Z feedback reads it unconditionally (ffb 5698dfd).
+            // P output bypasses the register (p_acc = alu_result when PREG=0).
+            QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(CEP), .R(ACCRSTN), .clk(CLK), .Q(acc_q));
+            assign p_node = alu_out;
         end else begin : g_acc_byp
-            assign acc_q  = 64'b0;   // unused (Z selects ACC.Q only when PREG=1)
+            assign acc_q  = 64'b0;
             assign p_node = alu_out;
         end
     endgenerate
