@@ -427,12 +427,18 @@ struct OwnerWorker {
     // Owners right after flatten, and what each driven bit and cell name was owned by then.
     void record()
     {
+        // Right after flatten a cell with no scope is the top module's own logic; later, a cell
+        // nothing records is left for -assign to infer.
+        const bool after_flatten = records.names.empty() && records.bits.empty();
         for (auto cell : module->cells()) {
             Owner owner;
             if (!has_owner(cell)) {
-                if (!recorded_owner(cell, owner))
-                    owner.clear(); // the top module's own logic
-                set_owner(cell, {owner}, "recorded");
+                if (recorded_owner(cell, owner))
+                    set_owner(cell, {owner}, "recorded");
+                else if (after_flatten)
+                    set_owner(cell, {Owner{}}, "recorded");
+                else
+                    continue;
             }
             Owners owners = owners_of(cell);
             if (owners.size() != 1)
@@ -722,7 +728,8 @@ struct QlFpOwnerPass : public Pass {
         log("        after flatten -scopename: stamps each cell with the \\ql_owner attribute\n");
         log("        and records the owner of each driven bit and cell name, so later passes\n");
         log("        that rename or replace cells cannot lose it. May run again later, before\n");
-        log("        a pass that replaces owned cells; existing records are kept.\n");
+        log("        a pass that replaces owned cells; existing records are kept, and a cell\n");
+        log("        nothing records is left for -assign.\n");
         log("\n");
         log("    -assign\n");
         log("        after abc, before autoname: gives each cell without an owner one, by\n");

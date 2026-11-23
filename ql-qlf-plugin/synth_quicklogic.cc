@@ -1195,6 +1195,9 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (!noOpt) {
                 run("opt_clean");
             }
+            // memory_libmap names each BRAM after its memory, so record the memory's owner.
+            if (help_mode || !owner_table.empty())
+                run("ql_fp_owner -record", "(if -owner_table)");
             //}
         }
 
@@ -1206,10 +1209,14 @@ struct SynthQuickLogicPass : public ScriptPass {
                 }
                 if (notdpram) {
                     run("memory_libmap -lib " + lib_path + family + "/libmap_brams_sdp.txt", "(for qlf_k6n10f)");
+                    if (help_mode || !owner_table.empty())
+                        run("ql_fp_owner -record", "(if -owner_table)");
                     run("ql_sdpbram_merge", "(for qlf_k6n10f)");
                     run("techmap -map " + lib_path + family + "/libmap_brams_map_sdp.v", "(for qlf_k6n10f)");
                 } else {
                     run("memory_libmap -lib " + lib_path + family + "/libmap_brams_tdp.txt", "(for qlf_k6n10f)");
+                    if (help_mode || !owner_table.empty())
+                        run("ql_fp_owner -record", "(if -owner_table)");
                     run("ql_tdpbram_merge", "(for qlf_k6n10f)");
                     run("techmap -map " + lib_path + family + "/libmap_brams_map_tdp.v", "(for qlf_k6n10f)");
                 }

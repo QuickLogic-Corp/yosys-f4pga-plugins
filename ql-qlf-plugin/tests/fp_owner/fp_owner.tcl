@@ -49,6 +49,11 @@ set merged [regexp -all -line -- {"type": "\$lut", "owners": \[\["u_m[01]"\]\], 
 if {$merged != 1} { error "expected the merged LUT owned by one of u_m0/u_m1, found $merged rows" }
 if {[regexp -line -- {"owners": \[\["u_m0"\], \["u_m1"\]\]} $table]} { error "a merged LUT lists two owners" }
 
+# A BRAM is named after its memory by memory_libmap and keeps that memory's owner.
+if {![regexp -line -- {"name": "u_ram\.mem[^"]*", "type": "TDP[^"]*", "owners": \[\["u_ram"\]\], "rule": "recorded"} $table]} {
+    error "the BRAM of u_ram is not owned by u_ram"
+}
+
 # The tree before flatten, and the hash of the BLIF the table describes.
 foreach path {{["u_leaf"]} {["u_mid"]} {["u_mid", "u_leaf"]} {["gen[0].u"]} {["u_m1"]}} {
     if {[string first "\"path\": $path," $table] < 0} { error "instance $path missing from the tree" }
