@@ -1,10 +1,4 @@
-// Runs each RTL module beside its synthesised netlist on the same stimulus
-// and compares every output every cycle. A compare with !== is deliberate: an
-// undriven output is x, and x must count as a mismatch.
-//
-// One cycle in four drives every operand to an extreme, so the products
-// reach the ends of their ranges. Those are the values that cross the RTL
-// net's width, where a wrongly widened link gives a different answer.
+// RTL against netlist every cycle (!== so x mismatches); every 4th cycle uses extreme operands.
 `timescale 1ns/1ps
 
 module tb;

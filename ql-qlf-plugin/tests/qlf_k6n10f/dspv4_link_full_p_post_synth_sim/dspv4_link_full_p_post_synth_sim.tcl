@@ -1,18 +1,4 @@
-# dspv4_link_full_p_post_synth_sim -- C links that ql_dspv4_link_full_p must
-# widen to all 50 bits of the source's P (aurora2 #2870).
-#
-# Without the widening, the bits above the RTL net reach C as copies of the
-# net's top bit. VPR then splits the link across pcin_i and c_i, and z_mux
-# refuses the split.
-#
-# Each design is synthesised alone. Per design we assert:
-#   - the modes ql_dspv4 inferred, so each block covers the source mode it
-#     is here for;
-#   - how many links the pass widened (scratchpad), and that it kept none;
-#   - the distinct DSP-driven bits the ALUs' Z ports read. A widened link
-#     gives 50: all of the source's P. Without the widening a link gives only
-#     the RTL net's bits; the rest of Z repeats its top bit.
-# Then sim/ runs every netlist against the RTL.
+# C links that ql_dspv4_link_full_p must widen to the source's full P (aurora2 #2870).
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
@@ -34,8 +20,7 @@ proc synth_one {top} {
     yosys cd $top
     check -assert
 }
-# The last "modes inferred" line: the pass runs twice per flow, and the second
-# run infers nothing and so prints no line.
+# The last line: ql_dspv4's second run infers nothing and prints none.
 proc assert_modes {top modes} {
     set f [open synth.log]
     set last ""
@@ -47,8 +32,7 @@ proc assert_modes {top modes} {
         error "$top: expected $modes, the pass said: $last"
     }
 }
-# After synth_ql the RTL net and the P bits above it are one wire, so the
-# bits are counted on a copy with every bit split into its own wire.
+# The net and the P bits above it are one wire, so count bits after splitnets.
 proc assert_links {widened} {
     scratchpad -assert ql_dspv4_link_full_p.widened $widened
     scratchpad -assert ql_dspv4_link_full_p.kept 0

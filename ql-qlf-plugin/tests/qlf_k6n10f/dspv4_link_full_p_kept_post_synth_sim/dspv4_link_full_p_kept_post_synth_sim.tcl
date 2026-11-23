@@ -1,19 +1,4 @@
-# dspv4_link_full_p_kept_post_synth_sim -- C links that ql_dspv4_link_full_p
-# must leave as they are (aurora2 #2870).
-#
-# Reading the source's full P is only the same value when the source's value
-# always fits the RTL net. In each design here it does not, or no rule says
-# what range the source's mode can reach.
-#
-# Each design is synthesised alone. Per design we assert:
-#   - the pass kept one link and widened none (scratchpad);
-#   - the reason it printed;
-#   - the distinct DSP-driven bits the consumer's Z port reads: only the RTL
-#     net's bits, never the source's P bits above them. The consumer is the
-#     ALU that computes p (synth_ql names an ALU after the net it drives).
-#     Only the consumer: the accumulator's own Z reads all 64 of its bits.
-# Then sim/ runs every netlist against the RTL. A link widened by mistake
-# shows up there as wrong values.
+# C links that ql_dspv4_link_full_p must leave as they are (aurora2 #2870).
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
@@ -35,8 +20,7 @@ proc synth_one {top} {
     yosys cd $top
     check -assert
 }
-# After synth_ql the RTL net and the P bits above it are one wire, so the
-# bits are counted on a copy with every bit split into its own wire.
+# Counts bits after splitnets on the consumer only (c:p_*): an accumulator's own Z reads all 64.
 proc assert_kept {net_bits reason} {
     scratchpad -assert ql_dspv4_link_full_p.widened 0
     scratchpad -assert ql_dspv4_link_full_p.kept 1

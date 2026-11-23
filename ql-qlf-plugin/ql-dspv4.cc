@@ -3228,33 +3228,13 @@ struct QlDsp4CheckPass : public Pass {
 
 } QlDsp4CheckPass;
 
-// ============================================================================
-// ql_dspv4_link_full_p -- give a DSP-to-DSP C link all 50 bits of the
-// source's P (aurora2 #2870).
-//
-// ql_dspv4 builds C from the design's net. For `t = a*b` (36 bits) feeding
-// `p = t + c*d`, the second DSP gets C = {14 copies of t[35], t[35:0]}. VPR
-// can carry P[i] -> C[i] on the dedicated wire (pcin_i), but not the copies
-// of t[35], so those go on general routing (c_i). z_mux is a bus mux and takes
-// all 64 bits from one input, so the design cannot route.
-//
-// When the source's whole value fits in t, P[36..49] already hold those
-// copies, so C can read P[49:0] instead. That is what Synplify emits. When it
-// does not fit, P's top bits hold what the design threw away, and the link is
-// left as it is.
-//
-// Runs once, after both ql_dspv4 calls and before dsp4_logical_map.v. It is a
-// separate pass so that ql_dspv4's NEW_ID names, which carry source line
-// numbers, stay as they were.
-// ============================================================================
+// ql_dspv4_link_full_p: a C link reads the source's full P when the value is the same (aurora2 #2870).
 
-// The smallest and largest value a signal can carry.
 struct ValueRange {
     int64_t low, high;
 };
 
-// C reads the low `width` bits of `source`'s P, and above them either copies
-// of bit width-1 (sign_extended) or constant zeros.
+// C is source's P[0..width-1], then copies of bit width-1 or zeros.
 struct ResultLink {
     RTLIL::Cell *source;
     int width;
@@ -3264,9 +3244,7 @@ struct ResultLink {
 static const int64_t P_PORT_LOW = -(int64_t(1) << (DSPV4_P_WIDTH - 1));
 static const int64_t P_PORT_HIGH = (int64_t(1) << (DSPV4_P_WIDTH - 1)) - 1;
 
-// Source modes whose value this pass can bound: a product, through the
-// pre-adder or not, plus or minus C. Accumulators are not here: P keeps
-// adding above any RTL net.
+// Accumulators are not here: P keeps adding above any RTL net.
 static const char *const DSPV4_BOUNDED_MODES[] = {
   "MULT",
   "MULT_ADD_C",
@@ -3298,10 +3276,8 @@ static const char *dspv4_mode_name_of(RTLIL::Cell *cell)
     return "an unknown control word";
 }
 
-// A port's signal, or no bits when the port is not connected.
 static SigSpec dspv4_port_or_empty(RTLIL::Cell *cell, RTLIL::IdString port) { return cell->hasPort(port) ? cell->getPort(port) : SigSpec(); }
 
-// The value a port carries, read as the signed number the DSP sees.
 static ValueRange dspv4_port_range(const SigSpec &sig)
 {
     if (GetSize(sig) == 0)
@@ -3326,8 +3302,6 @@ static ValueRange dspv4_sum_range(const ValueRange &a, const ValueRange &b) { re
 
 static ValueRange dspv4_difference_range(const ValueRange &a, const ValueRange &b) { return {a.low - b.high, a.high - b.low}; }
 
-// The range after cutting to `width` bits: the same when it fits, else every
-// value the bits can hold.
 static ValueRange dspv4_cut_range(const ValueRange &range, int width)
 {
     int64_t half = int64_t(1) << (width - 1);
@@ -3431,9 +3405,6 @@ struct QlDspV4LinkFullPPass : public Pass {
         }
     }
 
-    // C counts as a link when it is P[0..width-1] of one cell, bit for bit,
-    // and nothing but an extension of that above. A C that already reads all
-    // of P needs nothing.
     std::optional<ResultLink> link_on(const SigSpec &c)
     {
         if (GetSize(c) < 2 || !p_bit_owner.count(c[0]) || p_bit_owner.at(c[0]).second != 0)
@@ -3455,9 +3426,7 @@ struct QlDspV4LinkFullPPass : public Pass {
         return std::nullopt;
     }
 
-    // A cell whose chain of C sources comes back round to itself. Its C value
-    // is bounded by the port alone. Found from the links, so the answer does
-    // not depend on the order the cells are stored in.
+    // A cell on a loop of links: its C is bounded by the port alone.
     void find_link_loops()
     {
         cells_on_link_loops.clear();
@@ -3490,8 +3459,6 @@ struct QlDspV4LinkFullPPass : public Pass {
         return "";
     }
 
-    // A mode in DSPV4_BOUNDED_MODES, with A and B from their ports and the
-    // carry-in tied as dspv4_apply_mode() ties it.
     bool range_rule_covers(RTLIL::Cell *cell)
     {
         bool bounded_mode = false;
@@ -3508,10 +3475,7 @@ struct QlDspV4LinkFullPPass : public Pass {
 
     ValueRange port_range(RTLIL::Cell *cell, RTLIL::IdString port) { return dspv4_port_range(sigmap(dspv4_port_or_empty(cell, port))); }
 
-    // The multiplier's two inputs, built as dsp4_logical_map.v builds them.
-    // INMODE[1] zeroes the operand PREADDINSEL picks, INMODE[2] lets D in,
-    // INMODE[3] subtracts. The pre-adder gives AD = D +/- (A, or B under
-    // PREADDINSEL) in 32 bits; AMULTSEL multiplies by AD, BMULTSEL by AD[17:0].
+    // As dsp4_logical_map.v builds the multiplier's inputs.
     ValueRange product_range(RTLIL::Cell *cell)
     {
         int inmode = cell->getParam(ID(INMODE)).as_int();
@@ -3528,10 +3492,7 @@ struct QlDspV4LinkFullPPass : public Pass {
         return dspv4_product_range(multiplicand, multiplier);
     }
 
-    // The ALU computes Z + (W+X+Y) + CIN with ALUMODE inverting terms
-    // (dspv4_sim.v). Z is C in the _C modes, else 0. 00 is product + Z, 11 is
-    // Z - product, 01 (CIN = 1) is product - Z. Zero is always in the range:
-    // the registers reset to it.
+    // ALUMODE 00: product + Z, 11: Z - product, 01: product - Z (dspv4_sim.v).
     std::optional<ValueRange> source_range(RTLIL::Cell *cell)
     {
         if (range_of.count(cell))
@@ -3562,8 +3523,6 @@ struct QlDspV4LinkFullPPass : public Pass {
         return result;
     }
 
-    // C carries the source's own value when the link to it is one this pass
-    // would widen; otherwise only the port bounds it.
     ValueRange c_range(RTLIL::Cell *cell)
     {
         ValueRange port = port_range(cell, ID(C));

@@ -1051,8 +1051,6 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // -- ql_dspv4 has no lower width bound of its own and
                             // would otherwise re-claim them.
                             run("chtype -set $mul t:$__soft_mul");
-                            // Once every DSP exists: a C link reads all 50 bits
-                            // of its source's P when the value is the same.
                             run("ql_dspv4_link_full_p");
                         }
                         if (!synplify && !dspv4) {
