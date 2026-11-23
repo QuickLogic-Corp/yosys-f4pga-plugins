@@ -327,9 +327,8 @@ static const std::map<std::string, PRangeRow> P_RANGE_ROWS = {
 
 // Modes that add P back into their own sum. Only the 50-bit port bounds them.
 static const std::set<std::string> ACCUMULATOR_MODES = {
-  "MULT_ACC",          "MULT_ACC_C",          "MULT_ACC_SUB",    "MULT_ACC_RSUB",
-  "PREADD_A_MACC",     "PREADD_A_MACC_C",     "PREADD_B_MACC",   "PREADD_B_MACC_C",
-  "PREADD_A_SUB_MACC", "PREADD_A_SUB_MACC_C", "PREADD_B_SUB_MACC", "PREADD_B_SUB_MACC_C",
+  "MULT_ACC",      "MULT_ACC_C",      "MULT_ACC_SUB",      "MULT_ACC_RSUB",       "PREADD_A_MACC",     "PREADD_A_MACC_C",
+  "PREADD_B_MACC", "PREADD_B_MACC_C", "PREADD_A_SUB_MACC", "PREADD_A_SUB_MACC_C", "PREADD_B_SUB_MACC", "PREADD_B_SUB_MACC_C",
 };
 
 // The range of the w1 + w2 bit wire that holds a signed w1 x w2 product: the
@@ -811,8 +810,7 @@ struct QlDspV4Pass : public Pass {
     void log_refused_link(const CascadeLink &link, const std::string &reason)
     {
         if (verbose)
-            log("  cascade link refused: %s.%s -> %s: %s\n", log_id(link.source->module), log_id(link.source), log_id(link.consumer),
-                reason.c_str());
+            log("  cascade link refused: %s.%s -> %s: %s\n", log_id(link.source->module), log_id(link.source), log_id(link.consumer), reason.c_str());
     }
 
     // Count one refused link under its reason. The caller takes it out of the
@@ -825,8 +823,7 @@ struct QlDspV4Pass : public Pass {
 
     static void remove_links(std::vector<CascadeLink> &links, const pool<const CascadeLink *> &refused)
     {
-        links.erase(std::remove_if(links.begin(), links.end(), [&](const CascadeLink &link) { return refused.count(&link) != 0; }),
-                    links.end());
+        links.erase(std::remove_if(links.begin(), links.end(), [&](const CascadeLink &link) { return refused.count(&link) != 0; }), links.end());
     }
 
     // Step 0: move a source's link register from its consumers' C banks into
@@ -860,9 +857,8 @@ struct QlDspV4Pass : public Pass {
 
     // The first of step 0's checks that fails, or "" when all pass. Each
     // check returns on its own line.
-    std::string why_register_stays(RTLIL::Module *module, SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving,
-                                   RTLIL::Cell *source, const std::vector<const CascadeLink *> &registered,
-                                   std::vector<RTLIL::Cell *> &fabric_copies)
+    std::string why_register_stays(RTLIL::Module *module, SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *source,
+                                   const std::vector<const CascadeLink *> &registered, std::vector<RTLIL::Cell *> &fabric_copies)
     {
         RTLIL::Cell *first = registered[0]->consumer;
         if (source->getParam(ID(PREG)).as_bool())
