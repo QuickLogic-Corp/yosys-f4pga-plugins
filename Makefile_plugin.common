@@ -137,11 +137,17 @@ endif
 
 # Installation
 
-$(YOSYS_PLUGINS_DIR)/$(NAME).so: $(SO_LIB) | $(YOSYS_PLUGINS_DIR)
-	install -D $(SO_LIB) $@
+INSTALLED_SO = $(YOSYS_PLUGINS_DIR)/$(NAME).so
 
+# Compares contents, not times: an older build from another tree must still replace it.
 .PHONY: install_plugin
-install_plugin: $(YOSYS_PLUGINS_DIR)/$(NAME).so
+install_plugin: $(SO_LIB) | $(YOSYS_PLUGINS_DIR)
+	@if cmp -s $(SO_LIB) $(INSTALLED_SO); then \
+		echo "$(INSTALLED_SO) already matches $(SO_LIB)"; \
+	else \
+		install -D $(SO_LIB) $(INSTALLED_SO) && \
+		echo "Installed $(SO_LIB) -> $(INSTALLED_SO) (cksum $$(cksum < $(INSTALLED_SO)))"; \
+	fi
 
 .PHONY: install
 install: install_plugin
