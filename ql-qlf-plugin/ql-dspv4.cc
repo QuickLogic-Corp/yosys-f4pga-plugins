@@ -3228,4 +3228,355 @@ struct QlDsp4CheckPass : public Pass {
 
 } QlDsp4CheckPass;
 
+// ============================================================================
+// ql_dspv4_link_full_p -- give a DSP-to-DSP C link all 50 bits of the
+// source's P (aurora2 #2870).
+//
+// ql_dspv4 builds C from the design's net. For `t = a*b` (36 bits) feeding
+// `p = t + c*d`, the second DSP gets C = {14 copies of t[35], t[35:0]}. VPR
+// can carry P[i] -> C[i] on the dedicated wire (pcin_i), but not the copies
+// of t[35], so those go on general routing (c_i). z_mux is a bus mux and takes
+// all 64 bits from one input, so the design cannot route.
+//
+// When the source's whole value fits in t, P[36..49] already hold those
+// copies, so C can read P[49:0] instead. That is what Synplify emits. When it
+// does not fit, P's top bits hold what the design threw away, and the link is
+// left as it is.
+//
+// Runs once, after both ql_dspv4 calls and before dsp4_logical_map.v. It is a
+// separate pass so that ql_dspv4's NEW_ID names, which carry source line
+// numbers, stay as they were.
+// ============================================================================
+
+// The smallest and largest value a signal can carry.
+struct ValueRange {
+    int64_t low, high;
+};
+
+// C reads the low `width` bits of `source`'s P, and above them either copies
+// of bit width-1 (sign_extended) or constant zeros.
+struct ResultLink {
+    RTLIL::Cell *source;
+    int width;
+    bool sign_extended;
+};
+
+static const int64_t P_PORT_LOW = -(int64_t(1) << (DSPV4_P_WIDTH - 1));
+static const int64_t P_PORT_HIGH = (int64_t(1) << (DSPV4_P_WIDTH - 1)) - 1;
+
+// Source modes whose value this pass can bound: a product, through the
+// pre-adder or not, plus or minus C. Accumulators are not here: P keeps
+// adding above any RTL net.
+static const char *const DSPV4_BOUNDED_MODES[] = {
+  "MULT",
+  "MULT_ADD_C",
+  "MULT_SUB_C",
+  "MULT_RSUB_C",
+  "PREADD_A_MULT_B",
+  "PREADD_A_SUB_B",
+  "PREADD_A_MULT_B_C",
+  "PREADD_A_SUB_B_C",
+  "PREADD_B_MULT_A",
+  "PREADD_B_SUB_A",
+  "PREADD_B_MULT_A_C",
+  "PREADD_B_SUB_A_C",
+};
+
+static bool dspv4_cell_has_mode(RTLIL::Cell *cell, const Dspv4Mode &mode)
+{
+    auto param = [&](RTLIL::IdString name) { return cell->hasParam(name) ? cell->getParam(name).as_int() : -1; };
+    return param(ID(OPMODE)) == mode.opmode && param(ID(ALUMODE)) == mode.alumode && param(ID(INMODE)) == mode.inmode &&
+           param(ID(CARRYINSEL)) == mode.carryinsel && param(ID(USE_SIMD)) == mode.use_simd && param(ID(AMULTSEL)) == mode.amultsel &&
+           param(ID(BMULTSEL)) == mode.bmultsel && param(ID(PREADDINSEL)) == mode.preaddinsel;
+}
+
+static const char *dspv4_mode_name_of(RTLIL::Cell *cell)
+{
+    for (size_t i = 0; i < DSPV4_MODE_COUNT; i++)
+        if (dspv4_cell_has_mode(cell, DSPV4_MODES[i]))
+            return DSPV4_MODES[i].name;
+    return "an unknown control word";
+}
+
+// A port's signal, or no bits when the port is not connected.
+static SigSpec dspv4_port_or_empty(RTLIL::Cell *cell, RTLIL::IdString port) { return cell->hasPort(port) ? cell->getPort(port) : SigSpec(); }
+
+// The value a port carries, read as the signed number the DSP sees.
+static ValueRange dspv4_port_range(const SigSpec &sig)
+{
+    if (GetSize(sig) == 0)
+        return {0, 0};
+    if (sig.is_fully_def()) {
+        int64_t value = 0;
+        for (int i = 0; i < GetSize(sig); i++)
+            if (sig[i] == State::S1)
+                value |= int64_t(1) << i;
+        if (sig[GetSize(sig) - 1] == State::S1)
+            value -= int64_t(1) << GetSize(sig);
+        return {value, value};
+    }
+    int width = signed_width(sig);
+    int64_t half = int64_t(1) << (width - 1);
+    if (sig[GetSize(sig) - 1] == State::S0)
+        return {0, half - 1};
+    return {-half, half - 1};
+}
+
+static ValueRange dspv4_sum_range(const ValueRange &a, const ValueRange &b) { return {a.low + b.low, a.high + b.high}; }
+
+static ValueRange dspv4_difference_range(const ValueRange &a, const ValueRange &b) { return {a.low - b.high, a.high - b.low}; }
+
+// The range after cutting to `width` bits: the same when it fits, else every
+// value the bits can hold.
+static ValueRange dspv4_cut_range(const ValueRange &range, int width)
+{
+    int64_t half = int64_t(1) << (width - 1);
+    if (range.low >= -half && range.high <= half - 1)
+        return range;
+    return {-half, half - 1};
+}
+
+static ValueRange dspv4_product_range(const ValueRange &a, const ValueRange &b)
+{
+    int64_t corners[] = {a.low * b.low, a.low * b.high, a.high * b.low, a.high * b.high};
+    return {*std::min_element(corners, corners + 4), *std::max_element(corners, corners + 4)};
+}
+
+static bool dspv4_link_fits(const ValueRange &range, const ResultLink &link)
+{
+    if (link.sign_extended) {
+        int64_t half = int64_t(1) << (link.width - 1);
+        return range.low >= -half && range.high <= half - 1;
+    }
+    return range.low >= 0 && range.high <= (int64_t(1) << link.width) - 1;
+}
+
+struct QlDspV4LinkFullPPass : public Pass {
+    QlDspV4LinkFullPPass() : Pass("ql_dspv4_link_full_p", "feed a DSP-to-DSP C link with the source's full P") {}
+
+    void help() override
+    {
+        log("\n");
+        log("    ql_dspv4_link_full_p [selection]\n");
+        log("\n");
+        log("Find QL_DSP4 cells whose C port reads the low bits of another QL_DSP4's\n");
+        log("P, extended by sign or zero bits. When the source's value always fits in\n");
+        log("those low bits, connect C to all 50 bits of the source's P instead. The\n");
+        log("value is the same; the link can then use the dedicated cascade wire for\n");
+        log("every bit. Every link left as it is gets a log line saying why.\n");
+        log("\n");
+        log("The counts go to the scratchpad as ql_dspv4_link_full_p.widened and\n");
+        log("ql_dspv4_link_full_p.kept.\n");
+        log("\n");
+    }
+
+    SigMap sigmap;
+    dict<SigBit, std::pair<RTLIL::Cell *, int>> p_bit_owner;
+    dict<RTLIL::Cell *, ResultLink> link_on_c;
+    pool<RTLIL::Cell *> cells_on_link_loops;
+    dict<RTLIL::Cell *, std::optional<ValueRange>> range_of;
+
+    void execute(std::vector<std::string> args, RTLIL::Design *design) override
+    {
+        log_header(design, "Executing QL_DSPV4_LINK_FULL_P pass.\n");
+        extra_args(args, 1, design);
+
+        int widened = 0, kept = 0;
+        for (auto module : design->selected_modules()) {
+            find_links(module);
+            find_link_loops();
+            std::vector<std::pair<RTLIL::Cell *, RTLIL::Cell *>> to_widen;
+            for (auto &it : link_on_c) {
+                std::string reason = why_link_is_kept(it.second);
+                if (reason.empty()) {
+                    to_widen.push_back({it.first, it.second.source});
+                    continue;
+                }
+                kept++;
+                log("ql_dspv4_link_full_p: %s.%s keeps its %d-bit C link from %s: %s.\n", log_id(module), log_id(it.first), it.second.width,
+                    log_id(it.second.source), reason.c_str());
+            }
+            // Decided first, rewired after: the ranges read the C ports.
+            for (auto &it : to_widen) {
+                log_debug("ql_dspv4_link_full_p: %s.%s now reads all 50 bits of %s's P.\n", log_id(module), log_id(it.first), log_id(it.second));
+                it.first->setPort(ID(C), it.second->getPort(ID(P)));
+            }
+            widened += GetSize(to_widen);
+        }
+        log("ql_dspv4_link_full_p: %d C link(s) now read the source's full P, %d left as they were.\n", widened, kept);
+        design->scratchpad_set_int("ql_dspv4_link_full_p.widened", widened);
+        design->scratchpad_set_int("ql_dspv4_link_full_p.kept", kept);
+    }
+
+    void find_links(RTLIL::Module *module)
+    {
+        sigmap.set(module);
+        p_bit_owner.clear();
+        link_on_c.clear();
+        range_of.clear();
+        for (auto cell : module->cells()) {
+            if (cell->type != ID(QL_DSP4) || !cell->hasPort(ID(P)))
+                continue;
+            SigSpec p = sigmap(cell->getPort(ID(P)));
+            for (int i = 0; i < GetSize(p); i++)
+                if (p[i].wire != nullptr)
+                    p_bit_owner[p[i]] = {cell, i};
+        }
+        for (auto cell : module->selected_cells()) {
+            if (cell->type != ID(QL_DSP4) || !cell->hasPort(ID(C)))
+                continue;
+            std::optional<ResultLink> link = link_on(sigmap(cell->getPort(ID(C))));
+            if (link)
+                link_on_c[cell] = *link;
+        }
+    }
+
+    // C counts as a link when it is P[0..width-1] of one cell, bit for bit,
+    // and nothing but an extension of that above. A C that already reads all
+    // of P needs nothing.
+    std::optional<ResultLink> link_on(const SigSpec &c)
+    {
+        if (GetSize(c) < 2 || !p_bit_owner.count(c[0]) || p_bit_owner.at(c[0]).second != 0)
+            return std::nullopt;
+        RTLIL::Cell *source = p_bit_owner.at(c[0]).first;
+        SigSpec p = sigmap(source->getPort(ID(P)));
+        if (GetSize(p) != GetSize(c))
+            return std::nullopt;
+        int width = 0;
+        while (width < GetSize(c) && width < GetSize(p) && c[width] == p[width])
+            width++;
+        if (width == GetSize(c))
+            return std::nullopt;
+        SigSpec above = c.extract(width, GetSize(c) - width);
+        if (above == SigSpec(c[width - 1], GetSize(above)))
+            return ResultLink{source, width, true};
+        if (above == SigSpec(State::S0, GetSize(above)))
+            return ResultLink{source, width, false};
+        return std::nullopt;
+    }
+
+    // A cell whose chain of C sources comes back round to itself. Its C value
+    // is bounded by the port alone. Found from the links, so the answer does
+    // not depend on the order the cells are stored in.
+    void find_link_loops()
+    {
+        cells_on_link_loops.clear();
+        for (auto &it : link_on_c) {
+            std::vector<RTLIL::Cell *> path;
+            pool<RTLIL::Cell *> on_path;
+            RTLIL::Cell *cell = it.first;
+            while (cell != nullptr && !on_path.count(cell)) {
+                path.push_back(cell);
+                on_path.insert(cell);
+                cell = link_on_c.count(cell) ? link_on_c.at(cell).source : nullptr;
+            }
+            if (cell == nullptr)
+                continue;
+            auto loop_start = std::find(path.begin(), path.end(), cell);
+            cells_on_link_loops.insert(loop_start, path.end());
+        }
+    }
+
+    std::string why_link_is_kept(const ResultLink &link)
+    {
+        if (!range_rule_covers(link.source))
+            return stringf("%s's mode is %s, which has no value range rule here", log_id(link.source), dspv4_mode_name_of(link.source));
+        std::optional<ValueRange> range = source_range(link.source);
+        if (!range)
+            return stringf("%s's value can exceed the 50-bit P port", log_id(link.source));
+        if (!dspv4_link_fits(*range, link))
+            return stringf("%s's value range [%lld, %lld] does not fit %d bits read %s", log_id(link.source), (long long)range->low,
+                           (long long)range->high, link.width, link.sign_extended ? "signed" : "unsigned");
+        return "";
+    }
+
+    // A mode in DSPV4_BOUNDED_MODES, with A and B from their ports and the
+    // carry-in tied as dspv4_apply_mode() ties it.
+    bool range_rule_covers(RTLIL::Cell *cell)
+    {
+        bool bounded_mode = false;
+        for (const char *name : DSPV4_BOUNDED_MODES)
+            bounded_mode = bounded_mode || dspv4_cell_has_mode(cell, dspv4_mode(name));
+        if (!bounded_mode)
+            return false;
+        for (auto select : {ID(A_IN_SEL), ID(B_IN_SEL)})
+            if (cell->hasParam(select) && cell->getParam(select).as_bool())
+                return false;
+        State tied_carry_in = cell->getParam(ID(ALUMODE)).as_int() == 1 ? State::S1 : State::S0;
+        return cell->hasPort(ID(CIN)) && sigmap(cell->getPort(ID(CIN))) == SigSpec(tied_carry_in);
+    }
+
+    ValueRange port_range(RTLIL::Cell *cell, RTLIL::IdString port) { return dspv4_port_range(sigmap(dspv4_port_or_empty(cell, port))); }
+
+    // The multiplier's two inputs, built as dsp4_logical_map.v builds them.
+    // INMODE[1] zeroes the operand PREADDINSEL picks, INMODE[2] lets D in,
+    // INMODE[3] subtracts. The pre-adder gives AD = D +/- (A, or B under
+    // PREADDINSEL) in 32 bits; AMULTSEL multiplies by AD, BMULTSEL by AD[17:0].
+    ValueRange product_range(RTLIL::Cell *cell)
+    {
+        int inmode = cell->getParam(ID(INMODE)).as_int();
+        bool b_into_preadder = cell->getParam(ID(PREADDINSEL)).as_bool();
+        bool zero_gate = inmode & 2;
+        ValueRange zero = {0, 0};
+        ValueRange a = zero_gate && !b_into_preadder ? zero : port_range(cell, ID::A);
+        ValueRange b = zero_gate && b_into_preadder ? zero : port_range(cell, ID::B);
+        ValueRange d = inmode & 4 ? port_range(cell, ID(D)) : zero;
+        ValueRange into_preadder = b_into_preadder ? b : a;
+        ValueRange ad = dspv4_cut_range(inmode & 8 ? dspv4_difference_range(d, into_preadder) : dspv4_sum_range(d, into_preadder), 32);
+        ValueRange multiplicand = cell->getParam(ID(AMULTSEL)).as_bool() ? ad : a;
+        ValueRange multiplier = cell->getParam(ID(BMULTSEL)).as_bool() ? dspv4_cut_range(ad, 18) : b;
+        return dspv4_product_range(multiplicand, multiplier);
+    }
+
+    // The ALU computes Z + (W+X+Y) + CIN with ALUMODE inverting terms
+    // (dspv4_sim.v). Z is C in the _C modes, else 0. 00 is product + Z, 11 is
+    // Z - product, 01 (CIN = 1) is product - Z. Zero is always in the range:
+    // the registers reset to it.
+    std::optional<ValueRange> source_range(RTLIL::Cell *cell)
+    {
+        if (range_of.count(cell))
+            return range_of.at(cell);
+        ValueRange product = product_range(cell);
+        ValueRange z = {0, 0};
+        if (cell->getParam(ID(OPMODE)).as_int() != dspv4_mode("MULT").opmode)
+            z = c_range(cell);
+        ValueRange value;
+        switch (cell->getParam(ID(ALUMODE)).as_int()) {
+        case 0:
+            value = dspv4_sum_range(product, z);
+            break;
+        case 3:
+            value = dspv4_difference_range(z, product);
+            break;
+        case 1:
+            value = dspv4_difference_range(product, z);
+            break;
+        default:
+            log_abort();
+        }
+        value = {std::min<int64_t>(value.low, 0), std::max<int64_t>(value.high, 0)};
+        std::optional<ValueRange> result;
+        if (value.low >= P_PORT_LOW && value.high <= P_PORT_HIGH)
+            result = value;
+        range_of[cell] = result;
+        return result;
+    }
+
+    // C carries the source's own value when the link to it is one this pass
+    // would widen; otherwise only the port bounds it.
+    ValueRange c_range(RTLIL::Cell *cell)
+    {
+        ValueRange port = port_range(cell, ID(C));
+        if (!link_on_c.count(cell) || cells_on_link_loops.count(cell))
+            return port;
+        const ResultLink &link = link_on_c.at(cell);
+        if (!range_rule_covers(link.source))
+            return port;
+        std::optional<ValueRange> source = source_range(link.source);
+        if (!source || !dspv4_link_fits(*source, link))
+            return port;
+        return *source;
+    }
+} QlDspV4LinkFullPPass;
+
 PRIVATE_NAMESPACE_END
