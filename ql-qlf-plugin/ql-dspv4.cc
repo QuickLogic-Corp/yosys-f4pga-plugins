@@ -3764,8 +3764,7 @@ struct QlDspV4Pass : public Pass {
     // and one $add input is prev, another cell's P. The link carries prev and k
     // moves to C. C must read all of t, and the $add all of prev, from bit 0.
     void find_grouping_2(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *consumer, RTLIL::Cell *add, const SigSpec &c,
-                         const dict<SigBit, RTLIL::Cell *> &driver_of_bit_0, std::vector<CascadeLink> &links,
-                         pool<RTLIL::Cell *> &claimed_adders)
+                         const dict<SigBit, RTLIL::Cell *> &driver_of_bit_0, std::vector<CascadeLink> &links, pool<RTLIL::Cell *> &claimed_adders)
     {
         SigSpec t = sigmap(add->getPort(ID::Y));
         AlignedRead t_read = aligned_read(c, t);
