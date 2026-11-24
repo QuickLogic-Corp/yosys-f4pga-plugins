@@ -3395,7 +3395,8 @@ struct QlDspV4LinkFullPPass : public Pass {
             }
             for (auto cell : mixed_c) {
                 mixed++;
-                log("ql_dspv4_link_full_p: %s: C %s left as it is: it mixes P bits in place with other bits, so it can still split.\n",
+                log("ql_dspv4_link_full_p: %s: C %s left as it is: it mixes P bits in place with other bits, so its bits can end up on two inputs "
+                    "(pcin_i and c_i).\n",
                     log_id(module), log_signal(cell->getPort(ID(C))));
             }
             // Decided first, rewired after: the ranges read the C ports.

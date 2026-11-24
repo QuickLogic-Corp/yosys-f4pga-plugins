@@ -160,6 +160,13 @@ module dspv4_link_bottom_edge (input [15:0] x, input signed [17:0] a1, b1,
   assign p = t + a1 * b1;
 endmodule
 
+// Unsigned: x * 65537 reaches 2^32 - 1, exactly the top of 32 bits.
+module dspv4_link_unsigned_top_edge (input [15:0] x, input [16:0] a1, b1,
+                                     output [31:0] t, output [34:0] p);
+  assign t = x * 17'd65537;
+  assign p = t + a1 * b1;
+endmodule
+
 // One source, two consumers.
 module dspv4_link_two_consumers (input signed [17:0] a0, b0, a1, b1, a2, b2,
                                  output signed [36:0] p, output signed [36:0] q);

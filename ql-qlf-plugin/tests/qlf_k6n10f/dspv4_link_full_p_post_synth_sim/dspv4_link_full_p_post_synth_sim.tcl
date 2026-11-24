@@ -69,6 +69,7 @@ set blocks {
     {dspv4_link_xpath_b             {XPATH_B x1, MULT_ADD_C x1}                               1  50}
     {dspv4_link_top_edge            {MULT_ADD_C x1, MULT x1}                                  1  50}
     {dspv4_link_bottom_edge         {MULT_RSUB_C x1, MULT_ADD_C x1}                           1  50}
+    {dspv4_link_unsigned_top_edge   {MULT_ADD_C x1, MULT x1}                                  1  50}
     {dspv4_link_two_consumers       {MULT_ADD_C x2, MULT x1}                                  2  50}
     {dspv4_link_instance            {MULT_ADD_C x1}                                           1  50}
     {dspv4_link_constant_c          {MULT_RSUB_C x1, MULT_ADD_C x1}                           1  50}

@@ -8,11 +8,12 @@ module tb;
   reg signed [35:0] c;
   reg [9:0] x;
   reg signed [3:0] c4;
-  reg [16:0] u1, u2;
+  reg [16:0] u1, u2, u3, u4;
+  reg [33:0] c34;
   reg [15:0] x16;
   reg signed [31:0] w32;
   reg signed [48:0] c49;
-  reg [323:0] xy;
+  reg [251:0] xy;
   reg signed [15:0] h0, h1;
   reg signed [29:0] w30;
   reg signed [5:0] x6;
@@ -59,6 +60,16 @@ module tb;
   dspv4_link_kept_bottom_edge     bottom_rtl (.x(x16), .a1(a1), .b1(b1), .t(bottom_t_rtl), .p(bottom_p_rtl));
   dspv4_link_kept_bottom_edge_syn bottom_syn (.x(x16), .a1(a1), .b1(b1), .t(bottom_t_syn), .p(bottom_p_syn));
 
+  wire [33:0] uwrap_t_rtl, uwrap_t_syn;
+  wire [35:0] uwrap_p_rtl, uwrap_p_syn;
+  dspv4_link_kept_unsigned_wrap     uwrap_rtl (.a0(u3), .b0(u4), .a1(u1), .b1(u2), .c(c34), .t(uwrap_t_rtl), .p(uwrap_p_rtl));
+  dspv4_link_kept_unsigned_wrap_syn uwrap_syn (.a0(u3), .b0(u4), .a1(u1), .b1(u2), .c(c34), .t(uwrap_t_syn), .p(uwrap_p_syn));
+
+  wire [31:0] utop_t_rtl, utop_t_syn;
+  wire [34:0] utop_p_rtl, utop_p_syn;
+  dspv4_link_kept_unsigned_top_edge     utop_rtl (.x(x16), .a1(u1), .b1(u2), .t(utop_t_rtl), .p(utop_p_rtl));
+  dspv4_link_kept_unsigned_top_edge_syn utop_syn (.x(x16), .a1(u1), .b1(u2), .t(utop_t_syn), .p(utop_p_syn));
+
   wire signed [48:0] exceed_t_rtl, exceed_t_syn;
   wire signed [49:0] exceed_p_rtl, exceed_p_syn;
   dspv4_link_kept_exceed     exceed_rtl (.a0(w32), .b0(b0), .c0(c49), .a1(a1), .b1(b1), .t(exceed_t_rtl), .p(exceed_p_rtl));
@@ -74,9 +85,9 @@ module tb;
   dspv4_link_kept_carry_syn carry_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(carry_t_syn), .p(carry_p_syn));
 
   wire signed [36:0] rz_rtl [1:7], rz_syn [1:7];
-  dspv4_link_kept_register_zeros     rz_r (.clk(clk), .rst(rst), .xy(xy[251:0]), .p1(rz_rtl[1]), .p2(rz_rtl[2]), .p3(rz_rtl[3]),
+  dspv4_link_kept_register_zeros     rz_r (.clk(clk), .rst(rst), .xy(xy), .p1(rz_rtl[1]), .p2(rz_rtl[2]), .p3(rz_rtl[3]),
                                            .p4(rz_rtl[4]), .p5(rz_rtl[5]), .p6(rz_rtl[6]), .p7(rz_rtl[7]));
-  dspv4_link_kept_register_zeros_syn rz_s (.clk(clk), .rst(rst), .xy(xy[251:0]), .p1(rz_syn[1]), .p2(rz_syn[2]), .p3(rz_syn[3]),
+  dspv4_link_kept_register_zeros_syn rz_s (.clk(clk), .rst(rst), .xy(xy), .p1(rz_syn[1]), .p2(rz_syn[2]), .p3(rz_syn[3]),
                                            .p4(rz_syn[4]), .p5(rz_syn[5]), .p6(rz_syn[6]), .p7(rz_syn[7]));
 
   wire signed [45:0] pbs_t_rtl, pbs_t_syn;
@@ -118,7 +129,7 @@ module tb;
 
   task drive;
     x = $random; c4 = $random; u1 = $random; u2 = $random;
-    xy = {$random, $random, $random, $random, $random, $random, $random, $random, $random, $random, $random}; x6 = $random;
+    xy = {$random, $random, $random, $random, $random, $random, $random, $random}; x6 = $random;
     rst = (i % 50 == 0);
     if (i % 4 == 0) begin
       a0 = extreme($random); b0 = extreme($random); a1 = extreme($random); b1 = extreme($random);
@@ -129,11 +140,14 @@ module tb;
       c49 = $random & 1 ? 49'sh1000000000000 : 49'shffffffffffff;
       h0 = $random & 1 ? 16'sh8000 : 16'sh7fff; h1 = $random & 1 ? 16'sh8000 : 16'sh7fff;
       w30 = $random & 1 ? 30'sh20000000 : 30'sh1fffffff;
+      u3 = $random & 1 ? 17'h1ffff : 17'h0; u4 = $random & 1 ? 17'h1ffff : 17'h0;
+      c34 = $random & 1 ? 34'h3ffffffff : 34'h0;
     end else begin
       a0 = $random; b0 = $random; a1 = $random; b1 = $random; d0 = $random;
       c = {$random, $random};
       x16 = $random; w32 = $random; c49 = {$random, $random};
       h0 = $random; h1 = $random; w30 = $random;
+      u3 = $random; u4 = $random; c34 = {$random, $random};
     end
   endtask
 
@@ -159,6 +173,10 @@ module tb;
       check("top_edge.p", top_p_rtl, top_p_syn);
       check("bottom_edge.t", bottom_t_rtl, bottom_t_syn);
       check("bottom_edge.p", bottom_p_rtl, bottom_p_syn);
+      check("unsigned_wrap.t", uwrap_t_rtl, uwrap_t_syn);
+      check("unsigned_wrap.p", uwrap_p_rtl, uwrap_p_syn);
+      check("unsigned_top_edge.t", utop_t_rtl, utop_t_syn);
+      check("unsigned_top_edge.p", utop_p_rtl, utop_p_syn);
       check("exceed.t", exceed_t_rtl, exceed_t_syn);
       check("exceed.p", exceed_p_rtl, exceed_p_syn);
       check("rss.t", rss_t_rtl, rss_t_syn);

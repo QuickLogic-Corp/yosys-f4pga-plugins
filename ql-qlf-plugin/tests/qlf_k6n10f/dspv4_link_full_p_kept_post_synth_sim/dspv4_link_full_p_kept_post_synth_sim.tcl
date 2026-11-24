@@ -77,6 +77,14 @@ synth_one dspv4_link_kept_bottom_edge
 assert_kept 1 33 c:p_QL_DSP4_ALU_* {value range [-4294967297, -2] does not fit 33 bits read signed}
 write_syn dspv4_link_kept_bottom_edge
 
+synth_one dspv4_link_kept_unsigned_wrap
+assert_kept 1 34 c:p_QL_DSP4_ALU_* {value range [0, 34359476224] does not fit 34 bits read unsigned}
+write_syn dspv4_link_kept_unsigned_wrap
+
+synth_one dspv4_link_kept_unsigned_top_edge
+assert_kept 1 32 c:p_QL_DSP4_ALU_* {value range [1, 4294967296] does not fit 32 bits read unsigned}
+write_syn dspv4_link_kept_unsigned_top_edge
+
 synth_one dspv4_link_kept_exceed
 assert_kept 1 49 c:p_QL_DSP4_ALU_* {value can exceed the 50-bit P port}
 write_syn dspv4_link_kept_exceed

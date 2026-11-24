@@ -86,6 +86,20 @@ module dspv4_link_kept_bottom_edge (input [15:0] x, input signed [17:0] a1, b1,
   assign p = t + a1 * b1;
 endmodule
 
+// Unsigned: a0 * b0 + c can need 35 bits but keeps 34. Only the top is outside the net.
+module dspv4_link_kept_unsigned_wrap (input [16:0] a0, b0, a1, b1, input [33:0] c,
+                                      output [33:0] t, output [35:0] p);
+  assign t = a0 * b0 + c;
+  assign p = t + a1 * b1;
+endmodule
+
+// Unsigned: x * 65537 + 1 reaches 2^32, one past the top of 32 bits.
+module dspv4_link_kept_unsigned_top_edge (input [15:0] x, input [16:0] a1, b1,
+                                          output [31:0] t, output [34:0] p);
+  assign t = x * 17'd65537 + 32'd1;
+  assign p = t + a1 * b1;
+endmodule
+
 // A 32 x 18 product minus a 49-bit c reaches 2^49: past the 50-bit P port.
 module dspv4_link_kept_exceed (input signed [31:0] a0, input signed [17:0] b0, input signed [48:0] c0,
                                input signed [17:0] a1, b1, output signed [48:0] t, output signed [49:0] p);
@@ -220,7 +234,7 @@ module dspv4_link_kept_xpath_b_short (input signed [17:0] a0, d0, a1, b1, output
   assign p = t + a1 * b1;
 endmodule
 
-// C mixes t's bits in place with other bits: not a link, but it can still split.
+// C mixes t's bits in place with other bits: not a link, but its bits can end up on two inputs.
 module dspv4_link_kept_mixed (input signed [17:0] a0, b0, a1, b1, input signed [5:0] x,
                               output signed [35:0] t, output signed [36:0] p);
   assign t = a0 * b0;

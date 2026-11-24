@@ -96,6 +96,11 @@ module tb;
   dspv4_link_bottom_edge     bottom_rtl (.x(x16), .a1(a1), .b1(b1), .t(bottom_t_rtl), .p(bottom_p_rtl));
   dspv4_link_bottom_edge_syn bottom_syn (.x(x16), .a1(a1), .b1(b1), .t(bottom_t_syn), .p(bottom_p_syn));
 
+  wire [31:0] utop_t_rtl, utop_t_syn;
+  wire [34:0] utop_p_rtl, utop_p_syn;
+  dspv4_link_unsigned_top_edge     utop_rtl (.x(x16), .a1(u2), .b1(u3), .t(utop_t_rtl), .p(utop_p_rtl));
+  dspv4_link_unsigned_top_edge_syn utop_syn (.x(x16), .a1(u2), .b1(u3), .t(utop_t_syn), .p(utop_p_syn));
+
   wire signed [36:0] two_p_rtl, two_p_syn, two_q_rtl, two_q_syn;
   dspv4_link_two_consumers     two_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .a2(a2), .b2(b2), .p(two_p_rtl), .q(two_q_rtl));
   dspv4_link_two_consumers_syn two_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .a2(a2), .b2(b2), .p(two_p_syn), .q(two_q_syn));
@@ -201,6 +206,8 @@ module tb;
       check("top_edge.p", top_p_rtl, top_p_syn);
       check("bottom_edge.t", bottom_t_rtl, bottom_t_syn);
       check("bottom_edge.p", bottom_p_rtl, bottom_p_syn);
+      check("unsigned_top_edge.t", utop_t_rtl, utop_t_syn);
+      check("unsigned_top_edge.p", utop_p_rtl, utop_p_syn);
       check("two_consumers.p", two_p_rtl, two_p_syn);
       check("two_consumers.q", two_q_rtl, two_q_syn);
       check("instance.t", inst_t_rtl, inst_t_syn);
