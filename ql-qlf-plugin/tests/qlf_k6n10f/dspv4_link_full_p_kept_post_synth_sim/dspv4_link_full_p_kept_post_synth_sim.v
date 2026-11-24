@@ -253,3 +253,25 @@ module dspv4_link_kept_no_cin (input signed [17:0] a0, b0, a1, b1, output signed
   assign t = p0[35:0];
   assign p = t + a1 * b1;
 endmodule
+
+// Only the first register stage on A, then only on B. Each still clears to 0 at reset.
+module dspv4_link_kept_first_stage_registers (input clk, input rst, input [71:0] xy, output signed [36:0] p1, p2);
+  wire [49:0] add_areg0_p;
+  QL_DSP4 #(.OPMODE(9'd53), .AREG0(1'b1)) add_areg0 (.A(32'sd5), .B(18'sd7), .C(-50'sd40), .D(27'd0), .CIN(1'b0),
+      .ACIN(32'd0), .BCIN(18'd0), .PCIN(50'd0), .CCIN(1'b0), .SIGNCIN(1'b0), .P(add_areg0_p),
+      .CLK(clk), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1), .CEP(1'b1),
+      .ARSTN(1'b1), .RSTN(!rst), .ACCRSTN(!rst));
+
+  wire signed [5:0] add_areg0_t = add_areg0_p[5:0];
+
+  wire [49:0] add_breg0_p;
+  QL_DSP4 #(.OPMODE(9'd53), .BREG0(1'b1)) add_breg0 (.A(32'sd5), .B(18'sd7), .C(-50'sd40), .D(27'd0), .CIN(1'b0),
+      .ACIN(32'd0), .BCIN(18'd0), .PCIN(50'd0), .CCIN(1'b0), .SIGNCIN(1'b0), .P(add_breg0_p),
+      .CLK(clk), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1), .CEP(1'b1),
+      .ARSTN(1'b1), .RSTN(!rst), .ACCRSTN(!rst));
+
+  wire signed [5:0] add_breg0_t = add_breg0_p[5:0];
+
+  assign p1 = add_areg0_t + $signed(xy[0 +: 18]) * $signed(xy[18 +: 18]);
+  assign p2 = add_breg0_t + $signed(xy[36 +: 18]) * $signed(xy[54 +: 18]);
+endmodule

@@ -3361,8 +3361,8 @@ struct QlDspV4LinkFullPPass : public Pass {
         log("every bit. Every link left as it is gets a log line saying why, and so\n");
         log("does a C that mixes P bits in place with other bits.\n");
         log("\n");
-        log("The counts go to the scratchpad as ql_dspv4_link_full_p.widened and\n");
-        log("ql_dspv4_link_full_p.kept.\n");
+        log("The counts go to the scratchpad as ql_dspv4_link_full_p.widened,\n");
+        log("ql_dspv4_link_full_p.kept and ql_dspv4_link_full_p.mixed.\n");
         log("\n");
     }
 
@@ -3378,7 +3378,7 @@ struct QlDspV4LinkFullPPass : public Pass {
         log_header(design, "Executing QL_DSPV4_LINK_FULL_P pass.\n");
         extra_args(args, 1, design);
 
-        int widened = 0, kept = 0;
+        int widened = 0, kept = 0, mixed = 0;
         for (auto module : design->selected_modules()) {
             find_links(module);
             find_link_loops();
@@ -3394,7 +3394,7 @@ struct QlDspV4LinkFullPPass : public Pass {
                     reason.c_str());
             }
             for (auto cell : mixed_c) {
-                kept++;
+                mixed++;
                 log("ql_dspv4_link_full_p: %s: C %s left as it is: it mixes P bits in place with other bits, so it can still split.\n",
                     log_id(module), log_signal(cell->getPort(ID(C))));
             }
@@ -3406,9 +3406,11 @@ struct QlDspV4LinkFullPPass : public Pass {
             }
             widened += GetSize(to_widen);
         }
-        log("ql_dspv4_link_full_p: %d C link(s) now read the source's full P, %d left as they were.\n", widened, kept);
+        log("ql_dspv4_link_full_p: %d C link(s) now read the source's full P, %d left as they were; %d C(s) mix P bits with other bits.\n", widened,
+            kept, mixed);
         design->scratchpad_set_int("ql_dspv4_link_full_p.widened", widened);
         design->scratchpad_set_int("ql_dspv4_link_full_p.kept", kept);
+        design->scratchpad_set_int("ql_dspv4_link_full_p.mixed", mixed);
     }
 
     void find_links(RTLIL::Module *module)

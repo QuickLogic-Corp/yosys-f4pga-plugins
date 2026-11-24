@@ -12,7 +12,7 @@ module tb;
   reg [15:0] x16;
   reg signed [31:0] w32;
   reg signed [48:0] c49;
-  reg [251:0] xy;
+  reg [323:0] xy;
   reg signed [15:0] h0, h1;
   reg signed [29:0] w30;
   reg signed [5:0] x6;
@@ -74,9 +74,9 @@ module tb;
   dspv4_link_kept_carry_syn carry_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(carry_t_syn), .p(carry_p_syn));
 
   wire signed [36:0] rz_rtl [1:7], rz_syn [1:7];
-  dspv4_link_kept_register_zeros     rz_r (.clk(clk), .rst(rst), .xy(xy), .p1(rz_rtl[1]), .p2(rz_rtl[2]), .p3(rz_rtl[3]),
+  dspv4_link_kept_register_zeros     rz_r (.clk(clk), .rst(rst), .xy(xy[251:0]), .p1(rz_rtl[1]), .p2(rz_rtl[2]), .p3(rz_rtl[3]),
                                            .p4(rz_rtl[4]), .p5(rz_rtl[5]), .p6(rz_rtl[6]), .p7(rz_rtl[7]));
-  dspv4_link_kept_register_zeros_syn rz_s (.clk(clk), .rst(rst), .xy(xy), .p1(rz_syn[1]), .p2(rz_syn[2]), .p3(rz_syn[3]),
+  dspv4_link_kept_register_zeros_syn rz_s (.clk(clk), .rst(rst), .xy(xy[251:0]), .p1(rz_syn[1]), .p2(rz_syn[2]), .p3(rz_syn[3]),
                                            .p4(rz_syn[4]), .p5(rz_syn[5]), .p6(rz_syn[6]), .p7(rz_syn[7]));
 
   wire signed [45:0] pbs_t_rtl, pbs_t_syn;
@@ -118,7 +118,7 @@ module tb;
 
   task drive;
     x = $random; c4 = $random; u1 = $random; u2 = $random;
-    xy = {$random, $random, $random, $random, $random, $random, $random, $random}; x6 = $random;
+    xy = {$random, $random, $random, $random, $random, $random, $random, $random, $random, $random, $random}; x6 = $random;
     rst = (i % 50 == 0);
     if (i % 4 == 0) begin
       a0 = extreme($random); b0 = extreme($random); a1 = extreme($random); b1 = extreme($random);

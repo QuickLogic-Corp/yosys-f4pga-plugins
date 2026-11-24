@@ -22,11 +22,12 @@ proc synth_one {top} {
     check -assert
 }
 # Counts bits after splitnets on the consumers only: an accumulator's own Z reads all 64.
-proc assert_kept {kept net_bits consumers reason {widened 0}} {
+proc assert_kept {kept net_bits consumers reason {widened 0} {mixed 0}} {
     scratchpad -assert ql_dspv4_link_full_p.widened $widened
     scratchpad -assert ql_dspv4_link_full_p.kept $kept
-    if { [catch { exec grep -c -F $reason synth.log } n] || $n != $kept } {
-        error "expected $kept kept link(s) with reason: $reason"
+    scratchpad -assert ql_dspv4_link_full_p.mixed $mixed
+    if { [catch { exec grep -c -F $reason synth.log } n] || $n != $kept + $mixed } {
+        error "expected [expr {$kept + $mixed}] line(s) with reason: $reason"
     }
     design -save syn
     splitnets -ports
@@ -111,11 +112,11 @@ assert_kept 1 36 c:p_QL_DSP4_ALU_* {value range [-34359476224, 34359738368] does
 write_syn dspv4_link_kept_xpath_b_short
 
 synth_one dspv4_link_kept_mixed
-assert_kept 1 30 c:p_QL_DSP4_ALU_* {mixes P bits in place with other bits}
+assert_kept 0 30 c:p_QL_DSP4_ALU_* {mixes P bits in place with other bits} 0 1
 write_syn dspv4_link_kept_mixed
 
 synth_one dspv4_link_kept_mixed_shift
-assert_kept 1 32 c:p_QL_DSP4_ALU_* {mixes P bits in place with other bits}
+assert_kept 0 32 c:p_QL_DSP4_ALU_* {mixes P bits in place with other bits} 0 1
 write_syn dspv4_link_kept_mixed_shift
 
 synth_one dspv4_link_kept_bcin
@@ -125,3 +126,7 @@ write_syn dspv4_link_kept_bcin
 # Not simulated: with no CIN connection the RTL's carry-in is undriven, so it reads x.
 synth_one dspv4_link_kept_no_cin
 assert_kept 1 36 c:p_QL_DSP4_ALU_* {carry-in (CIN) is not the constant its mode needs}
+
+# Not simulated: with AREG0 or BREG0 alone the techmap builds a register stage the sim model does not.
+synth_one dspv4_link_kept_first_stage_registers
+assert_kept 2 12 c:p?_QL_DSP4_ALU_* {value range [-40, -5] does not fit 6 bits read signed}

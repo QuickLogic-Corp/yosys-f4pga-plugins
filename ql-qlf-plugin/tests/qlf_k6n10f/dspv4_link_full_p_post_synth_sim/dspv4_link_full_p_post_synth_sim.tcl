@@ -37,6 +37,7 @@ proc assert_modes {top modes} {
 proc assert_links {widened z_bits} {
     scratchpad -assert ql_dspv4_link_full_p.widened $widened
     scratchpad -assert ql_dspv4_link_full_p.kept 0
+    scratchpad -assert ql_dspv4_link_full_p.mixed 0
     design -save syn
     splitnets -ports
     select -assert-count $z_bits t:QL_DSP4_* %co w:* %i t:QL_DSP4_ALU_* %ci:+\[Z\] w:* %i %i
