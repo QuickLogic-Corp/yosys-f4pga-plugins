@@ -145,8 +145,9 @@ install_plugin: $(SO_LIB) | $(YOSYS_PLUGINS_DIR)
 	@if cmp -s $(SO_LIB) $(INSTALLED_SO); then \
 		echo "$(INSTALLED_SO) already matches $(SO_LIB)"; \
 	else \
-		install -D $(SO_LIB) $(INSTALLED_SO) && \
-		echo "Installed $(SO_LIB) -> $(INSTALLED_SO) (cksum $$(cksum < $(INSTALLED_SO)))"; \
+		install -D $(SO_LIB) $(INSTALLED_SO).tmp && \
+		mv -f $(INSTALLED_SO).tmp $(INSTALLED_SO) && \
+		echo "Installed $(SO_LIB) -> $(INSTALLED_SO) (sha256 $$(sha256sum < $(INSTALLED_SO) | cut -d' ' -f1))"; \
 	fi
 
 .PHONY: install
