@@ -40,3 +40,34 @@ module dspv4_link_kept_preadd (input signed [17:0] d0, a0, b0, a1, b1,
   assign t = (d0 + a0) * b0;
   assign p = t + a1 * b1;
 endmodule
+
+// The M register clears to 0 while the product never is 0, so tu = c < 0 during reset.
+module dspv4_link_kept_reset (input clk, input rst, input [9:0] x, input signed [3:0] c,
+                              input [16:0] a1, b1, output [36:0] p);
+  reg signed [13:0] m;
+  always @(posedge clk) begin
+    if (rst)
+      m <= 0;
+    else
+      m <= ($signed({1'b0, x}) + 12'sd16) * 3'sd3;
+  end
+  wire [13:0] tu = m + c;
+  assign p = tu + a1 * b1;
+endmodule
+
+// Two DSPs that feed each other: a loop of links.
+module dspv4_link_kept_loop (input clk, input rst, input signed [17:0] a0, b0, a1, b1,
+                             output signed [39:0] y, output signed [39:0] z);
+  reg signed [39:0] p1, p2;
+  always @(posedge clk) begin
+    if (rst) begin
+      p1 <= 0;
+      p2 <= 0;
+    end else begin
+      p1 <= a0 * b0 + p2;
+      p2 <= a1 * b1 + p1;
+    end
+  end
+  assign y = p1;
+  assign z = p2;
+endmodule

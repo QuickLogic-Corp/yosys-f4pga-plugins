@@ -1,10 +1,14 @@
-// RTL against netlist every cycle (!== so x mismatches); every 4th cycle uses extreme operands.
+// RTL against netlist every cycle (!== so x mismatches); every 4th cycle uses extreme operands;
+// reset every 50th cycle.
 `timescale 1ns/1ps
 
 module tb;
   reg clk = 0, rst = 1;
   reg signed [17:0] a0, b0, a1, b1, d0;
   reg signed [35:0] c;
+  reg [9:0] x;
+  reg signed [3:0] c4;
+  reg [16:0] u1, u2;
   integer i, bad = 0;
 
   wire signed [29:0] trunc_t_rtl, trunc_t_syn;
@@ -29,6 +33,14 @@ module tb;
   dspv4_link_kept_preadd     preadd_rtl (.d0(d0), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(preadd_t_rtl), .p(preadd_p_rtl));
   dspv4_link_kept_preadd_syn preadd_syn (.d0(d0), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(preadd_t_syn), .p(preadd_p_syn));
 
+  wire [36:0] reset_p_rtl, reset_p_syn;
+  dspv4_link_kept_reset     reset_rtl (.clk(clk), .rst(rst), .x(x), .c(c4), .a1(u1), .b1(u2), .p(reset_p_rtl));
+  dspv4_link_kept_reset_syn reset_syn (.clk(clk), .rst(rst), .x(x), .c(c4), .a1(u1), .b1(u2), .p(reset_p_syn));
+
+  wire signed [39:0] loop_y_rtl, loop_y_syn, loop_z_rtl, loop_z_syn;
+  dspv4_link_kept_loop     loop_rtl (.clk(clk), .rst(rst), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .y(loop_y_rtl), .z(loop_z_rtl));
+  dspv4_link_kept_loop_syn loop_syn (.clk(clk), .rst(rst), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .y(loop_y_syn), .z(loop_z_syn));
+
   always #5 clk = ~clk;
 
   task check(input [255:0] name, input [49:0] rtl, input [49:0] syn);
@@ -43,6 +55,8 @@ module tb;
   endfunction
 
   task drive;
+    x = $random; c4 = $random; u1 = $random; u2 = $random;
+    rst = (i % 50 == 0);
     if (i % 4 == 0) begin
       a0 = extreme($random); b0 = extreme($random); a1 = extreme($random); b1 = extreme($random);
       d0 = extreme($random);
@@ -67,6 +81,9 @@ module tb;
       check("acc.p", acc_p_rtl, acc_p_syn);
       check("preadd.t", preadd_t_rtl, preadd_t_syn);
       check("preadd.p", preadd_p_rtl, preadd_p_syn);
+      check("reset.p", reset_p_rtl, reset_p_syn);
+      check("loop.y", loop_y_rtl, loop_y_syn);
+      check("loop.z", loop_z_rtl, loop_z_syn);
     end
     $display("RESULT: %0d mismatches in 2000 cycles", bad);
     $finish_and_return(bad == 0 ? 0 : 1);

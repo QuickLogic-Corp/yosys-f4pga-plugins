@@ -1,4 +1,4 @@
-# C links that ql_dspv4_link_full_p must widen to the source's full P (aurora2 #2870).
+# C links that ql_dspv4_link_full_p must widen to the source's full P.
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
@@ -33,12 +33,12 @@ proc assert_modes {top modes} {
     }
 }
 # The net and the P bits above it are one wire, so count bits after splitnets.
-proc assert_links {widened} {
+proc assert_links {widened z_bits} {
     scratchpad -assert ql_dspv4_link_full_p.widened $widened
     scratchpad -assert ql_dspv4_link_full_p.kept 0
     design -save syn
     splitnets -ports
-    select -assert-count [expr {50 * $widened}] t:QL_DSP4_* %co w:* %i t:QL_DSP4_ALU_* %ci:+\[Z\] w:* %i %i
+    select -assert-count $z_bits t:QL_DSP4_* %co w:* %i t:QL_DSP4_ALU_* %ci:+\[Z\] w:* %i %i
     design -load syn
 }
 proc write_syn {top} {
@@ -47,27 +47,28 @@ proc write_syn {top} {
     write_verilog -noattr sim/${top}_post_synth.v
 }
 
-# design, modes ql_dspv4 infers, links widened
+# design, modes ql_dspv4 infers, links widened, bits on Z (50 per source)
 set blocks {
-    {dspv4_link_small               {MULT_ADD_C x1, MULT x1}                                  1}
-    {dspv4_link_chain               {MULT_ADD_C x3, MULT x1}                                  3}
-    {dspv4_link_chain_reversed      {MULT_ADD_C x3, MULT x1}                                  3}
-    {dspv4_link_registered          {MULT_ADD_C x2, MULT x1}                                  2}
-    {dspv4_link_sub                 {MULT x2, MULT_SUB_C x1, MULT_RSUB_C x1}                  2}
-    {dspv4_link_zero                {MULT_ADD_C x1, MULT x1}                                  1}
-    {dspv4_link_preadd_a            {PREADD_A_MULT_B x1, MULT_ADD_C x1}                       1}
-    {dspv4_link_preadd_a_sub        {PREADD_A_SUB_B x1, MULT_ADD_C x1}                        1}
-    {dspv4_link_preadd_b            {PREADD_B_MULT_A x1, MULT_ADD_C x1}                       1}
-    {dspv4_link_preadd_b_sub        {PREADD_B_SUB_A x1, MULT_ADD_C x1}                        1}
-    {dspv4_link_preadd_a_chain      {PREADD_A_MULT_B_C x1, PREADD_A_MULT_B x1, MULT_ADD_C x1} 2}
-    {dspv4_link_preadd_a_sub_chain  {PREADD_A_SUB_B_C x1, PREADD_A_SUB_B x1, MULT_ADD_C x1}   2}
-    {dspv4_link_preadd_b_chain      {PREADD_B_MULT_A_C x1, PREADD_B_MULT_A x1, MULT_ADD_C x1} 2}
-    {dspv4_link_preadd_b_sub_chain  {PREADD_B_SUB_A_C x1, PREADD_B_SUB_A x1, MULT_ADD_C x1}   2}
+    {dspv4_link_small               {MULT_ADD_C x1, MULT x1}                                  1  50}
+    {dspv4_link_chain               {MULT_ADD_C x3, MULT x1}                                  3 150}
+    {dspv4_link_chain_reversed      {MULT_ADD_C x3, MULT x1}                                  3 150}
+    {dspv4_link_registered          {MULT_ADD_C x2, MULT x1}                                  2 100}
+    {dspv4_link_sub                 {MULT_ADD_C x2, MULT_SUB_C x1, MULT_RSUB_C x1, MULT x1}   4 150}
+    {dspv4_link_zero                {MULT_ADD_C x1, MULT x1}                                  1  50}
+    {dspv4_link_preadd_a            {PREADD_A_MULT_B x1, MULT_ADD_C x1}                       1  50}
+    {dspv4_link_preadd_a_sub        {PREADD_A_SUB_B x1, MULT_ADD_C x1}                        1  50}
+    {dspv4_link_preadd_b            {PREADD_B_MULT_A x1, MULT_ADD_C x1}                       1  50}
+    {dspv4_link_preadd_b_sub        {PREADD_B_SUB_A x1, MULT_ADD_C x1}                        1  50}
+    {dspv4_link_preadd_a_chain      {PREADD_A_MULT_B_C x1, PREADD_A_MULT_B x1, MULT_ADD_C x1} 2 100}
+    {dspv4_link_preadd_a_sub_chain  {PREADD_A_SUB_B_C x1, PREADD_A_SUB_B x1, MULT_ADD_C x1}   2 100}
+    {dspv4_link_preadd_b_chain      {PREADD_B_MULT_A_C x1, PREADD_B_MULT_A x1, MULT_ADD_C x1} 2 100}
+    {dspv4_link_preadd_b_sub_chain  {PREADD_B_SUB_A_C x1, PREADD_B_SUB_A x1, MULT_ADD_C x1}   2 100}
 }
+# dspv4_link_sub: one a1*b1 DSP feeds both subtracts, so 3 sources.
 foreach block $blocks {
-    lassign $block top modes widened
+    lassign $block top modes widened z_bits
     synth_one $top
     assert_modes $top $modes
-    assert_links $widened
+    assert_links $widened $z_bits
     write_syn $top
 }

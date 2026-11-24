@@ -42,13 +42,15 @@ module dspv4_link_registered (input clk, input rst, input signed [17:0] x,
   assign y = s0;
 endmodule
 
-// A link into each subtract direction.
-module dspv4_link_sub (input signed [17:0] ar, ai, br, bi, cr, ci,
-                       output signed [36:0] pr, output signed [36:0] pi);
-  wire signed [35:0] m1 = ar * br;
-  wire signed [35:0] m2 = ai * bi;
-  assign pr = m1 - ai * bi;
-  assign pi = cr * ci - m2;
+// MULT_SUB_C and MULT_RSUB_C as sources: a difference of two products fits 36 bits, a sum does not.
+module dspv4_link_sub (input signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3, a4, b4,
+                       output signed [37:0] p, output signed [37:0] q);
+  wire signed [35:0] m1 = a0 * b0;
+  wire signed [35:0] s = m1 - a1 * b1;
+  assign p = s + a2 * b2;
+  wire signed [35:0] m3 = a3 * b3;
+  wire signed [35:0] r = a1 * b1 - m3;
+  assign q = r + a4 * b4;
 endmodule
 
 // Unsigned all the way: the link is zero-extended.
@@ -65,9 +67,9 @@ module dspv4_link_preadd_a (input signed [17:0] d0, a0, b0, a1, b1,
   assign p = t + a1 * b1;
 endmodule
 
-// PREADD_A_SUB_B: (d - a) * b.
+// PREADD_A_SUB_B: (d - a) * b fits 36 bits; (d + a) * b does not.
 module dspv4_link_preadd_a_sub (input signed [17:0] d0, a0, b0, a1, b1,
-                                output signed [36:0] t, output signed [37:0] p);
+                                output signed [35:0] t, output signed [36:0] p);
   assign t = (d0 - a0) * b0;
   assign p = t + a1 * b1;
 endmodule
@@ -80,10 +82,10 @@ module dspv4_link_preadd_b (input signed [15:0] d0, b0, input signed [29:0] a0,
   assign p = t + a1 * b1;
 endmodule
 
-// PREADD_B_SUB_A: (d - b) * a.
+// PREADD_B_SUB_A: (d - b) * a fits 46 bits; (d + b) * a does not.
 module dspv4_link_preadd_b_sub (input signed [15:0] d0, b0, input signed [29:0] a0,
                                 input signed [17:0] a1, b1,
-                                output signed [46:0] t, output signed [47:0] p);
+                                output signed [45:0] t, output signed [46:0] p);
   assign t = (d0 - b0) * a0;
   assign p = t + a1 * b1;
 endmodule
@@ -99,14 +101,14 @@ module dspv4_link_preadd_a_chain (input signed [15:0] z0, z7, z1, z6, k0, k1,
   assign p = q0 + a2 * b2;
 endmodule
 
-// PREADD_A_SUB_B into PREADD_A_SUB_B_C.
+// PREADD_A_SUB_B into PREADD_A_SUB_B_C, one bit narrower than the add chain.
 module dspv4_link_preadd_a_sub_chain (input signed [15:0] z0, z7, z1, z6, k0, k1,
                                       input signed [17:0] a2, b2,
                                       output signed [36:0] p);
   wire signed [16:0] s0 = z0 - z7;
   wire signed [16:0] s1 = z1 - z6;
-  wire signed [32:0] q1 = s1 * k1;
-  wire signed [33:0] q0 = q1 + s0 * k0;
+  wire signed [31:0] q1 = s1 * k1;
+  wire signed [32:0] q0 = q1 + s0 * k0;
   assign p = q0 + a2 * b2;
 endmodule
 
@@ -120,12 +122,12 @@ module dspv4_link_preadd_b_chain (input signed [15:0] d0, b0, d1, b1,
   assign p = q0 + a2 * b2;
 endmodule
 
-// PREADD_B_SUB_A into PREADD_B_SUB_A_C.
+// PREADD_B_SUB_A into PREADD_B_SUB_A_C, one bit narrower than the add chain.
 module dspv4_link_preadd_b_sub_chain (input signed [15:0] d0, b0, d1, b1,
                                       input signed [29:0] a0, a1,
                                       input signed [17:0] a2, b2,
-                                      output signed [48:0] p);
-  wire signed [46:0] q1 = (d1 - b1) * a1;
-  wire signed [47:0] q0 = q1 + (d0 - b0) * a0;
+                                      output signed [47:0] p);
+  wire signed [45:0] q1 = (d1 - b1) * a1;
+  wire signed [46:0] q0 = q1 + (d0 - b0) * a0;
   assign p = q0 + a2 * b2;
 endmodule

@@ -3,7 +3,7 @@
 
 module tb;
   reg clk = 0, rst = 1;
-  reg signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3;
+  reg signed [17:0] a0, b0, a1, b1, a2, b2, a3, b3, a4, b4;
   reg [16:0] u0, u1, u2, u3;
   reg signed [15:0] h0, h1, h2, h3, h4, h5;
   reg signed [29:0] w0, w1;
@@ -26,9 +26,9 @@ module tb;
   dspv4_link_registered     registered_rtl (.clk(clk), .rst(rst), .x(a0), .y(registered_rtl_y));
   dspv4_link_registered_syn registered_syn (.clk(clk), .rst(rst), .x(a0), .y(registered_syn_y));
 
-  wire signed [36:0] sub_rtl_pr, sub_syn_pr, sub_rtl_pi, sub_syn_pi;
-  dspv4_link_sub     sub_rtl (.ar(a0), .ai(a1), .br(b0), .bi(b1), .cr(a2), .ci(b2), .pr(sub_rtl_pr), .pi(sub_rtl_pi));
-  dspv4_link_sub_syn sub_syn (.ar(a0), .ai(a1), .br(b0), .bi(b1), .cr(a2), .ci(b2), .pr(sub_syn_pr), .pi(sub_syn_pi));
+  wire signed [37:0] sub_rtl_p, sub_syn_p, sub_rtl_q, sub_syn_q;
+  dspv4_link_sub     sub_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .a2(a2), .b2(b2), .a3(a3), .b3(b3), .a4(a4), .b4(b4), .p(sub_rtl_p), .q(sub_rtl_q));
+  dspv4_link_sub_syn sub_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .a2(a2), .b2(b2), .a3(a3), .b3(b3), .a4(a4), .b4(b4), .p(sub_syn_p), .q(sub_syn_q));
 
   wire [33:0] zero_t_rtl, zero_t_syn;
   wire [34:0] zero_p_rtl, zero_p_syn;
@@ -40,8 +40,8 @@ module tb;
   dspv4_link_preadd_a     pa_rtl (.d0(a2), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(pa_t_rtl), .p(pa_p_rtl));
   dspv4_link_preadd_a_syn pa_syn (.d0(a2), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(pa_t_syn), .p(pa_p_syn));
 
-  wire signed [36:0] pas_t_rtl, pas_t_syn;
-  wire signed [37:0] pas_p_rtl, pas_p_syn;
+  wire signed [35:0] pas_t_rtl, pas_t_syn;
+  wire signed [36:0] pas_p_rtl, pas_p_syn;
   dspv4_link_preadd_a_sub     pas_rtl (.d0(a2), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(pas_t_rtl), .p(pas_p_rtl));
   dspv4_link_preadd_a_sub_syn pas_syn (.d0(a2), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(pas_t_syn), .p(pas_p_syn));
 
@@ -50,8 +50,8 @@ module tb;
   dspv4_link_preadd_b     pb_rtl (.d0(h0), .b0(h1), .a0(w0), .a1(a1), .b1(b1), .t(pb_t_rtl), .p(pb_p_rtl));
   dspv4_link_preadd_b_syn pb_syn (.d0(h0), .b0(h1), .a0(w0), .a1(a1), .b1(b1), .t(pb_t_syn), .p(pb_p_syn));
 
-  wire signed [46:0] pbs_t_rtl, pbs_t_syn;
-  wire signed [47:0] pbs_p_rtl, pbs_p_syn;
+  wire signed [45:0] pbs_t_rtl, pbs_t_syn;
+  wire signed [46:0] pbs_p_rtl, pbs_p_syn;
   dspv4_link_preadd_b_sub     pbs_rtl (.d0(h0), .b0(h1), .a0(w0), .a1(a1), .b1(b1), .t(pbs_t_rtl), .p(pbs_p_rtl));
   dspv4_link_preadd_b_sub_syn pbs_syn (.d0(h0), .b0(h1), .a0(w0), .a1(a1), .b1(b1), .t(pbs_t_syn), .p(pbs_p_syn));
 
@@ -67,7 +67,7 @@ module tb;
   dspv4_link_preadd_b_chain     pbc_rtl (.d0(h0), .b0(h1), .d1(h2), .b1(h3), .a0(w0), .a1(w1), .a2(a2), .b2(b2), .p(pbc_p_rtl));
   dspv4_link_preadd_b_chain_syn pbc_syn (.d0(h0), .b0(h1), .d1(h2), .b1(h3), .a0(w0), .a1(w1), .a2(a2), .b2(b2), .p(pbc_p_syn));
 
-  wire signed [48:0] pbsc_p_rtl, pbsc_p_syn;
+  wire signed [47:0] pbsc_p_rtl, pbsc_p_syn;
   dspv4_link_preadd_b_sub_chain     pbsc_rtl (.d0(h0), .b0(h1), .d1(h2), .b1(h3), .a0(w0), .a1(w1), .a2(a2), .b2(b2), .p(pbsc_p_rtl));
   dspv4_link_preadd_b_sub_chain_syn pbsc_syn (.d0(h0), .b0(h1), .d1(h2), .b1(h3), .a0(w0), .a1(w1), .a2(a2), .b2(b2), .p(pbsc_p_syn));
 
@@ -100,6 +100,7 @@ module tb;
     if (i % 4 == 0) begin
       a0 = extreme($random); b0 = extreme($random); a1 = extreme($random); b1 = extreme($random);
       a2 = extreme($random); b2 = extreme($random); a3 = extreme($random); b3 = extreme($random);
+      a4 = extreme($random); b4 = extreme($random);
       u0 = extreme_unsigned($random); u1 = extreme_unsigned($random);
       u2 = extreme_unsigned($random); u3 = extreme_unsigned($random);
       h0 = extreme16($random); h1 = extreme16($random); h2 = extreme16($random);
@@ -107,7 +108,7 @@ module tb;
       w0 = extreme30($random); w1 = extreme30($random);
     end else begin
       a0 = $random; b0 = $random; a1 = $random; b1 = $random;
-      a2 = $random; b2 = $random; a3 = $random; b3 = $random;
+      a2 = $random; b2 = $random; a3 = $random; b3 = $random; a4 = $random; b4 = $random;
       u0 = $random; u1 = $random; u2 = $random; u3 = $random;
       h0 = $random; h1 = $random; h2 = $random; h3 = $random; h4 = $random; h5 = $random;
       w0 = $random; w1 = $random;
@@ -126,8 +127,8 @@ module tb;
       check("chain.p", chain_rtl_p, chain_syn_p);
       check("chain_reversed.p", reversed_rtl_p, reversed_syn_p);
       check("registered.y", registered_rtl_y, registered_syn_y);
-      check("sub.pr", sub_rtl_pr, sub_syn_pr);
-      check("sub.pi", sub_rtl_pi, sub_syn_pi);
+      check("sub.p", sub_rtl_p, sub_syn_p);
+      check("sub.q", sub_rtl_q, sub_syn_q);
       check("zero.t", zero_t_rtl, zero_t_syn);
       check("zero.p", zero_p_rtl, zero_p_syn);
       check("preadd_a.t", pa_t_rtl, pa_t_syn);

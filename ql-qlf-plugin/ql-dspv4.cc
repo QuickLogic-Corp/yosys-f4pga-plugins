@@ -3228,7 +3228,7 @@ struct QlDsp4CheckPass : public Pass {
 
 } QlDsp4CheckPass;
 
-// ql_dspv4_link_full_p: a C link reads the source's full P when the value is the same (aurora2 #2870).
+// ql_dspv4_link_full_p: a C link reads the source's full P when the value is the same.
 
 struct ValueRange {
     int64_t low, high;
@@ -3297,6 +3297,9 @@ static ValueRange dspv4_port_range(const SigSpec &sig)
         return {0, half - 1};
     return {-half, half - 1};
 }
+
+// Every DSP register clears to 0, so every stage can hold 0.
+static ValueRange dspv4_with_zero(const ValueRange &range) { return {std::min<int64_t>(range.low, 0), std::max<int64_t>(range.high, 0)}; }
 
 static ValueRange dspv4_sum_range(const ValueRange &a, const ValueRange &b) { return {a.low + b.low, a.high + b.high}; }
 
@@ -3367,12 +3370,12 @@ struct QlDspV4LinkFullPPass : public Pass {
                     continue;
                 }
                 kept++;
-                log("ql_dspv4_link_full_p: %s.%s keeps its %d-bit C link from %s: %s.\n", log_id(module), log_id(it.first), it.second.width,
-                    log_id(it.second.source), reason.c_str());
+                log("ql_dspv4_link_full_p: %s: C link from %s left as it is: %s.\n", log_id(module), link_net(it.first, it.second), reason.c_str());
             }
             // Decided first, rewired after: the ranges read the C ports.
             for (auto &it : to_widen) {
-                log_debug("ql_dspv4_link_full_p: %s.%s now reads all 50 bits of %s's P.\n", log_id(module), log_id(it.first), log_id(it.second));
+                log_debug("ql_dspv4_link_full_p: %s: C link from %s now reads all 50 bits of the source's P.\n", log_id(module),
+                          link_net(it.first, link_on_c.at(it.first)));
                 it.first->setPort(ID(C), it.second->getPort(ID(P)));
             }
             widened += GetSize(to_widen);
@@ -3404,6 +3407,9 @@ struct QlDspV4LinkFullPPass : public Pass {
                 link_on_c[cell] = *link;
         }
     }
+
+    // The design net the link carries, as the consumer's C port names it.
+    const char *link_net(RTLIL::Cell *consumer, const ResultLink &link) { return log_signal(consumer->getPort(ID(C)).extract(0, link.width)); }
 
     std::optional<ResultLink> link_on(const SigSpec &c)
     {
@@ -3448,32 +3454,40 @@ struct QlDspV4LinkFullPPass : public Pass {
 
     std::string why_link_is_kept(const ResultLink &link)
     {
-        if (!range_rule_covers(link.source))
-            return stringf("%s's mode is %s, which has no value range rule here", log_id(link.source), dspv4_mode_name_of(link.source));
+        std::string no_rule = why_no_range_rule(link.source);
+        if (!no_rule.empty())
+            return no_rule;
         std::optional<ValueRange> range = source_range(link.source);
         if (!range)
-            return stringf("%s's value can exceed the 50-bit P port", log_id(link.source));
+            return "the source's value can exceed the 50-bit P port";
         if (!dspv4_link_fits(*range, link))
-            return stringf("%s's value range [%lld, %lld] does not fit %d bits read %s", log_id(link.source), (long long)range->low,
-                           (long long)range->high, link.width, link.sign_extended ? "signed" : "unsigned");
+            return stringf("the source's value range [%lld, %lld] does not fit %d bits read %s", (long long)range->low, (long long)range->high,
+                           link.width, link.sign_extended ? "signed" : "unsigned");
         return "";
     }
 
-    bool range_rule_covers(RTLIL::Cell *cell)
+    std::string why_no_range_rule(RTLIL::Cell *cell)
     {
         bool bounded_mode = false;
         for (const char *name : DSPV4_BOUNDED_MODES)
             bounded_mode = bounded_mode || dspv4_cell_has_mode(cell, dspv4_mode(name));
         if (!bounded_mode)
-            return false;
+            return stringf("the source's mode is %s, which has no value range rule here", dspv4_mode_name_of(cell));
         for (auto select : {ID(A_IN_SEL), ID(B_IN_SEL)})
             if (cell->hasParam(select) && cell->getParam(select).as_bool())
-                return false;
+                return "the source reads a cascade input (A_IN_SEL or B_IN_SEL)";
+        if (cell->hasParam(ID(USE_RSS)) && cell->getParam(ID(USE_RSS)).as_bool())
+            return "the source rounds or shifts P (USE_RSS)";
         State tied_carry_in = cell->getParam(ID(ALUMODE)).as_int() == 1 ? State::S1 : State::S0;
-        return cell->hasPort(ID(CIN)) && sigmap(cell->getPort(ID(CIN))) == SigSpec(tied_carry_in);
+        if (!cell->hasPort(ID(CIN)) || sigmap(cell->getPort(ID(CIN))) != SigSpec(tied_carry_in))
+            return "the source's carry-in is not the one its mode ties";
+        return "";
     }
 
-    ValueRange port_range(RTLIL::Cell *cell, RTLIL::IdString port) { return dspv4_port_range(sigmap(dspv4_port_or_empty(cell, port))); }
+    ValueRange port_range(RTLIL::Cell *cell, RTLIL::IdString port)
+    {
+        return dspv4_with_zero(dspv4_port_range(sigmap(dspv4_port_or_empty(cell, port))));
+    }
 
     // As dsp4_logical_map.v builds the multiplier's inputs.
     ValueRange product_range(RTLIL::Cell *cell)
@@ -3486,10 +3500,11 @@ struct QlDspV4LinkFullPPass : public Pass {
         ValueRange b = zero_gate && b_into_preadder ? zero : port_range(cell, ID::B);
         ValueRange d = inmode & 4 ? port_range(cell, ID(D)) : zero;
         ValueRange into_preadder = b_into_preadder ? b : a;
-        ValueRange ad = dspv4_cut_range(inmode & 8 ? dspv4_difference_range(d, into_preadder) : dspv4_sum_range(d, into_preadder), 32);
+        ValueRange preadder_result = inmode & 8 ? dspv4_difference_range(d, into_preadder) : dspv4_sum_range(d, into_preadder);
+        ValueRange ad = dspv4_with_zero(dspv4_cut_range(preadder_result, 32));
         ValueRange multiplicand = cell->getParam(ID(AMULTSEL)).as_bool() ? ad : a;
         ValueRange multiplier = cell->getParam(ID(BMULTSEL)).as_bool() ? dspv4_cut_range(ad, 18) : b;
-        return dspv4_product_range(multiplicand, multiplier);
+        return dspv4_with_zero(dspv4_product_range(multiplicand, multiplier));
     }
 
     // ALUMODE 00: product + Z, 11: Z - product, 01: product - Z (dspv4_sim.v).
@@ -3515,7 +3530,7 @@ struct QlDspV4LinkFullPPass : public Pass {
         default:
             log_abort();
         }
-        value = {std::min<int64_t>(value.low, 0), std::max<int64_t>(value.high, 0)};
+        value = dspv4_with_zero(value);
         std::optional<ValueRange> result;
         if (value.low >= P_PORT_LOW && value.high <= P_PORT_HIGH)
             result = value;
@@ -3529,7 +3544,7 @@ struct QlDspV4LinkFullPPass : public Pass {
         if (!link_on_c.count(cell) || cells_on_link_loops.count(cell))
             return port;
         const ResultLink &link = link_on_c.at(cell);
-        if (!range_rule_covers(link.source))
+        if (!why_no_range_rule(link.source).empty())
             return port;
         std::optional<ValueRange> source = source_range(link.source);
         if (!source || !dspv4_link_fits(*source, link))
