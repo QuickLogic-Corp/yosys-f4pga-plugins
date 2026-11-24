@@ -23,8 +23,8 @@ yosys cd dspv4_preadd_adreg_trunc
 # ALU's unused CIN, so every DSP leaves one undriven wire -- a design with no
 # pre-adder at all reports the same thing. The cell counts below are what
 # carry this test.
-# The multiply still belongs in a DSP; only the pre-adder is refused.
-select -assert-count 1 t:QL_DSP4_MULT
+# Each multiply still belongs in a DSP; only the pre-adders are refused.
+select -assert-count 2 t:QL_DSP4_MULT
 select -assert-count 0 t:QL_DSP4_PREADD
 select -assert-count 0 t:QL_DSP4_PRESUB
 # The adder stays in fabric, which is what refusing costs.

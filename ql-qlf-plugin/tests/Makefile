@@ -125,7 +125,8 @@ POST_SYNTH_SIM_TESTS = \
      qlf_k6n10f/dspv4_macc_c_order_post_synth_sim \
      qlf_k6n10f/dspv4_macc_c_refused_post_synth_sim \
      qlf_k6n10f/dspv4_mreg_rst_post_synth_sim \
-     qlf_k6n10f/dspv4_preg_rst_post_synth_sim
+     qlf_k6n10f/dspv4_preg_rst_post_synth_sim \
+     qlf_k6n10f/dspv4_preadd_width_post_synth_sim
 
 # Synthesis-side copies of cells that dspv2_sim.v and dspv4_leaves_sim.v already model.
 SIM_LIBS_EXCLUDE = QL_DSPV2.v QL_DSP4_leaves.v
@@ -150,7 +151,8 @@ qlf_k6n10f-dspv4_macc_dup_verify = grep -q 'the DSP has no register stage after 
 # QL_DSP4_MULT -- so without these the A/B decision is untested. A refused
 # shape must report MULT, not a PREADD mode: that is what says the guard
 # refused rather than folded something it should not have.
-qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x2' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
+qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x3' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
+qlf_k6n10f-dspv4_preadd_sub_unsigned_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_A x1' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
 qlf_k6n10f-dspv4_preadd_sub_unsigned_verify += && grep -q '1 x  pre-adder: an unsigned subtract wraps where the DSP signs' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
 qlf_k6n10f-dspv4_mult_reg_pad_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_reg_pad/dspv4_mult_reg_pad.log
 qlf_k6n10f-dspv4_mult_add_self_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_add_self/dspv4_mult_add_self.log
@@ -176,16 +178,17 @@ qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_
 qlf_k6n10f-dspv4_preadd_both_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
 # The sum left behind is named, not just absent from the cell.
 qlf_k6n10f-dspv4_preadd_both_verify += && grep -q '1 x  a second pre-adder sum stays in fabric: the cell has one pre-adder' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
+qlf_k6n10f-dspv4_preadd_both_verify += && grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
 # Squaring is refused, so no pre-adder mode at all.
 qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
 qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 x  pre-adder: it feeds both multiply operands (squaring)' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
-# Every cross-path shape that must fold, 46 blocks, nine modes in no fixed
+# Every cross-path shape that must fold, 48 blocks, nine modes in no fixed
 # order. No block may be refused, and the four blocks that give up a register
 # stage to the bank depth limit must do it for that reason, not a clock/reset
 # mismatch.
 qlf_k6n10f-dspv4_xpath_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){8}$$' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
-qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_A x14' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
-qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_B x7' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_A x15' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_B x8' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B x6' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B x2' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B_C x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
@@ -324,15 +327,18 @@ qlf_k6n10f/rel_ip_blif_noprim_negative = 1
 qlf_k6n10f-rel_ip_blif_noprim_verify = grep -q "primitive 'QL_OTHER_PRIM', which the cell library does not define" qlf_k6n10f/rel_ip_blif_noprim/rel_ip_blif_noprim.log
 
 # Which width lands on which multiply port. Counts cannot tell the two apart.
-qlf_k6n10f-dspv4_preadd_widths_verify = grep -q 'modes inferred: PREADD_B_MULT_A x3, PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_widths/dspv4_preadd_widths.log
+qlf_k6n10f-dspv4_preadd_widths_verify = grep -q 'modes inferred: PREADD_B_MULT_A x4, PREADD_A_MULT_B x2' qlf_k6n10f/dspv4_preadd_widths/dspv4_preadd_widths.log
 # No pre-adder mode anywhere. Asserted this way rather than as a MULT count
 # because the pass runs twice and splits the count between the two lines.
 qlf_k6n10f-dspv4_preadd_refused_verify = ! grep -q 'modes inferred:.*PREADD' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
-qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: it truncates its own sum, which the DSP would not' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '2 x  pre-adder: it truncates its own sum, which the DSP would not' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: its operand signedness differs from the multiply port' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
-qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: its sum may exceed the multiplier port' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '5 x  pre-adder: its sum may exceed the multiplier port' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: the multiply operand pads its sum instead of extending its sign' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  multiply: 19x32 (signed x signed) does not fit the 32x18 ports' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '2 x  multiply: 18x20 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  multiply: 32x8 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  multiply: 19x20 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 
 # Five modes in one design. Counts cannot tell PREADD_A_SUB_B from
 # PREADD_B_SUB_A, and for the reversed-operand shape the mode name is the only
@@ -341,12 +347,12 @@ qlf_k6n10f-dspv4_preadd_modes_verify = grep -q 'modes inferred: PREADD_A_SUB_B x
 
 # A refused pre-adder must report MULT, not a PREADD mode -- the cell counts
 # in the .tcl cannot tell a refusal from a fold that never matched.
-qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
-qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '1 x  pre-adder: the multiply reads fewer bits of its registered sum than it produces' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x2' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '2 x  pre-adder: the multiply reads fewer bits of its registered sum than it produces' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
 
 
 # Thirteen shapes, two paths. Counts cannot tell PREADD_A from PREADD_B; the
 # swap onto B1/B2 is the second B-path word.
-qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x12, PREADD_B_MULT_A x2' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
+qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x12, PREADD_B_MULT_A x3' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
 # The two four-enable cells name the B chain they give up.
 qlf_k6n10f-dspv4_preadd_regs_verify += && grep -q '2 x  B register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
