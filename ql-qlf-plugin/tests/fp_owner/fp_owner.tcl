@@ -49,6 +49,11 @@ set merged [regexp -all -line -- {"type": "\$lut", "owners": \[\["u_m[01]"\]\], 
 if {$merged != 1} { error "expected the merged LUT owned by one of u_m0/u_m1, found $merged rows" }
 if {[regexp -line -- {"owners": \[\["u_m0"\], \["u_m1"\]\]} $table]} { error "a merged LUT lists two owners" }
 
+# The shared FF gets one owner, not two and not top.
+set shared [regexp -all -line -- {"type": "[a-z]*dff[a-z]*", "owners": \[\["u_s[01]"\]\], "rule": "recorded"} $table]
+if {$shared != 1} { error "expected the shared FF owned by one of u_s0/u_s1, found $shared rows" }
+if {[regexp -line -- {"owners": \[\["u_s0"\], \["u_s1"\]\]} $table]} { error "a shared FF lists two owners" }
+
 # A BRAM is named after its memory by memory_libmap and keeps that memory's owner.
 if {![regexp -line -- {"name": "u_ram\.mem[^"]*", "type": "TDP[^"]*", "owners": \[\["u_ram"\]\], "rule": "recorded"} $table]} {
     error "the BRAM of u_ram is not owned by u_ram"

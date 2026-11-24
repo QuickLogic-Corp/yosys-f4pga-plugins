@@ -606,6 +606,8 @@ static std::vector<BlifAtom> read_blif_atoms(const std::string &text, const std:
         } else if (cmd == ".latch" && tokens.size() >= 3) {
             BlifAtom atom;
             atom.inputs.push_back(tokens[1]);
+            if (tokens.size() >= 5)
+                atom.inputs.push_back(tokens[4]);
             atom.output = atom.name = tokens[2];
             atoms.push_back(atom);
         } else if (cmd == ".cname" && tokens.size() >= 2 && !atoms.empty()) {
@@ -614,6 +616,48 @@ static std::vector<BlifAtom> read_blif_atoms(const std::string &text, const std:
         }
     }
     return atoms;
+}
+
+// VPR sweeps a block none of whose outputs has a sink, pass after pass until nothing more goes,
+// so such an atom is not in the .net. A .subckt whose cell is unknown is kept, its pins taken
+// for inputs.
+static std::vector<bool> vpr_swept(const std::vector<BlifAtom> &atoms, const std::vector<RTLIL::Cell *> &cells,
+                                   const pool<std::string> &top_outputs)
+{
+    const size_t n = atoms.size();
+    std::vector<std::vector<std::string>> ins(n), outs(n);
+    std::vector<bool> keep(n, false), swept(n, false);
+    for (size_t i = 0; i < n; i++) {
+        if (atoms[i].type.empty()) {
+            ins[i] = atoms[i].inputs;
+            outs[i] = {atoms[i].output};
+            continue;
+        }
+        for (auto &pin : atoms[i].pins) {
+            const std::string port = pin.first.substr(0, pin.first.find('['));
+            (cells[i] && cells[i]->output(RTLIL::escape_id(port)) ? outs[i] : ins[i]).push_back(pin.second);
+        }
+        keep[i] = !cells[i];
+    }
+    dict<std::string, int> sinks;
+    for (auto &net : top_outputs)
+        sinks[net]++;
+    for (size_t i = 0; i < n; i++)
+        for (auto &net : ins[i])
+            sinks[net]++;
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (size_t i = 0; i < n; i++) {
+            if (swept[i] || keep[i])
+                continue;
+            if (std::any_of(outs[i].begin(), outs[i].end(), [&](const std::string &net) { return sinks.count(net) && sinks.at(net) > 0; }))
+                continue;
+            swept[i] = changed = true;
+            for (auto &net : ins[i])
+                sinks[net]--;
+        }
+    }
+    return swept;
 }
 
 static void write_table(RTLIL::Module *module, const std::string &table_file, const std::string &blif_file, const std::string &front_end)
@@ -646,8 +690,11 @@ static void write_table(RTLIL::Module *module, const std::string &table_file, co
     };
     std::vector<Row> rows;
     dict<std::string, int> counts;
-    for (auto &atom : read_blif_atoms(blif, blif_name(module->name))) {
-        RTLIL::Cell *cell = nullptr;
+    std::vector<BlifAtom> atoms = read_blif_atoms(blif, blif_name(module->name));
+    std::vector<RTLIL::Cell *> cells(atoms.size(), nullptr);
+    for (size_t i = 0; i < atoms.size(); i++) {
+        BlifAtom &atom = atoms[i];
+        RTLIL::Cell *&cell = cells[i];
         if (atom.named) {
             auto it = by_name.find(atom.name);
             if (it != by_name.end())
@@ -667,6 +714,18 @@ static void write_table(RTLIL::Module *module, const std::string &table_file, co
                 }
             }
         }
+    }
+    pool<std::string> top_outputs;
+    for (auto wire : module->wires())
+        if (wire->port_output)
+            for (auto bit : RTLIL::SigSpec(wire))
+                top_outputs.insert(blif_bit_name(bit));
+    const std::vector<bool> swept = vpr_swept(atoms, cells, top_outputs);
+    for (size_t i = 0; i < atoms.size(); i++) {
+        if (swept[i])
+            continue;
+        const BlifAtom &atom = atoms[i];
+        RTLIL::Cell *cell = cells[i];
         Row row;
         row.name = atom.name;
         if (cell) {
@@ -728,7 +787,7 @@ static void write_table(RTLIL::Module *module, const std::string &table_file, co
     log("Wrote %d atom(s) and %d instance(s) to %s:", GetSize(rows), GetSize(instances), table_file.c_str());
     for (auto rule : {"recorded", "inferred_fanout", "inferred_fanin", "top"})
         log(" %s %d", rule, counts.count(rule) ? counts.at(rule) : 0);
-    log("\n");
+    log("; left out %d atom(s) VPR sweeps\n", int(std::count(swept.begin(), swept.end(), true)));
 }
 
 struct QlFpOwnerPass : public Pass {
@@ -773,6 +832,7 @@ struct QlFpOwnerPass : public Pass {
         log("    -write <table> -blif <file>\n");
         log("        after the final write_blif: writes the owner table (schema version 2)\n");
         log("        for the atoms of <file>, named as VPR names them, with its sha256.\n");
+        log("        An atom VPR sweeps, one whose outputs drive nothing, is left out.\n");
         log("        Cells created since -assign get an owner first.\n");
         log("\n");
     }
