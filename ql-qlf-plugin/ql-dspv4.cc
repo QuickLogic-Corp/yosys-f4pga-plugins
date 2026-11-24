@@ -3258,11 +3258,21 @@ static const char *const DSPV4_BOUNDED_MODES[] = {
   "PREADD_B_SUB_A",
   "PREADD_B_MULT_A_C",
   "PREADD_B_SUB_A_C",
+  "XPATH_A",
+  "XPATH_B",
 };
+
+// A parameter the cell leaves unset has QL_DSP4.v's default: OPMODE 5, every other one 0.
+static int dspv4_param(RTLIL::Cell *cell, RTLIL::IdString name)
+{
+    if (cell->hasParam(name))
+        return cell->getParam(name).as_int();
+    return name == ID(OPMODE) ? 5 : 0;
+}
 
 static bool dspv4_cell_has_mode(RTLIL::Cell *cell, const Dspv4Mode &mode)
 {
-    auto param = [&](RTLIL::IdString name) { return cell->hasParam(name) ? cell->getParam(name).as_int() : -1; };
+    auto param = [&](RTLIL::IdString name) { return dspv4_param(cell, name); };
     return param(ID(OPMODE)) == mode.opmode && param(ID(ALUMODE)) == mode.alumode && param(ID(INMODE)) == mode.inmode &&
            param(ID(CARRYINSEL)) == mode.carryinsel && param(ID(USE_SIMD)) == mode.use_simd && param(ID(AMULTSEL)) == mode.amultsel &&
            param(ID(BMULTSEL)) == mode.bmultsel && param(ID(PREADDINSEL)) == mode.preaddinsel;
@@ -3474,11 +3484,11 @@ struct QlDspV4LinkFullPPass : public Pass {
         if (!bounded_mode)
             return stringf("the source's mode is %s, which has no value range rule here", dspv4_mode_name_of(cell));
         for (auto select : {ID(A_IN_SEL), ID(B_IN_SEL)})
-            if (cell->hasParam(select) && cell->getParam(select).as_bool())
+            if (dspv4_param(cell, select))
                 return "the source reads a cascade input (A_IN_SEL or B_IN_SEL)";
-        if (cell->hasParam(ID(USE_RSS)) && cell->getParam(ID(USE_RSS)).as_bool())
+        if (dspv4_param(cell, ID(USE_RSS)))
             return "the source rounds or shifts P (USE_RSS)";
-        State tied_carry_in = cell->getParam(ID(ALUMODE)).as_int() == 1 ? State::S1 : State::S0;
+        State tied_carry_in = dspv4_param(cell, ID(ALUMODE)) == 1 ? State::S1 : State::S0;
         if (!cell->hasPort(ID(CIN)) || sigmap(cell->getPort(ID(CIN))) != SigSpec(tied_carry_in))
             return "the source's carry-in is not the one its mode ties";
         return "";
@@ -3492,8 +3502,8 @@ struct QlDspV4LinkFullPPass : public Pass {
     // As dsp4_logical_map.v builds the multiplier's inputs.
     ValueRange product_range(RTLIL::Cell *cell)
     {
-        int inmode = cell->getParam(ID(INMODE)).as_int();
-        bool b_into_preadder = cell->getParam(ID(PREADDINSEL)).as_bool();
+        int inmode = dspv4_param(cell, ID(INMODE));
+        bool b_into_preadder = dspv4_param(cell, ID(PREADDINSEL));
         bool zero_gate = inmode & 2;
         ValueRange zero = {0, 0};
         ValueRange a = zero_gate && !b_into_preadder ? zero : port_range(cell, ID::A);
@@ -3502,8 +3512,8 @@ struct QlDspV4LinkFullPPass : public Pass {
         ValueRange into_preadder = b_into_preadder ? b : a;
         ValueRange preadder_result = inmode & 8 ? dspv4_difference_range(d, into_preadder) : dspv4_sum_range(d, into_preadder);
         ValueRange ad = dspv4_with_zero(dspv4_cut_range(preadder_result, 32));
-        ValueRange multiplicand = cell->getParam(ID(AMULTSEL)).as_bool() ? ad : a;
-        ValueRange multiplier = cell->getParam(ID(BMULTSEL)).as_bool() ? dspv4_cut_range(ad, 18) : b;
+        ValueRange multiplicand = dspv4_param(cell, ID(AMULTSEL)) ? ad : a;
+        ValueRange multiplier = dspv4_param(cell, ID(BMULTSEL)) ? dspv4_cut_range(ad, 18) : b;
         return dspv4_with_zero(dspv4_product_range(multiplicand, multiplier));
     }
 
@@ -3514,10 +3524,10 @@ struct QlDspV4LinkFullPPass : public Pass {
             return range_of.at(cell);
         ValueRange product = product_range(cell);
         ValueRange z = {0, 0};
-        if (cell->getParam(ID(OPMODE)).as_int() != dspv4_mode("MULT").opmode)
+        if (dspv4_param(cell, ID(OPMODE)) != dspv4_mode("MULT").opmode)
             z = c_range(cell);
         ValueRange value;
-        switch (cell->getParam(ID(ALUMODE)).as_int()) {
+        switch (dspv4_param(cell, ID(ALUMODE))) {
         case 0:
             value = dspv4_sum_range(product, z);
             break;

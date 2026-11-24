@@ -8,6 +8,7 @@ if { [info commands synth_ql] != {} } { set PASS_NAME synth_ql }
 
 set LIB [file normalize [file join [file dirname [info script]] .. .. ..]]
 
+read_verilog -lib $LIB/qlf_k6n10f/QL_DSP4.v
 read_verilog dspv4_link_full_p_post_synth_sim.v
 design -save rtl
 
@@ -63,8 +64,14 @@ set blocks {
     {dspv4_link_preadd_a_sub_chain  {PREADD_A_SUB_B_C x1, PREADD_A_SUB_B x1, MULT_ADD_C x1}   2 100}
     {dspv4_link_preadd_b_chain      {PREADD_B_MULT_A_C x1, PREADD_B_MULT_A x1, MULT_ADD_C x1} 2 100}
     {dspv4_link_preadd_b_sub_chain  {PREADD_B_SUB_A_C x1, PREADD_B_SUB_A x1, MULT_ADD_C x1}   2 100}
+    {dspv4_link_xpath_a             {XPATH_A x1, MULT_ADD_C x1}                               1  50}
+    {dspv4_link_xpath_b             {XPATH_B x1, MULT_ADD_C x1}                               1  50}
+    {dspv4_link_top_edge            {MULT_ADD_C x1, MULT x1}                                  1  50}
+    {dspv4_link_bottom_edge         {MULT_RSUB_C x1, MULT_ADD_C x1}                           1  50}
+    {dspv4_link_two_consumers       {MULT_ADD_C x2, MULT x1}                                  2  50}
+    {dspv4_link_instance            {MULT_ADD_C x1}                                           1  50}
 }
-# dspv4_link_sub: one a1*b1 DSP feeds both subtracts, so 3 sources.
+# dspv4_link_sub: one a1*b1 DSP feeds both subtracts, so 3 sources. Same for two_consumers: 1.
 foreach block $blocks {
     lassign $block top modes widened z_bits
     synth_one $top

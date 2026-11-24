@@ -7,6 +7,7 @@ module tb;
   reg [16:0] u0, u1, u2, u3;
   reg signed [15:0] h0, h1, h2, h3, h4, h5;
   reg signed [29:0] w0, w1;
+  reg [15:0] x16;
   integer i, bad = 0;
 
   wire signed [35:0] small_t_rtl, small_t_syn;
@@ -71,6 +72,35 @@ module tb;
   dspv4_link_preadd_b_sub_chain     pbsc_rtl (.d0(h0), .b0(h1), .d1(h2), .b1(h3), .a0(w0), .a1(w1), .a2(a2), .b2(b2), .p(pbsc_p_rtl));
   dspv4_link_preadd_b_sub_chain_syn pbsc_syn (.d0(h0), .b0(h1), .d1(h2), .b1(h3), .a0(w0), .a1(w1), .a2(a2), .b2(b2), .p(pbsc_p_syn));
 
+  wire signed [32:0] xa_t_rtl, xa_t_syn;
+  wire signed [33:0] xa_p_rtl, xa_p_syn;
+  dspv4_link_xpath_a     xa_rtl (.a0(h0), .d0(h1), .a1(a1), .b1(b1), .t(xa_t_rtl), .p(xa_p_rtl));
+  dspv4_link_xpath_a_syn xa_syn (.a0(h0), .d0(h1), .a1(a1), .b1(b1), .t(xa_t_syn), .p(xa_p_syn));
+
+  wire signed [36:0] xb_t_rtl, xb_t_syn;
+  wire signed [37:0] xb_p_rtl, xb_p_syn;
+  dspv4_link_xpath_b     xb_rtl (.a0(a0), .d0(a2), .a1(a1), .b1(b1), .t(xb_t_rtl), .p(xb_p_rtl));
+  dspv4_link_xpath_b_syn xb_syn (.a0(a0), .d0(a2), .a1(a1), .b1(b1), .t(xb_t_syn), .p(xb_p_syn));
+
+  wire signed [32:0] top_t_rtl, top_t_syn;
+  wire signed [33:0] top_p_rtl, top_p_syn;
+  dspv4_link_top_edge     top_rtl (.x(x16), .a1(a1), .b1(b1), .t(top_t_rtl), .p(top_p_rtl));
+  dspv4_link_top_edge_syn top_syn (.x(x16), .a1(a1), .b1(b1), .t(top_t_syn), .p(top_p_syn));
+
+  wire signed [32:0] bottom_t_rtl, bottom_t_syn;
+  wire signed [33:0] bottom_p_rtl, bottom_p_syn;
+  dspv4_link_bottom_edge     bottom_rtl (.x(x16), .a1(a1), .b1(b1), .t(bottom_t_rtl), .p(bottom_p_rtl));
+  dspv4_link_bottom_edge_syn bottom_syn (.x(x16), .a1(a1), .b1(b1), .t(bottom_t_syn), .p(bottom_p_syn));
+
+  wire signed [36:0] two_p_rtl, two_p_syn, two_q_rtl, two_q_syn;
+  dspv4_link_two_consumers     two_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .a2(a2), .b2(b2), .p(two_p_rtl), .q(two_q_rtl));
+  dspv4_link_two_consumers_syn two_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .a2(a2), .b2(b2), .p(two_p_syn), .q(two_q_syn));
+
+  wire signed [35:0] inst_t_rtl, inst_t_syn;
+  wire signed [36:0] inst_p_rtl, inst_p_syn;
+  dspv4_link_instance     inst_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(inst_t_rtl), .p(inst_p_rtl));
+  dspv4_link_instance_syn inst_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(inst_t_syn), .p(inst_p_syn));
+
   always #5 clk = ~clk;
 
   task check(input [255:0] name, input [49:0] rtl, input [49:0] syn);
@@ -106,12 +136,13 @@ module tb;
       h0 = extreme16($random); h1 = extreme16($random); h2 = extreme16($random);
       h3 = extreme16($random); h4 = extreme16($random); h5 = extreme16($random);
       w0 = extreme30($random); w1 = extreme30($random);
+      x16 = $random & 1 ? 16'hffff : 16'h0;
     end else begin
       a0 = $random; b0 = $random; a1 = $random; b1 = $random;
       a2 = $random; b2 = $random; a3 = $random; b3 = $random; a4 = $random; b4 = $random;
       u0 = $random; u1 = $random; u2 = $random; u3 = $random;
       h0 = $random; h1 = $random; h2 = $random; h3 = $random; h4 = $random; h5 = $random;
-      w0 = $random; w1 = $random;
+      w0 = $random; w1 = $random; x16 = $random;
     end
   endtask
 
@@ -143,6 +174,18 @@ module tb;
       check("preadd_a_sub_chain.p", pasc_p_rtl, pasc_p_syn);
       check("preadd_b_chain.p", pbc_p_rtl, pbc_p_syn);
       check("preadd_b_sub_chain.p", pbsc_p_rtl, pbsc_p_syn);
+      check("xpath_a.t", xa_t_rtl, xa_t_syn);
+      check("xpath_a.p", xa_p_rtl, xa_p_syn);
+      check("xpath_b.t", xb_t_rtl, xb_t_syn);
+      check("xpath_b.p", xb_p_rtl, xb_p_syn);
+      check("top_edge.t", top_t_rtl, top_t_syn);
+      check("top_edge.p", top_p_rtl, top_p_syn);
+      check("bottom_edge.t", bottom_t_rtl, bottom_t_syn);
+      check("bottom_edge.p", bottom_p_rtl, bottom_p_syn);
+      check("two_consumers.p", two_p_rtl, two_p_syn);
+      check("two_consumers.q", two_q_rtl, two_q_syn);
+      check("instance.t", inst_t_rtl, inst_t_syn);
+      check("instance.p", inst_p_rtl, inst_p_syn);
     end
     $display("RESULT: %0d mismatches in 2000 cycles", bad);
     $finish_and_return(bad == 0 ? 0 : 1);

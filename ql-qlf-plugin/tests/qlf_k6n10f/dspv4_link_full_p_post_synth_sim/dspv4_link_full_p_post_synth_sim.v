@@ -131,3 +131,50 @@ module dspv4_link_preadd_b_sub_chain (input signed [15:0] d0, b0, d1, b1,
   wire signed [46:0] q0 = q1 + (d0 - b0) * a0;
   assign p = q0 + a2 * b2;
 endmodule
+
+// XPATH_A: (d + a) * a, with a on the 32-bit port.
+module dspv4_link_xpath_a (input signed [15:0] a0, d0, input signed [17:0] a1, b1,
+                           output signed [32:0] t, output signed [33:0] p);
+  assign t = (d0 + a0) * a0;
+  assign p = t + a1 * b1;
+endmodule
+
+// XPATH_B: (d + a) * a, with the sum on the 32-bit port.
+module dspv4_link_xpath_b (input signed [17:0] a0, d0, a1, b1,
+                           output signed [36:0] t, output signed [37:0] p);
+  assign t = (a0 + d0) * a0;
+  assign p = t + a1 * b1;
+endmodule
+
+// x * 65537 reaches 2^32 - 1: exactly the top of 33 signed bits.
+module dspv4_link_top_edge (input [15:0] x, input signed [17:0] a1, b1,
+                            output signed [32:0] t, output signed [33:0] p);
+  assign t = $signed({1'b0, x}) * 18'sd65537;
+  assign p = t + a1 * b1;
+endmodule
+
+// -x * 65537 - 1 reaches -2^32: exactly the bottom of 33 signed bits.
+module dspv4_link_bottom_edge (input [15:0] x, input signed [17:0] a1, b1,
+                               output signed [32:0] t, output signed [33:0] p);
+  assign t = $signed({1'b0, x}) * -18'sd65537 - 33'sd1;
+  assign p = t + a1 * b1;
+endmodule
+
+// One source, two consumers.
+module dspv4_link_two_consumers (input signed [17:0] a0, b0, a1, b1, a2, b2,
+                                 output signed [36:0] p, output signed [36:0] q);
+  wire signed [35:0] t = a0 * b0;
+  assign p = t + a1 * b1;
+  assign q = t + a2 * b2;
+endmodule
+
+// A hand instance with every parameter left at QL_DSP4.v's default (MULT).
+module dspv4_link_instance (input signed [17:0] a0, b0, a1, b1, output signed [35:0] t, output signed [36:0] p);
+  wire [49:0] p0;
+  QL_DSP4 u (.A({{14{a0[17]}}, a0}), .B(b0), .C(50'd0), .D(27'd0), .CIN(1'b0),
+             .ACIN(32'd0), .BCIN(18'd0), .PCIN(50'd0), .CCIN(1'b0), .SIGNCIN(1'b0), .P(p0),
+             .CLK(1'b0), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1), .CEP(1'b1),
+             .ARSTN(1'b1), .RSTN(1'b1), .ACCRSTN(1'b1));
+  assign t = p0[35:0];
+  assign p = t + a1 * b1;
+endmodule

@@ -9,6 +9,9 @@ module tb;
   reg [9:0] x;
   reg signed [3:0] c4;
   reg [16:0] u1, u2;
+  reg [15:0] x16;
+  reg signed [31:0] w32;
+  reg signed [48:0] c49;
   integer i, bad = 0;
 
   wire signed [29:0] trunc_t_rtl, trunc_t_syn;
@@ -41,6 +44,30 @@ module tb;
   dspv4_link_kept_loop     loop_rtl (.clk(clk), .rst(rst), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .y(loop_y_rtl), .z(loop_z_rtl));
   dspv4_link_kept_loop_syn loop_syn (.clk(clk), .rst(rst), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .y(loop_y_syn), .z(loop_z_syn));
 
+  wire signed [32:0] top_t_rtl, top_t_syn;
+  wire signed [33:0] top_p_rtl, top_p_syn;
+  dspv4_link_kept_top_edge     top_rtl (.x(x16), .a1(a1), .b1(b1), .t(top_t_rtl), .p(top_p_rtl));
+  dspv4_link_kept_top_edge_syn top_syn (.x(x16), .a1(a1), .b1(b1), .t(top_t_syn), .p(top_p_syn));
+
+  wire signed [32:0] bottom_t_rtl, bottom_t_syn;
+  wire signed [33:0] bottom_p_rtl, bottom_p_syn;
+  dspv4_link_kept_bottom_edge     bottom_rtl (.x(x16), .a1(a1), .b1(b1), .t(bottom_t_rtl), .p(bottom_p_rtl));
+  dspv4_link_kept_bottom_edge_syn bottom_syn (.x(x16), .a1(a1), .b1(b1), .t(bottom_t_syn), .p(bottom_p_syn));
+
+  wire signed [48:0] exceed_t_rtl, exceed_t_syn;
+  wire signed [49:0] exceed_p_rtl, exceed_p_syn;
+  dspv4_link_kept_exceed     exceed_rtl (.a0(w32), .b0(b0), .c0(c49), .a1(a1), .b1(b1), .t(exceed_t_rtl), .p(exceed_p_rtl));
+  dspv4_link_kept_exceed_syn exceed_syn (.a0(w32), .b0(b0), .c0(c49), .a1(a1), .b1(b1), .t(exceed_t_syn), .p(exceed_p_syn));
+
+  wire signed [35:0] rss_t_rtl, rss_t_syn, acin_t_rtl, acin_t_syn, carry_t_rtl, carry_t_syn;
+  wire signed [36:0] rss_p_rtl, rss_p_syn, acin_p_rtl, acin_p_syn, carry_p_rtl, carry_p_syn;
+  dspv4_link_kept_rss       rss_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(rss_t_rtl), .p(rss_p_rtl));
+  dspv4_link_kept_rss_syn   rss_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(rss_t_syn), .p(rss_p_syn));
+  dspv4_link_kept_acin      acin_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(acin_t_rtl), .p(acin_p_rtl));
+  dspv4_link_kept_acin_syn  acin_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(acin_t_syn), .p(acin_p_syn));
+  dspv4_link_kept_carry     carry_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(carry_t_rtl), .p(carry_p_rtl));
+  dspv4_link_kept_carry_syn carry_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(carry_t_syn), .p(carry_p_syn));
+
   always #5 clk = ~clk;
 
   task check(input [255:0] name, input [49:0] rtl, input [49:0] syn);
@@ -61,9 +88,13 @@ module tb;
       a0 = extreme($random); b0 = extreme($random); a1 = extreme($random); b1 = extreme($random);
       d0 = extreme($random);
       c = $random & 1 ? 36'sh800000000 : 36'sh7ffffffff;
+      x16 = $random & 1 ? 16'hffff : 16'h0;
+      w32 = $random & 1 ? 32'sh80000000 : 32'sh7fffffff;
+      c49 = $random & 1 ? 49'sh1000000000000 : 49'shffffffffffff;
     end else begin
       a0 = $random; b0 = $random; a1 = $random; b1 = $random; d0 = $random;
       c = {$random, $random};
+      x16 = $random; w32 = $random; c49 = {$random, $random};
     end
   endtask
 
@@ -84,6 +115,18 @@ module tb;
       check("reset.p", reset_p_rtl, reset_p_syn);
       check("loop.y", loop_y_rtl, loop_y_syn);
       check("loop.z", loop_z_rtl, loop_z_syn);
+      check("top_edge.t", top_t_rtl, top_t_syn);
+      check("top_edge.p", top_p_rtl, top_p_syn);
+      check("bottom_edge.t", bottom_t_rtl, bottom_t_syn);
+      check("bottom_edge.p", bottom_p_rtl, bottom_p_syn);
+      check("exceed.t", exceed_t_rtl, exceed_t_syn);
+      check("exceed.p", exceed_p_rtl, exceed_p_syn);
+      check("rss.t", rss_t_rtl, rss_t_syn);
+      check("rss.p", rss_p_rtl, rss_p_syn);
+      check("acin.t", acin_t_rtl, acin_t_syn);
+      check("acin.p", acin_p_rtl, acin_p_syn);
+      check("carry.t", carry_t_rtl, carry_t_syn);
+      check("carry.p", carry_p_rtl, carry_p_syn);
     end
     $display("RESULT: %0d mismatches in 2000 cycles", bad);
     $finish_and_return(bad == 0 ? 0 : 1);

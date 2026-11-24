@@ -71,3 +71,57 @@ module dspv4_link_kept_loop (input clk, input rst, input signed [17:0] a0, b0, a
   assign y = p1;
   assign z = p2;
 endmodule
+
+// x * 65537 + 1 reaches 2^32: one past the top of 33 signed bits.
+module dspv4_link_kept_top_edge (input [15:0] x, input signed [17:0] a1, b1,
+                                 output signed [32:0] t, output signed [33:0] p);
+  assign t = $signed({1'b0, x}) * 18'sd65537 + 33'sd1;
+  assign p = t + a1 * b1;
+endmodule
+
+// -x * 65537 - 2 reaches -2^32 - 1: one past the bottom of 33 signed bits.
+module dspv4_link_kept_bottom_edge (input [15:0] x, input signed [17:0] a1, b1,
+                                    output signed [32:0] t, output signed [33:0] p);
+  assign t = $signed({1'b0, x}) * -18'sd65537 - 33'sd2;
+  assign p = t + a1 * b1;
+endmodule
+
+// A 32 x 18 product minus a 49-bit c reaches 2^49: past the 50-bit P port.
+module dspv4_link_kept_exceed (input signed [31:0] a0, input signed [17:0] b0, input signed [48:0] c0,
+                               input signed [17:0] a1, b1, output signed [48:0] t, output signed [49:0] p);
+  assign t = a0 * b0 - c0;
+  assign p = t + a1 * b1;
+endmodule
+
+// A hand instance that rounds and shifts P.
+module dspv4_link_kept_rss (input signed [17:0] a0, b0, a1, b1, output signed [35:0] t, output signed [36:0] p);
+  wire [49:0] p0;
+  QL_DSP4 #(.USE_RSS(1'b1)) u (.A({{14{a0[17]}}, a0}), .B(b0), .C(50'd0), .D(27'd0), .CIN(1'b0),
+             .ACIN(32'd0), .BCIN(18'd0), .PCIN(50'd0), .CCIN(1'b0), .SIGNCIN(1'b0), .P(p0),
+             .CLK(1'b0), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1), .CEP(1'b1),
+             .ARSTN(1'b1), .RSTN(1'b1), .ACCRSTN(1'b1));
+  assign t = p0[35:0];
+  assign p = t + a1 * b1;
+endmodule
+
+// A hand instance that reads ACIN. The techmap leaves it unlowered.
+module dspv4_link_kept_acin (input signed [17:0] a0, b0, a1, b1, output signed [35:0] t, output signed [36:0] p);
+  wire [49:0] p0;
+  QL_DSP4 #(.A_IN_SEL(1'b1)) u (.A(32'd0), .B(b0), .C(50'd0), .D(27'd0), .CIN(1'b0),
+             .ACIN({{14{a0[17]}}, a0}), .BCIN(18'd0), .PCIN(50'd0), .CCIN(1'b0), .SIGNCIN(1'b0), .P(p0),
+             .CLK(1'b0), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1), .CEP(1'b1),
+             .ARSTN(1'b1), .RSTN(1'b1), .ACCRSTN(1'b1));
+  assign t = p0[35:0];
+  assign p = t + a1 * b1;
+endmodule
+
+// A hand instance with a carry-in its mode does not tie.
+module dspv4_link_kept_carry (input signed [17:0] a0, b0, a1, b1, output signed [35:0] t, output signed [36:0] p);
+  wire [49:0] p0;
+  QL_DSP4 u (.A({{14{a0[17]}}, a0}), .B(b0), .C(50'd0), .D(27'd0), .CIN(1'b1),
+             .ACIN(32'd0), .BCIN(18'd0), .PCIN(50'd0), .CCIN(1'b0), .SIGNCIN(1'b0), .P(p0),
+             .CLK(1'b0), .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1), .CEP(1'b1),
+             .ARSTN(1'b1), .RSTN(1'b1), .ACCRSTN(1'b1));
+  assign t = p0[35:0];
+  assign p = t + a1 * b1;
+endmodule
