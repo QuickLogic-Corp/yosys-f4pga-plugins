@@ -4,5 +4,5 @@
 *.swp
 *.log
 /*/build
-pmgen.py
+pmgen*.py
 *.clocks
