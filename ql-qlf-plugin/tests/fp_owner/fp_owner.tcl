@@ -61,3 +61,12 @@ foreach path {{["u_leaf"]} {["u_mid"]} {["u_mid", "u_leaf"]} {["gen[0].u"]} {["u
 regexp {"netlist_sha256": "([0-9a-f]+)"} $table -> table_sha
 set blif_sha [lindex [exec sha256sum fp_owner.blif] 0]
 if {$table_sha ne $blif_sha} { error "netlist_sha256 $table_sha is not the BLIF's $blif_sha" }
+
+# Without .cname (the -rel_ip_blif flow) VPR names a .subckt after the net on its first output
+# pin; the table names it the same and keeps its owner.
+write_blif -param fp_owner_nocname.blif
+ql_fp_owner -write fp_owner_nocname.json -blif fp_owner_nocname.blif
+set nocname [file_text fp_owner_nocname.json]
+if {[string first {"name": "",} $nocname] >= 0} { error "a .subckt without .cname has no name in the table" }
+set ffs [regexp -all -line -- {"type": "sdffre", "owners": \[\["u_mid"\]\]} $nocname]
+if {$ffs != 4} { error "without .cname, expected 4 registers owned by u_mid, found $ffs" }

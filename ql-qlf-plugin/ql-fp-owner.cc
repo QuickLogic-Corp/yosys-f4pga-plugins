@@ -546,14 +546,17 @@ static int guard_names(RTLIL::Module *module)
 
 struct BlifAtom {
     std::string name;
+    std::string type;
     std::string output;
     std::vector<std::string> inputs;
+    std::vector<std::pair<std::string, std::string>> pins;
     bool is_names = false;
     bool named = false;
 };
 
 // The atoms of the top model of a BLIF, named as VPR names them: the .cname when there is
-// one, else the output net.
+// one, else the output net. A .subckt without .cname is named by write_table, which knows
+// its port directions.
 static std::vector<BlifAtom> read_blif_atoms(const std::string &text, const std::string &top)
 {
     std::vector<BlifAtom> atoms;
@@ -591,10 +594,13 @@ static std::vector<BlifAtom> read_blif_atoms(const std::string &text, const std:
             atoms.push_back(atom);
         } else if ((cmd == ".subckt" || cmd == ".gate") && tokens.size() >= 2) {
             BlifAtom atom;
+            atom.type = tokens[1];
             for (size_t i = 2; i < tokens.size(); i++) {
                 size_t eq = tokens[i].find('=');
-                if (eq != std::string::npos)
+                if (eq != std::string::npos) {
                     atom.inputs.push_back(tokens[i].substr(eq + 1));
+                    atom.pins.push_back({tokens[i].substr(0, eq), tokens[i].substr(eq + 1)});
+                }
             }
             atoms.push_back(atom);
         } else if (cmd == ".latch" && tokens.size() >= 3) {
@@ -641,11 +647,29 @@ static void write_table(RTLIL::Module *module, const std::string &table_file, co
     std::vector<Row> rows;
     dict<std::string, int> counts;
     for (auto &atom : read_blif_atoms(blif, blif_name(module->name))) {
+        RTLIL::Cell *cell = nullptr;
+        if (atom.named) {
+            auto it = by_name.find(atom.name);
+            if (it != by_name.end())
+                cell = it->second;
+        } else if (!atom.type.empty()) {
+            // Without .cname (-rel_ip_blif) VPR names a .subckt after the net on its first
+            // output pin.
+            for (auto &pin : atom.pins) {
+                auto drv = net_driver.find(pin.second);
+                if (drv == net_driver.end() || RTLIL::unescape_id(drv->second->type) != atom.type)
+                    continue;
+                const std::string port = pin.first.substr(0, pin.first.find('['));
+                if (drv->second->output(RTLIL::escape_id(port))) {
+                    cell = drv->second;
+                    atom.name = pin.second;
+                    break;
+                }
+            }
+        }
         Row row;
         row.name = atom.name;
-        auto it = by_name.find(atom.name);
-        if (atom.named && it != by_name.end()) {
-            RTLIL::Cell *cell = it->second;
+        if (cell) {
             row.type = RTLIL::unescape_id(cell->type);
             row.owners = OwnerWorker::owners_of(cell);
             row.rule = cell->get_string_attribute(kRuleAttr);
