@@ -12,7 +12,11 @@ module tb;
   reg [15:0] x16;
   reg signed [31:0] w32;
   reg signed [48:0] c49;
-  integer i, bad = 0;
+  reg [251:0] xy;
+  reg signed [15:0] h0, h1;
+  reg signed [29:0] w30;
+  reg signed [5:0] x6;
+  integer i, k, bad = 0;
 
   wire signed [29:0] trunc_t_rtl, trunc_t_syn;
   wire signed [36:0] trunc_p_rtl, trunc_p_syn;
@@ -27,9 +31,10 @@ module tb;
   dspv4_link_kept_zext     zext_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .p(zext_p_rtl));
   dspv4_link_kept_zext_syn zext_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .p(zext_p_syn));
 
+  wire signed [35:0] acc_t_rtl, acc_t_syn;
   wire signed [36:0] acc_p_rtl, acc_p_syn;
-  dspv4_link_kept_acc     acc_rtl (.clk(clk), .rst(rst), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .p(acc_p_rtl));
-  dspv4_link_kept_acc_syn acc_syn (.clk(clk), .rst(rst), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .p(acc_p_syn));
+  dspv4_link_kept_acc     acc_rtl (.clk(clk), .rst(rst), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(acc_t_rtl), .p(acc_p_rtl));
+  dspv4_link_kept_acc_syn acc_syn (.clk(clk), .rst(rst), .a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(acc_t_syn), .p(acc_p_syn));
 
   wire signed [35:0] preadd_t_rtl, preadd_t_syn;
   wire signed [36:0] preadd_p_rtl, preadd_p_syn;
@@ -68,6 +73,36 @@ module tb;
   dspv4_link_kept_carry     carry_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(carry_t_rtl), .p(carry_p_rtl));
   dspv4_link_kept_carry_syn carry_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(carry_t_syn), .p(carry_p_syn));
 
+  wire signed [36:0] rz_rtl [1:7], rz_syn [1:7];
+  dspv4_link_kept_register_zeros     rz_r (.clk(clk), .rst(rst), .xy(xy), .p1(rz_rtl[1]), .p2(rz_rtl[2]), .p3(rz_rtl[3]),
+                                           .p4(rz_rtl[4]), .p5(rz_rtl[5]), .p6(rz_rtl[6]), .p7(rz_rtl[7]));
+  dspv4_link_kept_register_zeros_syn rz_s (.clk(clk), .rst(rst), .xy(xy), .p1(rz_syn[1]), .p2(rz_syn[2]), .p3(rz_syn[3]),
+                                           .p4(rz_syn[4]), .p5(rz_syn[5]), .p6(rz_syn[6]), .p7(rz_syn[7]));
+
+  wire signed [45:0] pbs_t_rtl, pbs_t_syn;
+  wire signed [46:0] pbs_p_rtl, pbs_p_syn;
+  dspv4_link_kept_preadd_b_short     pbs_rtl (.d0(h0), .b0(h1), .a0(w30), .a1(a1), .b1(b1), .t(pbs_t_rtl), .p(pbs_p_rtl));
+  dspv4_link_kept_preadd_b_short_syn pbs_syn (.d0(h0), .b0(h1), .a0(w30), .a1(a1), .b1(b1), .t(pbs_t_syn), .p(pbs_p_syn));
+
+  wire signed [31:0] xas_t_rtl, xas_t_syn;
+  wire signed [32:0] xas_p_rtl, xas_p_syn;
+  dspv4_link_kept_xpath_a_short     xas_rtl (.a0(h0), .d0(h1), .a1(a1), .b1(b1), .t(xas_t_rtl), .p(xas_p_rtl));
+  dspv4_link_kept_xpath_a_short_syn xas_syn (.a0(h0), .d0(h1), .a1(a1), .b1(b1), .t(xas_t_syn), .p(xas_p_syn));
+
+  wire signed [35:0] xbs_t_rtl, xbs_t_syn;
+  wire signed [36:0] xbs_p_rtl, xbs_p_syn;
+  dspv4_link_kept_xpath_b_short     xbs_rtl (.a0(a0), .d0(d0), .a1(a1), .b1(b1), .t(xbs_t_rtl), .p(xbs_p_rtl));
+  dspv4_link_kept_xpath_b_short_syn xbs_syn (.a0(a0), .d0(d0), .a1(a1), .b1(b1), .t(xbs_t_syn), .p(xbs_p_syn));
+
+  wire signed [35:0] mx_t_rtl, mx_t_syn, ms_t_rtl, ms_t_syn, bc_t_rtl, bc_t_syn;
+  wire signed [36:0] mx_p_rtl, mx_p_syn, ms_p_rtl, ms_p_syn, bc_p_rtl, bc_p_syn;
+  dspv4_link_kept_mixed           mx_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .x(x6), .t(mx_t_rtl), .p(mx_p_rtl));
+  dspv4_link_kept_mixed_syn       mx_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .x(x6), .t(mx_t_syn), .p(mx_p_syn));
+  dspv4_link_kept_mixed_shift     ms_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(ms_t_rtl), .p(ms_p_rtl));
+  dspv4_link_kept_mixed_shift_syn ms_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(ms_t_syn), .p(ms_p_syn));
+  dspv4_link_kept_bcin            bc_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(bc_t_rtl), .p(bc_p_rtl));
+  dspv4_link_kept_bcin_syn        bc_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(bc_t_syn), .p(bc_p_syn));
+
   always #5 clk = ~clk;
 
   task check(input [255:0] name, input [49:0] rtl, input [49:0] syn);
@@ -83,6 +118,7 @@ module tb;
 
   task drive;
     x = $random; c4 = $random; u1 = $random; u2 = $random;
+    xy = {$random, $random, $random, $random, $random, $random, $random, $random}; x6 = $random;
     rst = (i % 50 == 0);
     if (i % 4 == 0) begin
       a0 = extreme($random); b0 = extreme($random); a1 = extreme($random); b1 = extreme($random);
@@ -91,10 +127,13 @@ module tb;
       x16 = $random & 1 ? 16'hffff : 16'h0;
       w32 = $random & 1 ? 32'sh80000000 : 32'sh7fffffff;
       c49 = $random & 1 ? 49'sh1000000000000 : 49'shffffffffffff;
+      h0 = $random & 1 ? 16'sh8000 : 16'sh7fff; h1 = $random & 1 ? 16'sh8000 : 16'sh7fff;
+      w30 = $random & 1 ? 30'sh20000000 : 30'sh1fffffff;
     end else begin
       a0 = $random; b0 = $random; a1 = $random; b1 = $random; d0 = $random;
       c = {$random, $random};
       x16 = $random; w32 = $random; c49 = {$random, $random};
+      h0 = $random; h1 = $random; w30 = $random;
     end
   endtask
 
@@ -109,6 +148,7 @@ module tb;
       check("trunc.p", trunc_p_rtl, trunc_p_syn);
       check("wrap.p", wrap_p_rtl, wrap_p_syn);
       check("zext.p", zext_p_rtl, zext_p_syn);
+      check("acc.t", acc_t_rtl, acc_t_syn);
       check("acc.p", acc_p_rtl, acc_p_syn);
       check("preadd.t", preadd_t_rtl, preadd_t_syn);
       check("preadd.p", preadd_p_rtl, preadd_p_syn);
@@ -127,6 +167,20 @@ module tb;
       check("acin.p", acin_p_rtl, acin_p_syn);
       check("carry.t", carry_t_rtl, carry_t_syn);
       check("carry.p", carry_p_rtl, carry_p_syn);
+      for (k = 1; k <= 7; k = k + 1)
+        check("register_zeros.p", rz_rtl[k], rz_syn[k]);
+      check("preadd_b_short.t", pbs_t_rtl, pbs_t_syn);
+      check("preadd_b_short.p", pbs_p_rtl, pbs_p_syn);
+      check("xpath_a_short.t", xas_t_rtl, xas_t_syn);
+      check("xpath_a_short.p", xas_p_rtl, xas_p_syn);
+      check("xpath_b_short.t", xbs_t_rtl, xbs_t_syn);
+      check("xpath_b_short.p", xbs_p_rtl, xbs_p_syn);
+      check("mixed.t", mx_t_rtl, mx_t_syn);
+      check("mixed.p", mx_p_rtl, mx_p_syn);
+      check("mixed_shift.t", ms_t_rtl, ms_t_syn);
+      check("mixed_shift.p", ms_p_rtl, ms_p_syn);
+      check("bcin.t", bc_t_rtl, bc_t_syn);
+      check("bcin.p", bc_p_rtl, bc_p_syn);
     end
     $display("RESULT: %0d mismatches in 2000 cycles", bad);
     $finish_and_return(bad == 0 ? 0 : 1);

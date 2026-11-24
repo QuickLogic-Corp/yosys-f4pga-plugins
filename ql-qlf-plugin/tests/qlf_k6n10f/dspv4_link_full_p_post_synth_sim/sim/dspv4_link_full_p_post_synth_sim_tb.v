@@ -1,4 +1,5 @@
-// RTL against netlist every cycle (!== so x mismatches); every 4th cycle uses extreme operands.
+// RTL against netlist every cycle (!== so x mismatches); every 4th cycle uses extreme operands;
+// reset every 50th cycle.
 `timescale 1ns/1ps
 
 module tb;
@@ -8,6 +9,9 @@ module tb;
   reg signed [15:0] h0, h1, h2, h3, h4, h5;
   reg signed [29:0] w0, w1;
   reg [15:0] x16;
+  reg [107:0] xy;
+  reg [9:0] x10;
+  reg signed [3:0] c4;
   integer i, bad = 0;
 
   wire signed [35:0] small_t_rtl, small_t_syn;
@@ -101,6 +105,19 @@ module tb;
   dspv4_link_instance     inst_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(inst_t_rtl), .p(inst_p_rtl));
   dspv4_link_instance_syn inst_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(inst_t_syn), .p(inst_p_syn));
 
+  wire signed [34:0] cc_t_rtl, cc_t_syn;
+  wire signed [35:0] cc_p_rtl, cc_p_syn;
+  dspv4_link_constant_c     cc_rtl (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(cc_t_rtl), .p(cc_p_rtl));
+  dspv4_link_constant_c_syn cc_syn (.a0(a0), .b0(b0), .a1(a1), .b1(b1), .t(cc_t_syn), .p(cc_p_syn));
+
+  wire signed [36:0] un_p1_rtl, un_p1_syn, un_p2_rtl, un_p2_syn, un_p3_rtl, un_p3_syn;
+  dspv4_link_unregistered     un_rtl (.clk(clk), .rst(rst), .xy(xy), .p1(un_p1_rtl), .p2(un_p2_rtl), .p3(un_p3_rtl));
+  dspv4_link_unregistered_syn un_syn (.clk(clk), .rst(rst), .xy(xy), .p1(un_p1_syn), .p2(un_p2_syn), .p3(un_p3_syn));
+
+  wire signed [36:0] reset_p_rtl, reset_p_syn;
+  dspv4_link_reset     reset_rtl (.clk(clk), .rst(rst), .x(x10), .c(c4), .a1(a1), .b1(b1), .p(reset_p_rtl));
+  dspv4_link_reset_syn reset_syn (.clk(clk), .rst(rst), .x(x10), .c(c4), .a1(a1), .b1(b1), .p(reset_p_syn));
+
   always #5 clk = ~clk;
 
   task check(input [255:0] name, input [49:0] rtl, input [49:0] syn);
@@ -127,6 +144,8 @@ module tb;
   endfunction
 
   task drive;
+    xy = {$random, $random, $random, $random}; x10 = $random; c4 = $random;
+    rst = (i % 50 == 0);
     if (i % 4 == 0) begin
       a0 = extreme($random); b0 = extreme($random); a1 = extreme($random); b1 = extreme($random);
       a2 = extreme($random); b2 = extreme($random); a3 = extreme($random); b3 = extreme($random);
@@ -186,6 +205,12 @@ module tb;
       check("two_consumers.q", two_q_rtl, two_q_syn);
       check("instance.t", inst_t_rtl, inst_t_syn);
       check("instance.p", inst_p_rtl, inst_p_syn);
+      check("constant_c.t", cc_t_rtl, cc_t_syn);
+      check("constant_c.p", cc_p_rtl, cc_p_syn);
+      check("unregistered.p1", un_p1_rtl, un_p1_syn);
+      check("unregistered.p2", un_p2_rtl, un_p2_syn);
+      check("unregistered.p3", un_p3_rtl, un_p3_syn);
+      check("reset.p", reset_p_rtl, reset_p_syn);
     end
     $display("RESULT: %0d mismatches in 2000 cycles", bad);
     $finish_and_return(bad == 0 ? 0 : 1);

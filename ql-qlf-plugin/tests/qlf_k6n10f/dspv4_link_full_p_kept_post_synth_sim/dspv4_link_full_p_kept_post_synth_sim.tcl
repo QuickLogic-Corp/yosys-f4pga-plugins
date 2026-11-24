@@ -22,8 +22,8 @@ proc synth_one {top} {
     check -assert
 }
 # Counts bits after splitnets on the consumers only: an accumulator's own Z reads all 64.
-proc assert_kept {kept net_bits consumers reason} {
-    scratchpad -assert ql_dspv4_link_full_p.widened 0
+proc assert_kept {kept net_bits consumers reason {widened 0}} {
+    scratchpad -assert ql_dspv4_link_full_p.widened $widened
     scratchpad -assert ql_dspv4_link_full_p.kept $kept
     if { [catch { exec grep -c -F $reason synth.log } n] || $n != $kept } {
         error "expected $kept kept link(s) with reason: $reason"
@@ -69,11 +69,11 @@ assert_kept 2 90 t:QL_DSP4_ALU_* {value range [-566935552000, 566935683071] does
 write_syn dspv4_link_kept_loop
 
 synth_one dspv4_link_kept_top_edge
-assert_kept 1 33 c:p_QL_DSP4_ALU_* {value range [0, 4294967296] does not fit 33 bits read signed}
+assert_kept 1 33 c:p_QL_DSP4_ALU_* {value range [1, 4294967296] does not fit 33 bits read signed}
 write_syn dspv4_link_kept_top_edge
 
 synth_one dspv4_link_kept_bottom_edge
-assert_kept 1 33 c:p_QL_DSP4_ALU_* {value range [-4294967297, 0] does not fit 33 bits read signed}
+assert_kept 1 33 c:p_QL_DSP4_ALU_* {value range [-4294967297, -2] does not fit 33 bits read signed}
 write_syn dspv4_link_kept_bottom_edge
 
 synth_one dspv4_link_kept_exceed
@@ -90,5 +90,38 @@ assert_kept 1 36 c:p_QL_DSP4_ALU_* {reads a cascade input (A_IN_SEL or B_IN_SEL)
 write_syn dspv4_link_kept_acin
 
 synth_one dspv4_link_kept_carry
-assert_kept 1 36 c:p_QL_DSP4_ALU_* {carry-in is not the one its mode ties}
+assert_kept 1 36 c:p_QL_DSP4_ALU_* {carry-in (CIN) is not the constant its mode needs}
 write_syn dspv4_link_kept_carry
+
+# Seven consumers read 6 bits each; head -> rsub widens.
+synth_one dspv4_link_kept_register_zeros
+assert_kept 7 42 c:p?_QL_DSP4_ALU_* {does not fit 6 bits read signed} 1
+write_syn dspv4_link_kept_register_zeros
+
+synth_one dspv4_link_kept_preadd_b_short
+assert_kept 1 46 c:p_QL_DSP4_ALU_* {value range [-35184372023296, 35184372088832] does not fit 46 bits read signed}
+write_syn dspv4_link_kept_preadd_b_short
+
+synth_one dspv4_link_kept_xpath_a_short
+assert_kept 1 32 c:p_QL_DSP4_ALU_* {value range [-2147418112, 2147483648] does not fit 32 bits read signed}
+write_syn dspv4_link_kept_xpath_a_short
+
+synth_one dspv4_link_kept_xpath_b_short
+assert_kept 1 36 c:p_QL_DSP4_ALU_* {value range [-34359476224, 34359738368] does not fit 36 bits read signed}
+write_syn dspv4_link_kept_xpath_b_short
+
+synth_one dspv4_link_kept_mixed
+assert_kept 1 30 c:p_QL_DSP4_ALU_* {mixes P bits in place with other bits}
+write_syn dspv4_link_kept_mixed
+
+synth_one dspv4_link_kept_mixed_shift
+assert_kept 1 32 c:p_QL_DSP4_ALU_* {mixes P bits in place with other bits}
+write_syn dspv4_link_kept_mixed_shift
+
+synth_one dspv4_link_kept_bcin
+assert_kept 1 36 c:p_QL_DSP4_ALU_* {reads a cascade input (A_IN_SEL or B_IN_SEL)}
+write_syn dspv4_link_kept_bcin
+
+# Not simulated: with no CIN connection the RTL's carry-in is undriven, so it reads x.
+synth_one dspv4_link_kept_no_cin
+assert_kept 1 36 c:p_QL_DSP4_ALU_* {carry-in (CIN) is not the constant its mode needs}

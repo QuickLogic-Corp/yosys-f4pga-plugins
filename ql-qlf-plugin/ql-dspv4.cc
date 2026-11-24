@@ -3308,7 +3308,6 @@ static ValueRange dspv4_port_range(const SigSpec &sig)
     return {-half, half - 1};
 }
 
-// Every DSP register clears to 0, so every stage can hold 0.
 static ValueRange dspv4_with_zero(const ValueRange &range) { return {std::min<int64_t>(range.low, 0), std::max<int64_t>(range.high, 0)}; }
 
 static ValueRange dspv4_sum_range(const ValueRange &a, const ValueRange &b) { return {a.low + b.low, a.high + b.high}; }
@@ -3321,6 +3320,15 @@ static ValueRange dspv4_cut_range(const ValueRange &range, int width)
     if (range.low >= -half && range.high <= half - 1)
         return range;
     return {-half, half - 1};
+}
+
+// Every DSP register clears to 0, so a stage behind a register can also hold 0.
+static ValueRange dspv4_zero_if_registered(RTLIL::Cell *cell, const ValueRange &range, std::initializer_list<RTLIL::IdString> registers)
+{
+    for (auto reg : registers)
+        if (dspv4_param(cell, reg))
+            return dspv4_with_zero(range);
+    return range;
 }
 
 static ValueRange dspv4_product_range(const ValueRange &a, const ValueRange &b)
@@ -3350,7 +3358,8 @@ struct QlDspV4LinkFullPPass : public Pass {
         log("P, extended by sign or zero bits. When the source's value always fits in\n");
         log("those low bits, connect C to all 50 bits of the source's P instead. The\n");
         log("value is the same; the link can then use the dedicated cascade wire for\n");
-        log("every bit. Every link left as it is gets a log line saying why.\n");
+        log("every bit. Every link left as it is gets a log line saying why, and so\n");
+        log("does a C that mixes P bits in place with other bits.\n");
         log("\n");
         log("The counts go to the scratchpad as ql_dspv4_link_full_p.widened and\n");
         log("ql_dspv4_link_full_p.kept.\n");
@@ -3360,6 +3369,7 @@ struct QlDspV4LinkFullPPass : public Pass {
     SigMap sigmap;
     dict<SigBit, std::pair<RTLIL::Cell *, int>> p_bit_owner;
     dict<RTLIL::Cell *, ResultLink> link_on_c;
+    std::vector<RTLIL::Cell *> mixed_c;
     pool<RTLIL::Cell *> cells_on_link_loops;
     dict<RTLIL::Cell *, std::optional<ValueRange>> range_of;
 
@@ -3380,12 +3390,18 @@ struct QlDspV4LinkFullPPass : public Pass {
                     continue;
                 }
                 kept++;
-                log("ql_dspv4_link_full_p: %s: C link from %s left as it is: %s.\n", log_id(module), link_net(it.first, it.second), reason.c_str());
+                log("ql_dspv4_link_full_p: %s: C link from %s left as it is: %s.\n", log_id(module), link_net(it.first, it.second).c_str(),
+                    reason.c_str());
+            }
+            for (auto cell : mixed_c) {
+                kept++;
+                log("ql_dspv4_link_full_p: %s: C %s left as it is: it mixes P bits in place with other bits, so it can still split.\n",
+                    log_id(module), log_signal(cell->getPort(ID(C))));
             }
             // Decided first, rewired after: the ranges read the C ports.
             for (auto &it : to_widen) {
                 log_debug("ql_dspv4_link_full_p: %s: C link from %s now reads all 50 bits of the source's P.\n", log_id(module),
-                          link_net(it.first, link_on_c.at(it.first)));
+                          link_net(it.first, link_on_c.at(it.first)).c_str());
                 it.first->setPort(ID(C), it.second->getPort(ID(P)));
             }
             widened += GetSize(to_widen);
@@ -3400,6 +3416,7 @@ struct QlDspV4LinkFullPPass : public Pass {
         sigmap.set(module);
         p_bit_owner.clear();
         link_on_c.clear();
+        mixed_c.clear();
         range_of.clear();
         for (auto cell : module->cells()) {
             if (cell->type != ID(QL_DSP4) || !cell->hasPort(ID(P)))
@@ -3412,14 +3429,29 @@ struct QlDspV4LinkFullPPass : public Pass {
         for (auto cell : module->selected_cells()) {
             if (cell->type != ID(QL_DSP4) || !cell->hasPort(ID(C)))
                 continue;
-            std::optional<ResultLink> link = link_on(sigmap(cell->getPort(ID(C))));
+            SigSpec c = sigmap(cell->getPort(ID(C)));
+            std::optional<ResultLink> link = link_on(c);
             if (link)
                 link_on_c[cell] = *link;
+            else if (reads_p_bits_in_place(c))
+                mixed_c.push_back(cell);
         }
     }
 
+    // A C bit that is another DSP's P bit at its own position can use pcin_i.
+    // A C that is not a link but has one can split across pcin_i and c_i.
+    bool reads_p_bits_in_place(const SigSpec &c)
+    {
+        for (int i = 0; i < GetSize(c); i++) {
+            if (!p_bit_owner.count(c[i]) || p_bit_owner.at(c[i]).second != i)
+                continue;
+            return sigmap(p_bit_owner.at(c[i]).first->getPort(ID(P))) != c;
+        }
+        return false;
+    }
+
     // The design net the link carries, as the consumer's C port names it.
-    const char *link_net(RTLIL::Cell *consumer, const ResultLink &link) { return log_signal(consumer->getPort(ID(C)).extract(0, link.width)); }
+    std::string link_net(RTLIL::Cell *consumer, const ResultLink &link) { return log_signal(consumer->getPort(ID(C)).extract(0, link.width)); }
 
     std::optional<ResultLink> link_on(const SigSpec &c)
     {
@@ -3490,14 +3522,11 @@ struct QlDspV4LinkFullPPass : public Pass {
             return "the source rounds or shifts P (USE_RSS)";
         State tied_carry_in = dspv4_param(cell, ID(ALUMODE)) == 1 ? State::S1 : State::S0;
         if (!cell->hasPort(ID(CIN)) || sigmap(cell->getPort(ID(CIN))) != SigSpec(tied_carry_in))
-            return "the source's carry-in is not the one its mode ties";
+            return "the source's carry-in (CIN) is not the constant its mode needs";
         return "";
     }
 
-    ValueRange port_range(RTLIL::Cell *cell, RTLIL::IdString port)
-    {
-        return dspv4_with_zero(dspv4_port_range(sigmap(dspv4_port_or_empty(cell, port))));
-    }
+    ValueRange port_range(RTLIL::Cell *cell, RTLIL::IdString port) { return dspv4_port_range(sigmap(dspv4_port_or_empty(cell, port))); }
 
     // As dsp4_logical_map.v builds the multiplier's inputs.
     ValueRange product_range(RTLIL::Cell *cell)
@@ -3506,15 +3535,15 @@ struct QlDspV4LinkFullPPass : public Pass {
         bool b_into_preadder = dspv4_param(cell, ID(PREADDINSEL));
         bool zero_gate = inmode & 2;
         ValueRange zero = {0, 0};
-        ValueRange a = zero_gate && !b_into_preadder ? zero : port_range(cell, ID::A);
-        ValueRange b = zero_gate && b_into_preadder ? zero : port_range(cell, ID::B);
-        ValueRange d = inmode & 4 ? port_range(cell, ID(D)) : zero;
+        ValueRange a = zero_gate && !b_into_preadder ? zero : dspv4_zero_if_registered(cell, port_range(cell, ID::A), {ID(AREG0), ID(AREG1)});
+        ValueRange b = zero_gate && b_into_preadder ? zero : dspv4_zero_if_registered(cell, port_range(cell, ID::B), {ID(BREG0), ID(BREG1)});
+        ValueRange d = inmode & 4 ? dspv4_zero_if_registered(cell, port_range(cell, ID(D)), {ID(DREG)}) : zero;
         ValueRange into_preadder = b_into_preadder ? b : a;
         ValueRange preadder_result = inmode & 8 ? dspv4_difference_range(d, into_preadder) : dspv4_sum_range(d, into_preadder);
-        ValueRange ad = dspv4_with_zero(dspv4_cut_range(preadder_result, 32));
+        ValueRange ad = dspv4_zero_if_registered(cell, dspv4_cut_range(preadder_result, 32), {ID(ADREG)});
         ValueRange multiplicand = dspv4_param(cell, ID(AMULTSEL)) ? ad : a;
         ValueRange multiplier = dspv4_param(cell, ID(BMULTSEL)) ? dspv4_cut_range(ad, 18) : b;
-        return dspv4_with_zero(dspv4_product_range(multiplicand, multiplier));
+        return dspv4_zero_if_registered(cell, dspv4_product_range(multiplicand, multiplier), {ID(MREG)});
     }
 
     // ALUMODE 00: product + Z, 11: Z - product, 01: product - Z (dspv4_sim.v).
@@ -3540,7 +3569,7 @@ struct QlDspV4LinkFullPPass : public Pass {
         default:
             log_abort();
         }
-        value = dspv4_with_zero(value);
+        value = dspv4_zero_if_registered(cell, value, {ID(PREG)});
         std::optional<ValueRange> result;
         if (value.low >= P_PORT_LOW && value.high <= P_PORT_HIGH)
             result = value;
@@ -3548,7 +3577,10 @@ struct QlDspV4LinkFullPPass : public Pass {
         return result;
     }
 
-    ValueRange c_range(RTLIL::Cell *cell)
+    ValueRange c_range(RTLIL::Cell *cell) { return dspv4_zero_if_registered(cell, c_value_range(cell), {ID(CREG)}); }
+
+    // The source's own range when C is a link this pass would widen, else the port's.
+    ValueRange c_value_range(RTLIL::Cell *cell)
     {
         ValueRange port = port_range(cell, ID(C));
         if (!link_on_c.count(cell) || cells_on_link_loops.count(cell))
