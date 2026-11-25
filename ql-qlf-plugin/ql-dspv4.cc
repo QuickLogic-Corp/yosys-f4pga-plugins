@@ -165,7 +165,8 @@ static bool dspv4_operands_overlap(SigMap &sigmap, const SigSpec &a, const SigSp
 // {1'b0, x} or {{n{x[msb]}}, x} hides the register behind a concat and the
 // stage is never absorbed -- `a2 * $signed({1'b0, b2})` absorbs A's two stages
 // and none of B's. The DSP re-applies the extension itself at the port width in
-// dspv4_fit, so the design's copy is redundant.
+// dspv4_fit, so the design's copy is redundant when the operand is signed.
+// Repeated top bits of an unsigned operand are part of its value and stay.
 //
 // Signedness has to follow the strip. {1'b0, x} is precisely what makes an
 // UNSIGNED x signed; dropping the zero while still calling the operand signed
@@ -189,7 +190,11 @@ static SigSpec dspv4_strip_extension(SigSpec sig, bool &is_signed)
     }
 
     // Sign-extension: the top bits are copies of the value's own MSB, so one
-    // copy is kept and the operand stays signed.
+    // copy is kept and the operand stays signed. Only a signed operand has
+    // one. On an unsigned operand those copies are value bits: {x[7], x} is
+    // x + 256 * x[7], and dropping them would change the number multiplied.
+    if (!is_signed)
+        return sig;
     SigBit top = sig[n - 1];
     if (top.wire == nullptr)
         return sig; // constant one-fill: not an extension
@@ -214,10 +219,38 @@ static int signed_width(const SigSpec &sig)
     return i + 2;
 }
 
-// Bits the pre-adder's result needs: one more than its wider operand.
+// Bits a signed number needs to hold the operand. An unsigned operand's top bits
+// are value bits, not sign copies: an all-ones constant is large, not -1.
+static int operand_signed_width(const SigSpec &sig, bool is_signed)
+{
+    if (is_signed)
+        return signed_width(sig);
+    SigSpec with_zero_on_top = sig;
+    with_zero_on_top.append(State::S0);
+    return signed_width(with_zero_on_top);
+}
+
+// Signed bits the pre-adder's wider operand needs.
+static int preadder_operand_width(const RTLIL::Cell *preadd)
+{
+    return std::max(operand_signed_width(preadd->getPort(ID::A), preadd->getParam(ID::A_SIGNED).as_bool()),
+                    operand_signed_width(preadd->getPort(ID::B), preadd->getParam(ID::B_SIGNED).as_bool()));
+}
+
+// Signed bits the pre-adder's exact result needs: one more than its wider
+// operand. A difference of two unsigned values stays inside that operand's range.
 static int preadder_sum_width(const RTLIL::Cell *preadd)
 {
-    return std::max(signed_width(preadd->getPort(ID::A)), signed_width(preadd->getPort(ID::B))) + 1;
+    bool unsigned_difference = preadd->type == ID($sub) && !preadd->getParam(ID::A_SIGNED).as_bool() && !preadd->getParam(ID::B_SIGNED).as_bool();
+    return preadder_operand_width(preadd) + (unsigned_difference ? 0 : 1);
+}
+
+// Bits the adder's own result needs to hold its exact value. An unsigned sum is
+// never negative, so it needs no sign bit.
+static int preadder_result_width(const RTLIL::Cell *preadd)
+{
+    bool unsigned_sum = preadd->type == ID($add) && !preadd->getParam(ID::A_SIGNED).as_bool() && !preadd->getParam(ID::B_SIGNED).as_bool();
+    return preadder_sum_width(preadd) - (unsigned_sum ? 1 : 0);
 }
 
 // Drive a design signal from a DSP output port that is wider than it. The port
@@ -1044,7 +1077,7 @@ struct QlDspV4Pass : public Pass {
         }
         std::stable_sort(preadd_candidates.begin(), preadd_candidates.end(),
                          [](const std::pair<RTLIL::Cell *, bool> &l, const std::pair<RTLIL::Cell *, bool> &r) {
-                             return preadder_sum_width(l.first) > preadder_sum_width(r.first);
+                             return preadder_operand_width(l.first) > preadder_operand_width(r.first);
                          });
 
         // Why a two-deep chain stayed on the one-stage D side, when it did.
@@ -1075,7 +1108,7 @@ struct QlDspV4Pass : public Pass {
 
             // The adder's own result is narrower than the sum it computes, so
             // the RTL wraps where the DSP's wider pre-adder would not.
-            if (GetSize(adder_result) < std::max(signed_width(first_addend), signed_width(second_addend)) + 1)
+            if (GetSize(adder_result) < preadder_result_width(preadd))
                 unsafe = "it truncates its own sum, which the DSP would not";
 
             // The multiply reads the sum with a signedness the adder did not
@@ -1089,7 +1122,7 @@ struct QlDspV4Pass : public Pass {
             // declared at: a 32-bit flop holding the sum of two 16-bit numbers
             // still only carries 17 bits of value, and a port that reads all
             // 17 loses nothing.
-            else if (ad_flop != nullptr && GetSize(sum_on_a ? ma : mb) < std::max(signed_width(first_addend), signed_width(second_addend)) + 1)
+            else if (ad_flop != nullptr && GetSize(sum_on_a ? ma : mb) < preadder_result_width(preadd))
                 unsafe = "the multiply reads fewer bits of its registered sum than it produces";
 
             // An unsigned subtract wraps at its own width where the DSP's
@@ -1097,11 +1130,15 @@ struct QlDspV4Pass : public Pass {
             // holds 131071 and the DSP holds -1. Addition never needed this
             // question, because an unsigned sum is always positive.
             //
-            // The two agree only while the product stays inside the subtract's
-            // width: the values are congruent modulo 2^width and multiplication
-            // preserves that, so a product kept no wider than the sum wraps to
-            // the same bits. One bit past it and the sign shows through.
-            else if (preadd_is_sub && !sum_port_signed && GetSize(st.mul->getPort(ID::Y)) > GetSize(adder_result))
+            // The two agree only while the product stays inside the width the
+            // RTL wraps at: the values are congruent modulo 2^width and
+            // multiplication preserves that, so a product kept no wider than
+            // that wraps to the same bits. One bit past it and the sign shows
+            // through. The RTL wraps at the narrower of the subtract and what
+            // the multiply reads of it: `ad[11:0] * b` over a 16-bit `ad`
+            // wraps at 12, so a 14-bit product is already past it.
+            else if (preadd_is_sub && !sum_port_signed &&
+                     GetSize(st.mul->getPort(ID::Y)) > std::min(GetSize(adder_result), GetSize(sum_on_a ? ma : mb)))
                 unsafe = "an unsigned subtract wraps where the DSP signs";
 
             // Bits above the sum must be its sign extension. A constant pad
@@ -1121,13 +1158,10 @@ struct QlDspV4Pass : public Pass {
             }
             {
 
-                // D +/- X needs one bit more than the wider operand. AD wraps rather
-                // than saturating, so a sum that does not fit is a silent wrong
-                // answer -- this bound is the whole guard.
-                int sum_width = preadder_sum_width(preadd);
-                // AD is signed, and signed_width counts an unsigned value's top bit as
-                // its sign, so an unsigned sum needs one more bit. A subtract does not.
-                int signed_sum_width = sum_width + (sum_port_signed || preadd_is_sub ? 0 : 1);
+                // The exact D +/- X (see preadder_sum_width). AD wraps rather than
+                // saturating, so a sum that does not fit is a silent wrong answer --
+                // this bound is the whole guard.
+                int signed_sum_width = preadder_sum_width(preadd);
 
                 // Cross-path: the other multiply operand is one of this adder's
                 // own operands. A PREADD word would put it on ports A and B; an
@@ -3068,8 +3102,9 @@ struct QlDspV4Pass : public Pass {
 // instantiation), so one check covers every route to the cell.
 // ============================================================================
 
-// signed_width() lives up with the other operand helpers, because the inference
-// pass needs the same "does this fit" answer when it selects a pre-adder mode.
+// signed_width() is right here as it stands: the check reads the QL_DSP4 ports,
+// which the pre-adder treats as signed. The inference pass reads RTL operands,
+// which may be unsigned, so it measures them with operand_signed_width().
 
 struct QlDsp4CheckPass : public Pass {
     QlDsp4CheckPass() : Pass("ql_dsp4_check", "warn about QL_DSP4 arithmetic that can silently overflow") {}
