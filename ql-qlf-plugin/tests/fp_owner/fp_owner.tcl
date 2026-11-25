@@ -75,3 +75,8 @@ set nocname [file_text fp_owner_nocname.json]
 if {[string first {"name": "",} $nocname] >= 0} { error "a .subckt without .cname has no name in the table" }
 set ffs [regexp -all -line -- {"type": "sdffre", "owners": \[\["u_mid"\]\]} $nocname]
 if {$ffs != 4} { error "without .cname, expected 4 registers owned by u_mid, found $ffs" }
+# Without .cname a LUT is named after its output net and still keeps its recorded owner.
+foreach {net owners} {c {[["u_leaf"]]} y {[["u_mid", "u_leaf"]]} gen[0].u.c {[["gen[0].u"]]}} {
+    set row "\"name\": \"$net\", \"type\": \"\$lut\", \"owners\": $owners, \"rule\": \"recorded\""
+    if {[string first $row $nocname] < 0} { error "without .cname, LUT $net is not owned by $owners" }
+}

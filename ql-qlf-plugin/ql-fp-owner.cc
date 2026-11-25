@@ -699,6 +699,17 @@ static void write_table(RTLIL::Module *module, const std::string &table_file, co
             auto it = by_name.find(atom.name);
             if (it != by_name.end())
                 cell = it->second;
+        } else if (atom.type.empty() && !atom.inputs.empty()) {
+            // Without .cname (-no_iname, -rel_ip_blif) a .names or .latch is the cell driving
+            // its output net -- unless it is a buffer write_blif added, whose input that same
+            // cell drives.
+            auto drv = net_driver.find(atom.output);
+            if (drv != net_driver.end()) {
+                auto in = net_driver.find(atom.inputs.front());
+                const bool buffer = atom.is_names && atom.inputs.size() == 1 && in != net_driver.end() && in->second == drv->second;
+                if (!buffer)
+                    cell = drv->second;
+            }
         } else if (!atom.type.empty()) {
             // Without .cname (-rel_ip_blif) VPR names a .subckt after the net on its first
             // output pin.
