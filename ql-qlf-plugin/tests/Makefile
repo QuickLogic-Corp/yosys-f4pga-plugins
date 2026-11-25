@@ -180,9 +180,15 @@ qlf_k6n10f-dspv4_preadd_both_verify = grep -q 'modes inferred: PREADD_A_MULT_B x
 # The sum left behind is named, not just absent from the cell.
 qlf_k6n10f-dspv4_preadd_both_verify += && grep -q '1 x  a second pre-adder sum stays in fabric: the cell has one pre-adder' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
 qlf_k6n10f-dspv4_preadd_both_verify += && grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
-# Squaring is refused, so no pre-adder mode at all.
+# Squaring is refused in both blocks, so no pre-adder mode at all. The signed
+# block fits one DSP. The registered one fits only in the second ql_dspv4 call,
+# split over two, with its register copied into the banks (aurora2 #2807).
 qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
-qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 x  pre-adder: it feeds both multiply operands (squaring)' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+qlf_k6n10f-dspv4_preadd_square_verify += && grep -q 'modes inferred: MULT x2' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '2 x  pre-adder: it feeds both multiply operands (squaring)' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 shared operand register(s) copied into a bank rather than moved; 1 became userless' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+qlf_k6n10f-dspv4_preadd_square_verify += && test -s qlf_k6n10f/dspv4_preadd_square/netlist.v
+qlf_k6n10f-dspv4_preadd_square_verify += && ! grep -E -q "'[bh][0-9a-f]*x" qlf_k6n10f/dspv4_preadd_square/netlist.v
 # Every cross-path shape that must fold, 48 blocks, nine modes in no fixed
 # order. No block may be refused, and the four blocks that give up a register
 # stage to the bank depth limit must do it for that reason, not a clock/reset
