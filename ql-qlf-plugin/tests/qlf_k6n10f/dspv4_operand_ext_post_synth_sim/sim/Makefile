@@ -15,7 +15,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # The RTL and every netlist go into one simulation, so a single run compares
-# both designs against their source.
+# all four designs against their source.
 TESTBENCH = dspv4_operand_ext_post_synth_sim_tb.v
 RTL = ../dspv4_operand_ext_post_synth_sim.v
 POST_SYNTH = $(wildcard *_post_synth.v)
