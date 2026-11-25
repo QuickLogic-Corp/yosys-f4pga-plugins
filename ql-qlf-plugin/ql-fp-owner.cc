@@ -621,8 +621,7 @@ static std::vector<BlifAtom> read_blif_atoms(const std::string &text, const std:
 // VPR sweeps a block none of whose outputs has a sink, pass after pass until nothing more goes,
 // so such an atom is not in the .net. A .subckt whose cell is unknown is kept, its pins taken
 // for inputs.
-static std::vector<bool> vpr_swept(const std::vector<BlifAtom> &atoms, const std::vector<RTLIL::Cell *> &cells,
-                                   const pool<std::string> &top_outputs)
+static std::vector<bool> vpr_swept(const std::vector<BlifAtom> &atoms, const std::vector<RTLIL::Cell *> &cells, const pool<std::string> &top_outputs)
 {
     const size_t n = atoms.size();
     std::vector<std::vector<std::string>> ins(n), outs(n);
