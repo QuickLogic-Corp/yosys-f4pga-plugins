@@ -11,3 +11,16 @@ module dspv4_preadd_both (input signed [17:0] d, input signed [17:0] a,
                           output signed [40:0] p);
   assign p = (d + a) * (e + b);
 endmodule
+
+// Two unsigned sums with equal operand widths, a difference on A and a sum on
+// B. Neither is wider, so the RTL order decides and the difference is absorbed.
+// An unsigned difference needs one result bit less than a sum; ranking by
+// result width would wrongly make it the narrower one. Synthesised on its own,
+// so the carry chain it leaves does not mix with the design above.
+module dspv4_preadd_both_tie (input [15:0] d0, input [15:0] a0,
+                              input [15:0] d1, input [15:0] a1,
+                              output [16:0] p);
+  wire [16:0] s0 = d0 - a0;
+  wire [16:0] s1 = d1 + a1;
+  assign p = s0 * s1;
+endmodule

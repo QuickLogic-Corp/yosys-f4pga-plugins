@@ -7,6 +7,8 @@
 // from a refusal that happened in its place.
 //
 //   ad_*  the pre-adder's output register, narrow and wide operands
+//   ad_u* unsigned d + 16'hFFFF into a 17-bit AD register, all of it read: the
+//         all-ones constant is large, not -1, and the sum needs exactly 17 bits
 //   dr_*  D and AD banks at every depth from 0 to 2
 //   as_*  D deeper than A: the operands swap, so the two-deep chain takes A1
 //         and A2 and the one-deep one takes D
@@ -27,6 +29,7 @@ module dspv4_preadd_regs (
     output signed [32:0] ad_p,
     input signed [15:0] ad_wd, input signed [15:0] ad_wa, input signed [31:0] ad_wb,
     output signed [48:0] ad_wp,
+    input [7:0] ad_ud, input [19:0] ad_ub, output [36:0] ad_up,
     // D 0/1/2 deep against AD 0/1 deep.
     input signed [15:0] dr_d0, dr_a0, dr_b0, output signed [32:0] dr_p0,
     input signed [15:0] dr_d1, dr_a1, dr_b1, output signed [32:0] dr_p1,
@@ -51,6 +54,7 @@ module dspv4_preadd_regs (
     input signed [15:0] ic_y, ic_x, ic_b, output signed [32:0] ic_p
 );
   reg signed [16:0] ad_ad, ad_wad, dr_ad3, dr_ad4, dr_ad5;
+  reg [16:0] ad_uad;
   reg signed [15:0] dr_d1s0, dr_d2s0, dr_d2s1, dr_d4s0, dr_d5s0, dr_d5s1;
   reg signed [15:0] as_ds0, as_ds1, as_as0;
   reg signed [15:0] en_d0q, en_d1q, en_a1q, en_b1q;
@@ -61,6 +65,7 @@ module dspv4_preadd_regs (
 
   assign ad_p  = ad_ad * ad_b;
   assign ad_wp = ad_wad * ad_wb;
+  assign ad_up = ad_uad * ad_ub;
   assign dr_p0 = (dr_d0 + dr_a0) * dr_b0;
   assign dr_p1 = (dr_d1s0 + dr_a1) * dr_b1;
   assign dr_p2 = (dr_d2s1 + dr_a2) * dr_b2;
@@ -75,6 +80,7 @@ module dspv4_preadd_regs (
   always @(posedge clk) begin
     ad_ad   <= ad_d + ad_a;
     ad_wad  <= ad_wd + ad_wa;
+    ad_uad  <= ad_ud + 16'hFFFF;
     dr_d1s0 <= dr_d1;
     dr_d2s0 <= dr_d2;
     dr_d2s1 <= dr_d2s0;

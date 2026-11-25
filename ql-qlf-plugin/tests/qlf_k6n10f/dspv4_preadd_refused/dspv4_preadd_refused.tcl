@@ -1,4 +1,4 @@
-# dspv4_preadd_refused -- four shapes the pass must decline, four reasons.
+# dspv4_preadd_refused -- shapes the pass must decline.
 #
 # The multiply still lands in a DSP; only the addition stays soft. The
 # surviving carry chains are the evidence -- counting $add proves nothing,
@@ -20,6 +20,7 @@ yosys cd dspv4_preadd_refused
 check -assert
 select -assert-count 0 t:QL_DSP4_PREADD
 select -assert-count 0 t:QL_DSP4_PRESUB
-# Five, not four: the 18x18 shape needs two DSPs.
-select -assert-count 5 t:QL_DSP4_MULT
+# Nine shapes; five of them (over, ones32, ones18b, copies, unsdiff) leave a
+# fabric sum too wide for one port, so their multiply takes two DSPs.
+select -assert-count 14 t:QL_DSP4_MULT
 select -assert-min 1 t:adder_carry
