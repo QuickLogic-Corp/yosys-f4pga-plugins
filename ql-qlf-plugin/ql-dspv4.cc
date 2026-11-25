@@ -519,6 +519,9 @@ struct QlDspV4Pass : public Pass {
         // T2.3 matches; T2.4 classifies and emits.
         int total = 0;
         for (auto module : a_Design->selected_modules()) {
+            // The order the matcher visits cells decides which multiply takes a
+            // register. Yosys 0.70 no longer sorts cells by name, so sort here.
+            module->sort();
             // Duplicate accumulator loops go first. Two accumulators over one
             // product give it two readers and the fan-out guards then refuse
             // both, so the shape has to be gone before anything is matched --
