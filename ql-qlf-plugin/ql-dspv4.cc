@@ -4524,4 +4524,102 @@ struct QlDsp4CheckPass : public Pass {
 
 } QlDsp4CheckPass;
 
+// ============================================================================
+// ql_dsp4_chain_report -- the longest PCOUT -> PCIN chain of QL_DSP4 cells.
+// The cells of one chain must sit in one DSP column, so the device needs a
+// column at least that tall.
+// ============================================================================
+
+struct Dsp4ChainSummary {
+    int links = 0;
+    int chains = 0;
+    int longest = 0;
+};
+
+// For each QL_DSP4 whose PCIN reads another QL_DSP4's PCOUT: that other cell.
+static dict<RTLIL::Cell *, RTLIL::Cell *> dsp4_pcin_sources(RTLIL::Module *module)
+{
+    SigMap sigmap(module);
+    dict<RTLIL::SigBit, RTLIL::Cell *> pcout_driver;
+    for (auto cell : module->cells())
+        if (cell->type == ID(QL_DSP4) && cell->hasPort(ID(PCOUT)))
+            for (auto bit : sigmap(cell->getPort(ID(PCOUT))))
+                if (bit.wire != nullptr)
+                    pcout_driver[bit] = cell;
+
+    dict<RTLIL::Cell *, RTLIL::Cell *> source_of;
+    for (auto cell : module->cells()) {
+        if (cell->type != ID(QL_DSP4) || !cell->hasPort(ID(PCIN)))
+            continue;
+        for (auto bit : sigmap(cell->getPort(ID(PCIN)))) {
+            if (pcout_driver.count(bit)) {
+                source_of[cell] = pcout_driver.at(bit);
+                break;
+            }
+        }
+    }
+    return source_of;
+}
+
+// Cells from the chain head down to `last`, or 0 when the links form a loop.
+static int dsp4_chain_length(RTLIL::Cell *last, const dict<RTLIL::Cell *, RTLIL::Cell *> &source_of)
+{
+    int length = 1;
+    for (RTLIL::Cell *cell = last; source_of.count(cell); cell = source_of.at(cell))
+        if (++length > GetSize(source_of) + 1)
+            return 0;
+    return length;
+}
+
+static void dsp4_add_module_chains(RTLIL::Module *module, Dsp4ChainSummary &summary)
+{
+    dict<RTLIL::Cell *, RTLIL::Cell *> source_of = dsp4_pcin_sources(module);
+    pool<RTLIL::Cell *> feeds_another;
+    for (auto &link : source_of)
+        feeds_another.insert(link.second);
+
+    summary.links += GetSize(source_of);
+    for (auto &link : source_of) {
+        RTLIL::Cell *consumer = link.first;
+        int length = dsp4_chain_length(consumer, source_of);
+        if (length == 0) {
+            log_warning("ql_dsp4_chain_report: %s.%s is in or fed from a PCIN loop; not counted.\n", log_id(module), log_id(consumer));
+            continue;
+        }
+        if (feeds_another.count(consumer))
+            continue;
+        summary.chains++;
+        summary.longest = std::max(summary.longest, length);
+        log_debug("  chain of %d ending at %s.%s\n", length, log_id(module), log_id(consumer));
+    }
+}
+
+struct QlDsp4ChainReportPass : public Pass {
+    QlDsp4ChainReportPass() : Pass("ql_dsp4_chain_report", "report the longest QL_DSP4 PCIN chain") {}
+
+    void help() override
+    {
+        log("\n");
+        log("    ql_dsp4_chain_report [selection]\n");
+        log("\n");
+        log("Report how many QL_DSP4 cells the longest PCOUT -> PCIN chain holds.\n");
+        log("One chain needs one DSP column at least that tall. The count is taken\n");
+        log("from the wires alone, so it covers every producer of QL_DSP4 cells.\n");
+        log("\n");
+    }
+
+    void execute(std::vector<std::string> args, RTLIL::Design *design) override
+    {
+        log_header(design, "Executing QL_DSP4_CHAIN_REPORT pass.\n");
+        extra_args(args, 1, design);
+
+        Dsp4ChainSummary summary;
+        for (auto module : design->selected_modules())
+            dsp4_add_module_chains(module, summary);
+
+        log("ql_dsp4_chain_report: longest DSP chain %d (%d link(s) in %d chain(s))\n", summary.longest, summary.links, summary.chains);
+    }
+
+} QlDsp4ChainReportPass;
+
 PRIVATE_NAMESPACE_END

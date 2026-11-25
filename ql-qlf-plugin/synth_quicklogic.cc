@@ -1131,6 +1131,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // and direct instantiation. Warn here about configurations
                             // whose arithmetic wraps silently.
                             run("ql_dsp4_check");
+                            run("ql_dsp4_chain_report");
                             // Phase 2: decompose each monolithic QL_DSP4 into the
                             // dsp4_logical operating-mode leaf cells (mult / alu /
                             // pre-adder / rss / bit-sliced registers) so the netlist
