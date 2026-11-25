@@ -148,7 +148,8 @@ static bool dspv4_operands_overlap(SigMap &sigmap, const SigSpec &a, const SigSp
 // {1'b0, x} or {{n{x[msb]}}, x} hides the register behind a concat and the
 // stage is never absorbed -- `a2 * $signed({1'b0, b2})` absorbs A's two stages
 // and none of B's. The DSP re-applies the extension itself at the port width in
-// dspv4_fit, so the design's copy is redundant.
+// dspv4_fit, so the design's copy is redundant when the operand is signed.
+// Repeated top bits of an unsigned operand are part of its value and stay.
 //
 // Signedness has to follow the strip. {1'b0, x} is precisely what makes an
 // UNSIGNED x signed; dropping the zero while still calling the operand signed
@@ -172,7 +173,11 @@ static SigSpec dspv4_strip_extension(SigSpec sig, bool &is_signed)
     }
 
     // Sign-extension: the top bits are copies of the value's own MSB, so one
-    // copy is kept and the operand stays signed.
+    // copy is kept and the operand stays signed. Only a signed operand has
+    // one. On an unsigned operand those copies are value bits: {x[7], x} is
+    // x + 256 * x[7], and dropping them would change the number multiplied.
+    if (!is_signed)
+        return sig;
     SigBit top = sig[n - 1];
     if (top.wire == nullptr)
         return sig; // constant one-fill: not an extension
