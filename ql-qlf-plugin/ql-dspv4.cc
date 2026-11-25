@@ -1108,11 +1108,15 @@ struct QlDspV4Pass : public Pass {
             // holds 131071 and the DSP holds -1. Addition never needed this
             // question, because an unsigned sum is always positive.
             //
-            // The two agree only while the product stays inside the subtract's
-            // width: the values are congruent modulo 2^width and multiplication
-            // preserves that, so a product kept no wider than the sum wraps to
-            // the same bits. One bit past it and the sign shows through.
-            else if (preadd_is_sub && !sum_port_signed && GetSize(st.mul->getPort(ID::Y)) > GetSize(adder_result))
+            // The two agree only while the product stays inside the width the
+            // RTL wraps at: the values are congruent modulo 2^width and
+            // multiplication preserves that, so a product kept no wider than
+            // that wraps to the same bits. One bit past it and the sign shows
+            // through. The RTL wraps at the narrower of the subtract and what
+            // the multiply reads of it: `ad[11:0] * b` over a 16-bit `ad`
+            // wraps at 12, so a 14-bit product is already past it.
+            else if (preadd_is_sub && !sum_port_signed &&
+                     GetSize(st.mul->getPort(ID::Y)) > std::min(GetSize(adder_result), GetSize(sum_on_a ? ma : mb)))
                 unsafe = "an unsigned subtract wraps where the DSP signs";
 
             // Bits above the sum must be its sign extension. A constant pad

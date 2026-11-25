@@ -1,6 +1,9 @@
 # dspv4_preadd_adreg_trunc -- the multiply reads less of the registered sum
 # than the pre-adder produces, so the fold has to be refused.
 #
+# The third multiply is the unsigned-subtract version of the same thing: the
+# subtract's own width is not the width the RTL wraps at.
+#
 # Run with -no_opt on purpose. In the default flow wreduce narrows the adder
 # before this pass sees it and a different guard refuses the shape, which hides
 # whether this one works. -no_opt is a user-visible Aurora setting, so the
@@ -24,7 +27,7 @@ yosys cd dspv4_preadd_adreg_trunc
 # pre-adder at all reports the same thing. The cell counts below are what
 # carry this test.
 # Each multiply still belongs in a DSP; only the pre-adders are refused.
-select -assert-count 2 t:QL_DSP4_MULT
+select -assert-count 3 t:QL_DSP4_MULT
 select -assert-count 0 t:QL_DSP4_PREADD
 select -assert-count 0 t:QL_DSP4_PRESUB
 # The adder stays in fabric, which is what refusing costs.

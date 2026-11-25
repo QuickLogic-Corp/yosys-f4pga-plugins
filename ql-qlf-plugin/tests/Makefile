@@ -347,11 +347,12 @@ qlf_k6n10f-dspv4_preadd_modes_verify = grep -q 'modes inferred: PREADD_A_SUB_B x
 
 # A refused pre-adder must report MULT, not a PREADD mode -- the cell counts
 # in the .tcl cannot tell a refusal from a fold that never matched.
-qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x2' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x3' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
 qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '2 x  pre-adder: the multiply reads fewer bits of its registered sum than it produces' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '1 x  pre-adder: an unsigned subtract wraps where the DSP signs' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
 
 
-# Thirteen shapes, two paths. Counts cannot tell PREADD_A from PREADD_B; the
+# Fifteen shapes, two paths. Counts cannot tell PREADD_A from PREADD_B; the
 # swap onto B1/B2 is the second B-path word.
 qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x12, PREADD_B_MULT_A x3' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
 # The two four-enable cells name the B chain they give up.
