@@ -68,6 +68,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_preg_wrap \
 	qlf_k6n10f/dspv4_preadd_adreg_trunc \
 	qlf_k6n10f/dspv4_preadd_regs \
+	qlf_k6n10f/dspv4_enable_inverter_shared \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
@@ -364,3 +365,9 @@ qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '1 x  pre-adder: an uns
 qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x12, PREADD_B_MULT_A x3' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
 # The two four-enable cells name the B chain they give up.
 qlf_k6n10f-dspv4_preadd_regs_verify += && grep -q '2 x  B register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
+
+# One inverter per active-low enable signal (aurora2 #2971). The run reads the
+# inverter count after ql_dspv4; here the log must show the cell was inferred
+# and that ql_dsp4_check did not count one enable as several.
+qlf_k6n10f-dspv4_enable_inverter_shared_verify = grep -q 'modes inferred: MULT_ADD_C x1' qlf_k6n10f/dspv4_enable_inverter_shared/dspv4_enable_inverter_shared.log
+qlf_k6n10f-dspv4_enable_inverter_shared_verify += && ! grep -q 'distinct clock enables' qlf_k6n10f/dspv4_enable_inverter_shared/dspv4_enable_inverter_shared.log

@@ -1831,12 +1831,8 @@ struct QlDspV4Pass : public Pass {
             // Clock enable. CEP is active-high (the leaf is `else if (E) Q <= D`),
             // so an active-low $dffe enable has to be inverted rather than
             // wired straight through.
-            if (ff_cell->hasPort(ID(EN))) {
-                SigSpec en = ff_cell->getPort(ID(EN));
-                if (!ff_cell->getParam(ID(EN_POLARITY)).as_bool())
-                    en = module->Not(NEW_ID, en);
-                cell->setPort(ID(CEP), en);
-            }
+            if (ff_cell->hasPort(ID(EN)))
+                cell->setPort(ID(CEP), resolve(module, ff_cell->getPort(ID(EN)), !ff_cell->getParam(ID(EN_POLARITY)).as_bool()));
 
             // Synchronous reset. The accumulator bank takes .R(ACCRSTN) -- its
             // own pin, separate from the RSTN the operand banks use -- and the
@@ -2523,8 +2519,21 @@ struct QlDspV4Pass : public Pass {
     };
 
     // Resolve a chain's control to a wire, inverting once if the source was the
-    // opposite polarity from what the leaf wants.
-    static SigSpec resolve(RTLIL::Module *module, const SigSpec &sig, bool invert) { return invert ? module->Not(NEW_ID, sig) : sig; }
+    // opposite polarity from what the leaf wants. One inverter per signal: asking
+    // again for the same signal returns the first inverter's output, so four
+    // registers held by one `if (!stall)` reach their four CE pins through one
+    // net, not four. Anything that counts nets, ql_dsp4_check and the DSP-V4
+    // techmap's clock-enable limit among them, then sees one enable.
+    SigSpec resolve(RTLIL::Module *module, const SigSpec &sig, bool invert)
+    {
+        if (!invert)
+            return sig;
+        SigSpec signal = sigmapper(sig);
+        auto found = inverted.find(signal);
+        if (found != inverted.end())
+            return found->second;
+        return inverted[signal] = module->Not(NEW_ID, sig);
+    }
 
     // Two SigSpecs describe the same value.
     static bool same(const SigSpec &a, const SigSpec &b) { return a == b; }
@@ -2924,6 +2933,7 @@ struct QlDspV4Pass : public Pass {
         bit_driver.clear();
         absorbed.clear();
         shared_claimed.clear();
+        inverted.clear();
         sigmapper.set(module);
         for (auto cell : module->cells()) {
             if (cell->hasPort(ID::D) && cell->hasPort(ID::Q))
@@ -3000,6 +3010,8 @@ struct QlDspV4Pass : public Pass {
     int walk_end_exhausted = 0;
 
     SigMap sigmapper;
+    // The inverter already made for each signal in this module, see resolve().
+    dict<SigSpec, SigSpec> inverted;
     dict<SigBit, int> bit_users;
     // Which cell drives each bit -- used only to explain why an absorption
     // stalled, so the log can distinguish an unfixable async-reset driver from a
