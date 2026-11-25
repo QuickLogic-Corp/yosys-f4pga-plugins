@@ -4068,18 +4068,15 @@ struct QlDspV4Pass : public Pass {
                 continue;
             RTLIL::Cell *source = it->second;
             if (source == consumer) {
-                log_debug("  PCIN>>17 skipped %s.%s: source feeds its own PCIN\n",
-                          log_id(module), log_id(source));
+                log_debug("  PCIN>>17 skipped %s.%s: source feeds its own PCIN\n", log_id(module), log_id(source));
                 continue;
             }
             if (source->hasPort(ID(PCIN)) && sigmap(source->getPort(ID(PCIN)))[0].wire != nullptr) {
-                log_debug("  PCIN>>17 skipped %s.%s -> %s: source already reads PCIN\n",
-                          log_id(module), log_id(source), log_id(consumer));
+                log_debug("  PCIN>>17 skipped %s.%s -> %s: source already reads PCIN\n", log_id(module), log_id(source), log_id(consumer));
                 continue;
             }
             if (pcout_in_use.count(source)) {
-                log_debug("  PCIN>>17 skipped %s.%s -> %s: PCOUT already claimed\n",
-                          log_id(module), log_id(source), log_id(consumer));
+                log_debug("  PCIN>>17 skipped %s.%s -> %s: PCOUT already claimed\n", log_id(module), log_id(source), log_id(consumer));
                 continue;
             }
             if (consumer->getParam(ID(CREG)).as_int() != 0) {
