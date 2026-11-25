@@ -291,6 +291,12 @@ static const std::map<std::string, std::string> CASCADE_WORD = {
   {"PREADD_A_MULT_B_C", "PREADD_A_MULT_B_CASC"},
 };
 
+// Modes whose C operand reads another DSP's P shifted right by 17 bits (the
+// PCIN>>17 path), each with the mode the cell takes once the link is wired.
+static const std::map<std::string, std::string> PCIN17_WORD = {
+  {"MULT_ADD_C", "MULT_ADD_PCIN17"},
+};
+
 static const char *const CASCADE_READ_UNSIGNED = "link is read unsigned, and PCIN sign-extends";
 static const char *const CASCADE_REGISTERED = "consumer registered the link (CREG), and PCIN has no register";
 static const char *const CASCADE_TOO_NARROW = "RTL sum is too narrow for the source's P range";
@@ -401,6 +407,13 @@ struct CascadeLink {
     int removed_bits = 0;
 };
 
+// Source P shifted right by 17 feeding a consumer's C: the PCIN>>17 path.
+struct Pcin17Link {
+    RTLIL::Cell *source;
+    RTLIL::Cell *consumer;
+    std::string consumer_mode;
+};
+
 // One thing that reads a cell's output: a cell's port, or a module output
 // (cell is nullptr, port is the output wire's name).
 struct Reader {
@@ -433,6 +446,18 @@ static AlignedRead aligned_read(const SigSpec &read, const SigSpec &wire)
     return {aligned, zero_extended ? Extension::ZERO : Extension::OTHER};
 }
 
+// True if `c` reads `p` shifted right by 17 bits, sign-extended above.
+// c[n] == p[n+17] for all n that have a corresponding p[n+17], and
+// the bits of c above that range are all copies of the top aligned bit.
+static bool is_pcin17_read(const SigSpec &c, const SigSpec &p)
+{
+    if (GetSize(p) <= 17)
+        return false;
+    SigSpec shifted = p.extract(17, GetSize(p) - 17);
+    AlignedRead r = aligned_read(c, shifted);
+    return r.bits > 0 && r.extension == Extension::SIGN;
+}
+
 struct QlDspV4Pass : public Pass {
 
     QlDspV4Pass() : Pass("ql_dspv4", "Infer QL_DSP4 cells from generic RTL") {}
@@ -456,8 +481,14 @@ struct QlDspV4Pass : public Pass {
         log("        shapes that were not fused and why.\n");
         log("\n");
         log("    -chain_max <number>\n");
-        log("        The most DSPs one PCIN chain may hold. 0 and 1 mean no chain,\n");
-        log("        and 0 is the default.\n");
+        log("        The most DSPs one PCIN chain may hold, counting the cells\n");
+        log("        joined by PCIN>>17 links too. 0 and 1 make no plain PCIN\n");
+        log("        link, and 0 is the default. PCIN>>17 links are still made\n");
+        log("        then, at most two DSPs per chain; -no_pcin17 turns them off.\n");
+        log("\n");
+        log("    -no_pcin17\n");
+        log("        Do not make PCIN>>17 links for wide multiply pieces.\n");
+        log("        On by default.\n");
         log("\n");
     }
 
@@ -496,6 +527,9 @@ struct QlDspV4Pass : public Pass {
         shared_dropped = 0;
         acc_merged = 0;
         coef_refolded = 0;
+        pcin17 = true;
+        pcin17_links_made = 0;
+        pcout_in_use.clear();
     }
 
     void execute(std::vector<std::string> a_Args, RTLIL::Design *a_Design) override
@@ -510,6 +544,10 @@ struct QlDspV4Pass : public Pass {
             }
             if (a_Args[argidx] == "-chain_max" && argidx + 1 < a_Args.size()) {
                 chain_max = atoi(a_Args[++argidx].c_str());
+                continue;
+            }
+            if (a_Args[argidx] == "-no_pcin17") {
+                pcin17 = false;
                 continue;
             }
             break;
@@ -604,6 +642,7 @@ struct QlDspV4Pass : public Pass {
             shared_claimed.clear();
 
             // Only now: every flop a cell absorbed is out of the netlist.
+            dict<RTLIL::Cell *, int> plain_chain_cells;
             if (chain_max >= 2) {
                 SigMap sigmap(module);
                 std::vector<CascadeLink> links = find_links(module, sigmap);
@@ -614,11 +653,19 @@ struct QlDspV4Pass : public Pass {
                 break_loops(sigmap, links);
                 one_consumer_per_source(links);
                 limit_chain_length(links);
+                plain_chain_cells = chain_cells_by_head(links);
                 links_made += GetSize(links);
                 chains_made += GetSize(heads_of(links));
                 longest_chain = std::max(longest_chain, longest_chain_in(links));
                 for (const CascadeLink &link : links)
                     make_link(module, sigmap, link);
+            }
+            if (pcin17 && !emitted_this_run.empty()) {
+                SigMap sigmap(module);
+                std::vector<Pcin17Link> links = find_pcin17_links(module, sigmap, plain_chain_cells);
+                pcin17_links_made += GetSize(links);
+                for (const Pcin17Link &link : links)
+                    make_pcin17_link(module, link);
             }
 
             // IN-7 for the P bank: name every result register that ended up in
@@ -685,6 +732,8 @@ struct QlDspV4Pass : public Pass {
         // twice, and an empty second line would hide the first.
         if (chain_max >= 2 && !emitted_this_run.empty())
             log_cascade_report();
+        if (pcin17 && pcin17_links_made > 0)
+            log("ql_dspv4: cascade: %d PCIN>>17 link(s)\n", pcin17_links_made);
         if (!absorb_stall.empty()) {
             // Ranked, because the top line is the one worth acting on.
             std::vector<std::pair<int, std::string>> ranked;
@@ -1177,31 +1226,11 @@ struct QlDspV4Pass : public Pass {
     void break_loops(SigMap &sigmap, std::vector<CascadeLink> &links)
     {
         pool<RTLIL::Cell *> heads_before = heads_of(links);
-        dict<RTLIL::Cell *, const CascadeLink *> link_into;
-        for (const CascadeLink &link : links)
-            link_into[link.consumer] = &link;
-        pool<const CascadeLink *> on_a_cut_loop, cut;
-        for (const CascadeLink &start : links) {
-            if (on_a_cut_loop.count(&start))
-                continue;
-            std::vector<const CascadeLink *> walked = {&start};
-            RTLIL::Cell *cell = start.source;
-            // Bounded, so a walk that enters a loop it did not start on ends.
-            for (size_t steps = 0; steps < links.size(); steps++) {
-                if (cell == start.consumer) {
-                    const CascadeLink *dropped = registered_link_on_loop(walked);
-                    for (const CascadeLink *link : walked)
-                        on_a_cut_loop.insert(link);
-                    cut.insert(dropped);
-                    refuse_link(*dropped, CASCADE_LOOP);
-                    break;
-                }
-                auto in = link_into.find(cell);
-                if (in == link_into.end())
-                    break;
-                walked.push_back(in->second);
-                cell = in->second->source;
-            }
+        pool<const CascadeLink *> cut;
+        // Plain links are opt-in (-chain_max), so a loop with no register asserts.
+        for (const CascadeLink *dropped : links_that_break_loops(links, false)) {
+            cut.insert(dropped);
+            refuse_link(*dropped, CASCADE_LOOP);
         }
         remove_links(links, cut);
 
@@ -1216,18 +1245,58 @@ struct QlDspV4Pass : public Pass {
             drop_narrow_links(sigmap, links, &new_heads);
     }
 
-    // The loop link to drop: one whose source has a P register, the one into
-    // the cell first in name order. Rule 1 has dropped every CREG link, so a
-    // loop's register is a PREG.
-    static const CascadeLink *registered_link_on_loop(const std::vector<const CascadeLink *> &loop)
+    // Walk back from each link along the links into its source. A walk that
+    // comes back to the link's consumer has found a loop. Returns the link to
+    // drop from each loop, once per loop, in the order the loops are found.
+    // Plain and PCIN>>17 links alike: a consumer has one link into it.
+    template <typename Link> static std::vector<const Link *> links_that_break_loops(const std::vector<Link> &links, bool allow_unregistered_loop)
     {
-        const CascadeLink *chosen = nullptr;
-        for (const CascadeLink *link : loop) {
+        dict<RTLIL::Cell *, const Link *> link_into;
+        for (const Link &link : links)
+            link_into[link.consumer] = &link;
+        pool<const Link *> on_a_cut_loop;
+        std::vector<const Link *> cut;
+        for (const Link &start : links) {
+            if (on_a_cut_loop.count(&start))
+                continue;
+            std::vector<const Link *> walked = {&start};
+            RTLIL::Cell *cell = start.source;
+            // Bounded, so a walk that enters a loop it did not start on ends.
+            for (size_t steps = 0; steps < links.size(); steps++) {
+                if (cell == start.consumer) {
+                    for (const Link *link : walked)
+                        on_a_cut_loop.insert(link);
+                    cut.push_back(loop_link_to_drop(walked, allow_unregistered_loop));
+                    break;
+                }
+                auto in = link_into.find(cell);
+                if (in == link_into.end())
+                    break;
+                walked.push_back(in->second);
+                cell = in->second->source;
+            }
+        }
+        return cut;
+    }
+
+    // The loop link to drop: one whose source has a P register, the one into
+    // the cell first in name order. No CREG link is left by now (rule 1, or
+    // the PCIN>>17 finder), so a loop's register is a PREG. A loop with no
+    // register at all, a combinational loop in the RTL, drops the link into the
+    // cell first in name order when that is allowed, and asserts otherwise.
+    template <typename Link> static const Link *loop_link_to_drop(const std::vector<const Link *> &loop, bool allow_unregistered_loop)
+    {
+        const Link *chosen = nullptr;
+        for (const Link *link : loop) {
             if (!link->source->getParam(ID(PREG)).as_bool())
                 continue;
             if (chosen == nullptr || name_sorts_first(link->consumer, chosen->consumer))
                 chosen = link;
         }
+        if (chosen == nullptr && allow_unregistered_loop)
+            for (const Link *link : loop)
+                if (chosen == nullptr || name_sorts_first(link->consumer, chosen->consumer))
+                    chosen = link;
         log_assert(chosen != nullptr);
         return chosen;
     }
@@ -1295,16 +1364,24 @@ struct QlDspV4Pass : public Pass {
         return length_of[cell] = longest + 1;
     }
 
-    // The cells in the longest chain the links form; 0 when there is none.
-    static int longest_chain_in(const std::vector<CascadeLink> &links)
+    // The cells on the chain that starts at each head.
+    static dict<RTLIL::Cell *, int> chain_cells_by_head(const std::vector<CascadeLink> &links)
     {
         dict<RTLIL::Cell *, std::vector<const CascadeLink *>> links_out_of;
         for (const CascadeLink &link : links)
             links_out_of[link.source].push_back(&link);
-        dict<RTLIL::Cell *, int> length_of;
-        int longest = 0;
+        dict<RTLIL::Cell *, int> length_of, cells_of_head;
         for (auto head : heads_of(links))
-            longest = std::max(longest, chain_length_from(head, links_out_of, length_of));
+            cells_of_head[head] = chain_length_from(head, links_out_of, length_of);
+        return cells_of_head;
+    }
+
+    // The cells in the longest chain the links form; 0 when there is none.
+    static int longest_chain_in(const std::vector<CascadeLink> &links)
+    {
+        int longest = 0;
+        for (auto &it : chain_cells_by_head(links))
+            longest = std::max(longest, it.second);
         return longest;
     }
 
@@ -1351,6 +1428,7 @@ struct QlDspV4Pass : public Pass {
     {
         RTLIL::Wire *wire = module->addWire(NEW_ID, DSPV4_P_WIDTH);
         link.source->setPort(ID(PCOUT), wire);
+        pcout_in_use.insert(link.source);
         link.consumer->setPort(ID(PCIN), wire);
         if (link.grouping == 0) {
             link.consumer->unsetPort(ID(C));
@@ -3957,6 +4035,167 @@ struct QlDspV4Pass : public Pass {
         change_mode(link.consumer, ADDEND_LINK_MODE);
     }
 
+    // ---- A wide multiply's pieces joined by PCIN >> 17 (MULT_ADD_PCIN17) ----
+
+    // Every MULT_ADD_C cell whose C operand reads another emitted cell's P
+    // shifted right by 17 bits (C[n] = P[n+17], sign-extended above).
+    // A plain link's consumer has changed mode by now, so it never matches.
+    // A source whose PCOUT a plain link already took is in pcout_in_use.
+    // `plain_chain_cells` holds the cells on each plain chain, by its head.
+    std::vector<Pcin17Link> find_pcin17_links(RTLIL::Module *module, SigMap &sigmap, const dict<RTLIL::Cell *, int> &plain_chain_cells)
+    {
+        std::vector<RTLIL::Cell *> cells;
+        for (auto cell : module->cells())
+            if (emitted_this_run.count(cell))
+                cells.push_back(cell);
+
+        // Map P[17] to the cell that drives it.
+        dict<SigBit, RTLIL::Cell *> driver_of_p17;
+        for (auto cell : cells) {
+            SigSpec p = sigmap(cell->getPort(ID(P)));
+            if (GetSize(p) > 17 && p[17].wire != nullptr)
+                driver_of_p17[p[17]] = cell;
+        }
+
+        std::vector<Pcin17Link> candidates;
+        for (auto consumer : cells) {
+            const std::string &mode = mode_name_of.at(consumer);
+            if (!PCIN17_WORD.count(mode) || !consumer->hasPort(ID(C)))
+                continue;
+            SigSpec c = sigmap(consumer->getPort(ID(C)));
+            auto it = driver_of_p17.find(c[0]);
+            if (it == driver_of_p17.end())
+                continue;
+            RTLIL::Cell *source = it->second;
+            if (source == consumer) {
+                log_debug("  PCIN>>17 skipped %s.%s: source feeds its own PCIN\n",
+                          log_id(module), log_id(source));
+                continue;
+            }
+            if (source->hasPort(ID(PCIN)) && sigmap(source->getPort(ID(PCIN)))[0].wire != nullptr) {
+                log_debug("  PCIN>>17 skipped %s.%s -> %s: source already reads PCIN\n",
+                          log_id(module), log_id(source), log_id(consumer));
+                continue;
+            }
+            if (pcout_in_use.count(source)) {
+                log_debug("  PCIN>>17 skipped %s.%s -> %s: PCOUT already claimed\n",
+                          log_id(module), log_id(source), log_id(consumer));
+                continue;
+            }
+            if (consumer->getParam(ID(CREG)).as_int() != 0) {
+                if (verbose)
+                    log("  PCIN>>17 refused %s.%s -> %s: %s\n", log_id(module), log_id(source), log_id(consumer), CASCADE_REGISTERED);
+                continue;
+            }
+            SigSpec p = sigmap(source->getPort(ID(P)));
+            int read_bits = aligned_read(c, p.extract(17, GetSize(p) - 17)).bits;
+            int shifted_range = pcin17_shifted_range(sigmap, source);
+            if (shifted_range > 0 && read_bits < shifted_range) {
+                if (verbose)
+                    log("  PCIN>>17 refused %s.%s -> %s: RTL sum too narrow (%d bits) for shifted P range (%d bits)\n", log_id(module),
+                        log_id(source), log_id(consumer), read_bits, shifted_range);
+                continue;
+            }
+            if (!is_pcin17_read(c, p))
+                continue;
+            candidates.push_back({source, consumer, mode});
+        }
+        return pcin17_links_within_cap(module, break_pcin17_loops(module, candidates), plain_chain_cells);
+    }
+
+    // A loop of candidates loses one link, the one rule 2 picks for plain
+    // links. The cell it entered is then a head, so the cap walk reaches the
+    // rest.
+    std::vector<Pcin17Link> break_pcin17_loops(RTLIL::Module *module, const std::vector<Pcin17Link> &candidates)
+    {
+        pool<const Pcin17Link *> dropped;
+        // PCIN>>17 links are on by default, so a loop with no register must not stop the run.
+        for (const Pcin17Link *link : links_that_break_loops(candidates, true)) {
+            dropped.insert(link);
+            if (verbose)
+                log("  PCIN>>17 refused %s.%s -> %s: %s\n", log_id(module), log_id(link->source), log_id(link->consumer), CASCADE_LOOP);
+        }
+        std::vector<Pcin17Link> kept;
+        for (const Pcin17Link &candidate : candidates)
+            if (!dropped.count(&candidate))
+                kept.push_back(candidate);
+        return kept;
+    }
+
+    // Down each chain from its head. A source's PCOUT goes to the first of its
+    // candidates that fits the cap, and is claimed only then. A candidate that
+    // would make the column longer than the cap stays on C, and the count
+    // starts again below it. A plain chain the consumer already heads is in the
+    // same column. No loop is left, so every candidate is below a head.
+    std::vector<Pcin17Link> pcin17_links_within_cap(RTLIL::Module *module, const std::vector<Pcin17Link> &candidates,
+                                                    const dict<RTLIL::Cell *, int> &plain_chain_cells)
+    {
+        int cap = std::max(chain_max, 2);
+        dict<RTLIL::Cell *, std::vector<int>> candidates_out_of;
+        pool<RTLIL::Cell *> consumers;
+        for (int i = 0; i < GetSize(candidates); i++) {
+            candidates_out_of[candidates[i].source].push_back(i);
+            consumers.insert(candidates[i].consumer);
+        }
+        std::vector<bool> kept(candidates.size(), false);
+        // A cell to walk down from, and how many cells its column holds down to it.
+        std::vector<std::pair<RTLIL::Cell *, int>> to_walk;
+        pool<RTLIL::Cell *> heads;
+        for (auto &candidate : candidates)
+            if (!consumers.count(candidate.source) && heads.insert(candidate.source).second)
+                to_walk.push_back({candidate.source, 1});
+        // A consumer reads one source, so each cell is walked once.
+        while (!to_walk.empty()) {
+            RTLIL::Cell *source = to_walk.back().first;
+            int depth = to_walk.back().second;
+            to_walk.pop_back();
+            auto out = candidates_out_of.find(source);
+            if (out == candidates_out_of.end())
+                continue;
+            for (int i : out->second) {
+                const Pcin17Link &candidate = candidates[i];
+                auto plain = plain_chain_cells.find(candidate.consumer);
+                int plain_cells_below = plain == plain_chain_cells.end() ? 0 : plain->second - 1;
+                if (pcout_in_use.count(source)) {
+                    log_debug("  PCIN>>17 skipped %s.%s -> %s: PCOUT already claimed\n", log_id(module), log_id(source), log_id(candidate.consumer));
+                    to_walk.push_back({candidate.consumer, 1});
+                } else if (depth + 1 + plain_cells_below > cap) {
+                    log_debug("  PCIN>>17 skipped %s.%s -> %s: chain would exceed %d cells\n", log_id(module), log_id(source),
+                              log_id(candidate.consumer), cap);
+                    to_walk.push_back({candidate.consumer, 1});
+                } else {
+                    pcout_in_use.insert(source);
+                    kept[i] = true;
+                    to_walk.push_back({candidate.consumer, depth + 1});
+                }
+            }
+        }
+        std::vector<Pcin17Link> links;
+        for (int i = 0; i < GetSize(candidates); i++)
+            if (kept[i])
+                links.push_back(candidates[i]);
+        return links;
+    }
+
+    // The bits the source's P range needs above bit 17: the head bound
+    // drop_narrow_links() uses, less the shift.
+    int pcin17_shifted_range(SigMap &sigmap, RTLIL::Cell *source)
+    {
+        int need = p_range_is_full_port(source, nullptr, false) ? DSPV4_P_WIDTH : bits_for(p_range(sigmap, source, nullptr, 0));
+        return need > 17 ? need - 17 : 0;
+    }
+
+    // Connect source PCOUT to consumer PCIN, disconnect C, and change the word
+    // to MULT_ADD_PCIN17 so the hardware uses the shifted path.
+    void make_pcin17_link(RTLIL::Module *module, const Pcin17Link &link)
+    {
+        RTLIL::Wire *wire = module->addWire(NEW_ID, DSPV4_P_WIDTH);
+        link.source->setPort(ID(PCOUT), wire);
+        link.consumer->setPort(ID(PCIN), wire);
+        link.consumer->unsetPort(ID(C));
+        change_mode(link.consumer, PCIN17_WORD.at(link.consumer_mode));
+    }
+
     // Why operand-register absorption stalled, tallied over the whole run and
     // reported at the end. Without this the only symptom is flops left in
     // fabric, with nothing in the log to say which guard refused them.
@@ -4079,6 +4318,9 @@ struct QlDspV4Pass : public Pass {
 
     bool verbose = false;
     int chain_max = 0;
+    bool pcin17 = true;
+    int pcin17_links_made = 0;
+    pool<RTLIL::Cell *> pcout_in_use;
     int left_soft = 0;
     int absorbed_regs = 0;
 
