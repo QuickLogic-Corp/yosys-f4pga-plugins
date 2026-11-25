@@ -32,11 +32,15 @@ LDLIBS ?= $(shell $(YOSYS_CONFIG) --ldlibs) -L$(GTEST_DIR)/build/lib -lgtest -lg
 LDFLAGS ?= $(shell $(YOSYS_CONFIG) --ldflags)
 TEST_UTILS ?= $(abspath ../../test-utils/test-utils.tcl)
 
-# `plugin -i <name>` resolves against yosys's own plugin directory, so the
-# INSTALLED copy is what runs, not ../build. Wildcarded: an uninstalled plugin
-# drops the prerequisite instead of failing the build.
+# A test re-runs when any copy of a plugin it loads changes: on YOSYS_PLUGIN_PATH,
+# installed, or this tree's own build (which a `yosys -m` wrapper loads).
 PLUGIN_NAME ?= $(patsubst %-plugin,%,$(notdir $(abspath ..)))
-PLUGIN_SO ?= $(wildcard $(shell $(YOSYS_CONFIG) --datdir)/plugins/$(PLUGIN_NAME).so)
+PLUGINS_ROOT := $(abspath ../..)
+PLUGIN_SEARCH_DIRS := $(subst :, ,$(YOSYS_PLUGIN_PATH)) $(shell $(YOSYS_CONFIG) --datdir)/plugins
+
+plugins_loaded_by = $(sort $(PLUGIN_NAME) $(shell sed -n 's/.*plugin -i \([A-Za-z0-9_-]*\).*/\1/p' $(1)))
+plugin_files = $(wildcard $(foreach name,$(1),$(addsuffix /$(name).so,$(PLUGIN_SEARCH_DIRS)) $(PLUGINS_ROOT)/$(name)-plugin/build/$(name).so))
+test_plugin_files = $(call plugin_files,$(call plugins_loaded_by,$(1)/$(notdir $(1)).tcl))
 
 define test_tpl =
 $(1): $(1)/ok
@@ -57,7 +61,7 @@ $(1): $(1)/ok
 		false; \
 	fi
 
-$(1)/ok: $(1)/$$(notdir $(1).v) $(1)/$$(notdir $(1).tcl) $(TEST_UTILS) $(PLUGIN_SO)
+$(1)/ok: $(1)/$$(notdir $(1).v) $(1)/$$(notdir $(1).tcl) $(TEST_UTILS) $(call test_plugin_files,$(1))
 	@set +e; \
 	cd $(1); \
 	echo "source $(TEST_UTILS)" > run-$$(notdir $(1)).tcl ;\
@@ -123,7 +127,7 @@ $(1)/ok: $(1)/synth $(SIM_LIBS)
 		true; \
 	fi
 
-$(1)/synth: $(1)/$$(notdir $(1).v) $(1)/$$(notdir $(1).tcl) $(TEST_UTILS) $(PLUGIN_SO)
+$(1)/synth: $(1)/$$(notdir $(1).v) $(1)/$$(notdir $(1).tcl) $(TEST_UTILS) $(call test_plugin_files,$(1))
 	@set +e; \
 	cd $(1); \
 	echo "source $(TEST_UTILS)" > run-$$(notdir $(1)).tcl ;\
