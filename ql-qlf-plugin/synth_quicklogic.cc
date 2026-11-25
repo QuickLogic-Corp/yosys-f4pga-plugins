@@ -74,6 +74,15 @@ bool check_equivalence(const std::string &fname)
 
 struct SynthQuickLogicPass : public ScriptPass {
 
+    // QoR option defaults and limits; the help text, clear_flags() and the checks all read these.
+    static constexpr int kMinOptionWidth = 1;
+    static constexpr int kSmallMulWidthOff = 0;
+    static constexpr int kDefaultSmallMulWidth = 2;
+    static constexpr int kMaxSmallMulWidth = 8;
+    static constexpr int kDefaultCmp2lutWidth = 4;
+    static constexpr int kMaxCmp2lutWidth = 8;
+    static constexpr int kMaxCarryMinWidth = 128;
+
     SynthQuickLogicPass() : ScriptPass(STR(PASS_NAME), "Synthesis for QuickLogic FPGAs") {}
 
     void help() override
@@ -150,15 +159,17 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("    -cmp2lut_width <N>\n");
         log("        Compares (<, <=, >, >=) of a signal with a constant on up to N bits\n");
         log("        become one LUT rather than carry logic (cmp2lut LUT_WIDTH).\n");
-        log("        Default: 4. 6 matches the LUT size of qlf_k6n10 and qlf_k6n10f.\n");
+        log("        Default: %d. 6 matches the LUT size of qlf_k6n10 and qlf_k6n10f.\n", kDefaultCmp2lutWidth);
         log("\n");
         log("    -small_mul_width <N>\n");
         log("        Before DSP mapping, build multiplies with an operand of at most N bits\n");
-        log("        from logic instead of a DSP. Off by default.\n");
+        log("        from logic instead of a DSP. Default: %d. %d turns it off.\n", kDefaultSmallMulWidth, kSmallMulWidthOff);
         log("\n");
-        log("    -keep_syn_preserve\n");
-        log("        Mark flip-flops driving a syn_preserve signal with keep, so register\n");
-        log("        copies made for fanout are not merged.\n");
+        log("    -no_keep_syn_preserve\n");
+        log("        By default flip-flops driving a syn_preserve signal are marked keep, so\n");
+        log("        register copies made for fanout are not merged.\n");
+        log("        Specifying this switch turns it off. (-keep_syn_preserve is accepted\n");
+        log("        and does nothing.)\n");
         log("\n");
         log("    -no_bram\n");
         log("        By default use Block RAM in output netlist.\n");
@@ -278,9 +289,9 @@ struct SynthQuickLogicPass : public ScriptPass {
         mince_num = "";
         de = "";
         carry_min_width = "";
-        cmp2lut_width = "";
-        small_mul_width = "";
-        keepSynPreserve = false;
+        cmp2lut_width = std::to_string(kDefaultCmp2lutWidth);
+        small_mul_width = std::to_string(kDefaultSmallMulWidth);
+        keepSynPreserve = true;
         rel_ip_blif_files.clear();
     }
 
@@ -396,6 +407,7 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-no_tdpram", &notdpram, true},
           {"-synplify", &synplify, true},
           {"-keep_syn_preserve", &keepSynPreserve, true},
+          {"-no_keep_syn_preserve", &keepSynPreserve, false},
         };
 
         size_t argidx;
@@ -456,17 +468,14 @@ struct SynthQuickLogicPass : public ScriptPass {
             log_cmd_error("Invalid family specified: '%s'\n", family.c_str());
 
         auto check_int = [](const char *opt, const std::string &value, int lo, int hi) {
-            bool digits = !value.empty() && value.size() <= 3 && std::all_of(value.begin(), value.end(), ::isdigit);
+            bool digits = !value.empty() && value.size() <= std::to_string(hi).size() && std::all_of(value.begin(), value.end(), ::isdigit);
             if (!digits || std::stoi(value) < lo || std::stoi(value) > hi)
                 log_cmd_error("%s needs a whole number from %d to %d, got '%s'\n", opt, lo, hi, value.c_str());
         };
-        if (cmp2lut_width.empty())
-            cmp2lut_width = "4";
-        check_int("-cmp2lut_width", cmp2lut_width, 1, 8);
-        if (!small_mul_width.empty())
-            check_int("-small_mul_width", small_mul_width, 1, 8);
+        check_int("-cmp2lut_width", cmp2lut_width, kMinOptionWidth, kMaxCmp2lutWidth);
+        check_int("-small_mul_width", small_mul_width, kSmallMulWidthOff, kMaxSmallMulWidth);
         if (!carry_min_width.empty())
-            check_int("-carry_min_width", carry_min_width, 1, 128);
+            check_int("-carry_min_width", carry_min_width, kMinOptionWidth, kMaxCarryMinWidth);
 
         // DSP-V4 reaches hardware two ways, and both end at the same techmap:
         //   -dspv4 -synplify : Synplify infers QL_DSPV2, ql_dspv2_to_dspv4
@@ -933,7 +942,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 run("flatten");
                 if (help_mode || keepSynPreserve) {
                     // Register copies made for fanout carry syn_preserve; opt_merge would fold them.
-                    run("setattr -set keep 1 a:syn_preserve %ci1 t:$*dff* %i", "(if -keep_syn_preserve)");
+                    run("setattr -set keep 1 a:syn_preserve %ci1 t:$*dff* %i", "(unless -no_keep_syn_preserve)");
                 }
                 if (help_mode || family == "pp3") {
                     run("tribuf -logic", "                   (for pp3)");
@@ -965,13 +974,13 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("map_dsp", "(skip if -no_dsp)")) {
-            if (help_mode || !small_mul_width.empty()) {
+            if (help_mode || std::stoi(small_mul_width) != kSmallMulWidthOff) {
                 // A multiply with a 1- or 2-bit operand (e.g. `sel * CONST` in an index) is a
                 // few gates; on a DSP it hides that logic from ABC. Wider ones stay on the DSP.
-                std::string n = help_mode ? std::string("<N>") : small_mul_width;
-                run("techmap -map +/techmap.v t:$mul r:A_WIDTH<=" + n + " %i t:$mul r:B_WIDTH<=" + n + " %i %u", "(if -small_mul_width)");
-                run("opt_expr", "(if -small_mul_width)");
-                run("opt_clean", "(if -small_mul_width)");
+                const std::string label = "(unless -small_mul_width " + std::to_string(kSmallMulWidthOff) + ")";
+                run("techmap -map +/techmap.v t:$mul r:A_WIDTH<=" + small_mul_width + " %i t:$mul r:B_WIDTH<=" + small_mul_width + " %i %u", label);
+                run("opt_expr", label);
+                run("opt_clean", label);
             }
             if (help_mode || family == "qlf_k6n10") {
                 if (help_mode || !nodsp) {
@@ -1197,7 +1206,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("coarse")) {
             // if (!synplify) {
-            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=" + (help_mode ? std::string("4") : cmp2lut_width), "(unless -cmp2lut_width)");
+            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=" + cmp2lut_width, "(unless -cmp2lut_width)");
             if (!noOpt) {
                 run("opt_expr");
                 run("opt_clean");

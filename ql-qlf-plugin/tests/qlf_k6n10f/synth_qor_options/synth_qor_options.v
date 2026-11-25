@@ -11,7 +11,7 @@ module mul_c (
   always @(posedge clk) m <= a * 8'd25;
 endmodule
 
-// Narrow select times a constant (an index offset): logic with -small_mul_width 2.
+// Narrow select times a constant (an index offset): logic by default (-small_mul_width 2).
 module mul_sel (
     input clk,
     input [1:0] s,
@@ -38,8 +38,8 @@ module cmp6 (
   assign lt = c < 6'd37;
 endmodule
 
-// Two copies of one register, kept apart for fanout: merged by default,
-// kept with -keep_syn_preserve.
+// Two copies of one register, kept apart for fanout:
+// kept by default (merged with -no_keep_syn_preserve).
 module dup_ff (
     input clk,
     input d,
