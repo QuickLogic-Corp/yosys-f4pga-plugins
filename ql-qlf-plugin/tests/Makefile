@@ -68,6 +68,8 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_preg_wrap \
 	qlf_k6n10f/dspv4_preadd_adreg_trunc \
 	qlf_k6n10f/dspv4_preadd_regs \
+	qlf_k6n10f/dspv4_techmap_refused_stops \
+	qlf_k6n10f/dspv4_techmap_twin_maps \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
@@ -364,3 +366,14 @@ qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '1 x  pre-adder: an uns
 qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x12, PREADD_B_MULT_A x3' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
 # The two four-enable cells name the B chain they give up.
 qlf_k6n10f-dspv4_preadd_regs_verify += && grep -q '2 x  B register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
+
+# A QL_DSP4 the techmap refuses stops synthesis (aurora2 #2973). The refused
+# run is expected to fail and its log must name each of the four cells; the twin
+# has the same four cells with the rule satisfied and must map.
+qlf_k6n10f/dspv4_techmap_refused_stops_negative = 1
+qlf_k6n10f-dspv4_techmap_refused_stops_verify = grep -q 'selection is not empty: t:QL_DSP4' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_w$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_y$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_carry$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_carryp$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_twin_maps_verify = true
