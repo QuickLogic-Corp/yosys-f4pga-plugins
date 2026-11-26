@@ -416,3 +416,21 @@ module _preadd_a_mult_c_source (
     wire signed [38:0] s = a1 * b1 + prev;
     assign s_out = s;
 endmodule
+
+// The source's A, B and D registers use three enables, and the consumer
+// registers the link on a fourth. The move would give the source four distinct
+// enables, so the register stays.
+module _reglink_enables (
+    input clk, en_a, en_b, en_d, en_p,
+    input signed [17:0] a1, b1, d1, a2, b2,
+    output signed [37:0] y
+);
+    reg signed [36:0] s1_r;
+    reg signed [17:0] a1_r, b1_r, d1_r;
+    assign y = a2 * b2 + s1_r;
+    wire signed [36:0] s1 = (a1_r + d1_r) * b1_r;
+    always @(posedge clk) if (en_a) a1_r <= a1;
+    always @(posedge clk) if (en_b) b1_r <= b1;
+    always @(posedge clk) if (en_d) d1_r <= d1;
+    always @(posedge clk) if (en_p) s1_r <= s1;
+endmodule

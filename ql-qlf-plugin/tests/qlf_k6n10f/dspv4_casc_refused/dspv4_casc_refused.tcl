@@ -95,6 +95,14 @@ select -assert-count 0 t:QL_DSP4 r:PREG=1'b1 %i
 select -assert-count 1 t:\$dff t:\$sdff t:\$dffe t:\$sdffe %u
 select -assert-count 1 t:\$sdffe %ci1:+\[EN\] i:other_en %i
 
+# The move would give the source a fourth distinct clock enable: the register
+# stays in the consumer's C bank, and the link is refused for it.
+stopped_block _reglink_enables
+select -assert-count 2 t:QL_DSP4
+select -assert-count 0 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 1 t:QL_DSP4 r:CREG=1'b1 %i
+select -assert-count 1 t:QL_DSP4 r:CREG=1'b1 %i %ci1:+\[CEC\] i:en_p %i
+
 # ---- Read unsigned: found, and refused with a reason. ------------------------
 
 full_block _unsigned

@@ -937,7 +937,27 @@ struct QlDspV4Pass : public Pass {
                 return "the source's P has another reader";
         if (source->hasPort(ID(CLK)) && sigmap(source->getPort(ID(CLK))) != sigmap(first->getPort(ID(CLK))))
             return "the source is on another clock";
+        if (enables_after_move(sigmap, not_driving, source, first) > DSPV4_MAX_CE_SIGNALS)
+            return stringf("the source would need more than %d distinct clock enables", DSPV4_MAX_CE_SIGNALS);
         return "";
+    }
+
+    // The distinct clock enables on the source's CE pins once its P bank takes
+    // the consumer's CEC. A tied pin needs no signal.
+    static int enables_after_move(SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *source, RTLIL::Cell *consumer)
+    {
+        std::vector<std::pair<bool, SigSpec>> enables;
+        auto note = [&](RTLIL::Cell *cell, RTLIL::IdString pin) {
+            if (sigmap(cell->getPort(pin)).is_fully_const())
+                return;
+            auto written = as_written(sigmap, not_driving, cell, pin);
+            if (std::find(enables.begin(), enables.end(), written) == enables.end())
+                enables.push_back(written);
+        };
+        for (auto pin : {ID(CEA), ID(CEB), ID(CEC), ID(CED)})
+            note(source, pin);
+        note(consumer, ID(CEC));
+        return GetSize(enables);
     }
 
     // Everything that reads the source's P: each cell port that holds one of
