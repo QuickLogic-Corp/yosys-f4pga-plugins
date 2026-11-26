@@ -138,3 +138,11 @@ select -assert-count 0 t:\$add
 stopped_block _addend_g1_tie_partial_swapped _addend_g1_tie_partial_run2
 select -assert-count 4 t:QL_DSP4
 select -assert-count 0 t:\$add
+
+# ---- Grouping 2 with the consumer's P register: the $add goes. --------------
+
+stopped_block _addend_g2_preg _addend_g2_preg
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b110010101 r:PREG=1'b1 %i %i
+select -assert-count 0 t:\$add

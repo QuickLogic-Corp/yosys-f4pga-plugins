@@ -302,6 +302,7 @@ static const char *const ADDEND_OTHER_READER = "addend adder has another reader"
 static const char *const ADDEND_READ_UNSIGNED = "link is read unsigned in addend grouping";
 static const char *const ADDEND_RESULT_TOO_WIDE = "addend result is wider than the P port";
 static const char *const ADDEND_WIRE_TOO_NARROW = "addend sum wire is too narrow";
+static const char *const ADDEND_SUM_REGISTERED = "consumer registered the sum (PREG), and C is added before the register";
 
 // A per-stage addend k beside a link: the one mode that can take one, and the
 // mode that reads PCIN and C together.
@@ -3923,6 +3924,8 @@ struct QlDspV4Pass : public Pass {
             reason = ADDEND_READ_UNSIGNED;
         else if (GetSize(add->getPort(ID::Y)) > DSPV4_P_WIDTH)
             reason = ADDEND_RESULT_TOO_WIDE;
+        else if (link.consumer->getParam(ID(PREG)).as_bool())
+            reason = ADDEND_SUM_REGISTERED;
         if (reason != nullptr) {
             decline_grouping(link, reason);
             return 0;

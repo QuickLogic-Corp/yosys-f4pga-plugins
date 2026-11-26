@@ -889,6 +889,7 @@ casc_other_adder_reader = addend adder has another reader
 casc_addend_unsigned = link is read unsigned in addend grouping
 casc_addend_narrow = addend sum wire is too narrow
 casc_addend_wide = addend result is wider than the P port
+casc_addend_registered = consumer registered the sum (PREG), and C is added before the register
 # The OPMODE of each cell that reads PCIN, in text order of the cell's name.
 casc_consumer_opmodes = awk '/^  cell /{if(n!="")print n, i, o; n=$$3; i=0} /connect .PCIN /{i=1} /parameter .OPMODE /{o=$$3} END{if(n!="")print n, i, o}' $(1) | awk '$$2 == 1' | LC_ALL=C sort | awk '{printf "%s ", $$3}'
 casc_addend_dir = qlf_k6n10f/dspv4_casc_addend
@@ -952,6 +953,12 @@ qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& $(call casc_wire
 qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& $(call casc_report,$(casc_addend_dir)/_addend_g1_tie_partial_$(r).log,2,2,2,12))
 qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& $(call casc_declined,$(casc_addend_dir)/_addend_g1_tie_partial_$(r).log,1,$(casc_other_adder_reader)))
 qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& ! grep -q 'cascade links refused' $(casc_addend_dir)/_addend_g1_tie_partial_$(r).log)
+# Grouping 2 on a consumer with PREG: the $add goes.
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT_ADD_C x1$$' $(casc_addend_dir)/_addend_g2_preg.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g2_preg.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g2_preg.log,1,2)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g2_preg.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_no_declined,$(casc_addend_dir)/_addend_g2_preg.log)
 # No block here refuses a link.
 qlf_k6n10f-dspv4_casc_addend_verify += && ! grep -q 'cascade link' $(casc_addend_dir)/*.log
 casc_addend_refused_dir = qlf_k6n10f/dspv4_casc_addend_refused
@@ -1012,6 +1019,9 @@ qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_shared,$(casc_other_adder_reader))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_unsigned,$(casc_addend_unsigned))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_wide_y,$(casc_addend_wide))
+# Grouping 1 on a consumer with PREG: k would be registered. The plain link stays.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_preg,$(casc_addend_registered))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'grouping 1, .* folds' $(casc_addend_refused_dir)/_addend_g1_preg.log
 # Grouping 1 below an accumulator: s must hold the whole 50-bit port, so a
 # 40-bit s declines the fold in rule 1's walk, after the finder took it.
 casc_full_port_log = $(casc_addend_refused_dir)/_addend_g1_full_port.log

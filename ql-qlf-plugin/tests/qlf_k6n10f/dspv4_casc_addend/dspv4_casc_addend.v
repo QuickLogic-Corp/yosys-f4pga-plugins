@@ -166,3 +166,19 @@ module _addend_g1_tie_partial_swapped (
     assign s1_out = s1;
     assign y_out = y;
 endmodule
+
+// Grouping 2 whose consumer registers its result: the register is after C,
+// so k on C is registered with the rest.
+module _addend_g2_preg (
+    input                clk,
+    input  signed [17:0] a0, b0, c0, a1, b1, k,
+    output signed [38:0] y_out
+);
+    wire signed [36:0] prev = a0 * b0 + c0;
+    wire signed [37:0] t = prev + k;
+    reg  signed [38:0] s_r;
+    assign y_out = s_r;
+    always @(posedge clk) begin
+        s_r <= a1 * b1 + t;
+    end
+endmodule

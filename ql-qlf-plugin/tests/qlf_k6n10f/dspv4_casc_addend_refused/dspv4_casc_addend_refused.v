@@ -208,3 +208,18 @@ module _addend_g1_wide_y (
     wire signed [50:0] y = s + k;
     assign y_out = y;
 endmodule
+
+// Grouping 1 whose consumer registers its result: k on C would be registered
+// with the sum, but the RTL adds k after the register.
+module _addend_g1_preg (
+    input                clk,
+    input  signed [17:0] a0, b0, a1, b1, k,
+    output signed [37:0] y_out
+);
+    wire signed [35:0] prev = a0 * b0;
+    reg  signed [36:0] s_r;
+    assign y_out = s_r + k;
+    always @(posedge clk) begin
+        s_r <= a1 * b1 + prev;
+    end
+endmodule
