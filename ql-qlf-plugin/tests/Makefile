@@ -73,6 +73,8 @@ TESTS = \
 	qlf_k6n10f/dspv4_techmap_reason \
 	qlf_k6n10f/dspv4_techmap_refused_drc \
 	qlf_k6n10f/dspv4_techmap_twin_drc_maps \
+	qlf_k6n10f/dspv4_synplify_gnd_cin_folds \
+	qlf_k6n10f/dspv4_synplify_live_cin_keeps_m \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
@@ -407,3 +409,7 @@ qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_maccext
 qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_ce4: .*It breaks: 4 clock-enable nets on the registers in use' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
 qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_ce4open: .*It breaks: 4 clock-enable nets on the registers in use' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
 qlf_k6n10f-dspv4_techmap_twin_drc_maps_verify = true
+# GND and VCC cells become constants before the DSP-V4 techmap (aurora2 #2970).
+# A carry-in on a GND cell folds the lone MREG; a live carry-in keeps the M banks.
+qlf_k6n10f-dspv4_synplify_gnd_cin_folds_verify = true
+qlf_k6n10f-dspv4_synplify_live_cin_keeps_m_verify = true
