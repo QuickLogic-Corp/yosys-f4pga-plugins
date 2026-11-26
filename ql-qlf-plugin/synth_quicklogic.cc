@@ -120,9 +120,9 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        synplify (the default with -synplify).\n");
         log("\n");
         log("    -no_iname\n");
-        log("        write .cname for named cells only, so VPR names LUTs after their output\n");
-        log("        net as before. With it, atom names in the owner table and in VPR can\n");
-        log("        differ.\n");
+        log("        write .cname for .subckt cells only (flip-flops, BRAMs, DSPs), not for\n");
+        log("        LUTs, so VPR names each LUT after its output net. LUT names in the owner\n");
+        log("        table and in VPR can then differ.\n");
         log("\n");
         log("    -rel_ip_blif <file>\n");
         log("        link a pre-synthesized IP netlist (extended BLIF with relative-placement\n");
