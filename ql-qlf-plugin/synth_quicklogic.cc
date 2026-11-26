@@ -21,6 +21,7 @@
 #include "kernel/register.h"
 #include "kernel/rtlil.h"
 #include "kernel/sigtools.h"
+#include "ql-chain-max.h"
 #include <cmath>
 #include <fstream>
 
@@ -360,7 +361,6 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-clocks_file", &clocks_file},
           {"-custom_abc_script", &custom_abc_script},
           {"-mince_num", &mince_num},
-          {"-chain_max", &chain_max},
           {"-de", &de},
         };
         const SwitchOption switch_options[] = {
@@ -396,6 +396,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             }
             if (arg == "-rel_ip_blif" && has_value) {
                 rel_ip_blif_files.push_back(args[++argidx]);
+                continue;
+            }
+            if (arg == "-chain_max" && has_value) {
+                chain_max = std::to_string(parse_chain_max(args[++argidx]));
                 continue;
             }
             if (arg == "-use_dsp_cfg_params") {
