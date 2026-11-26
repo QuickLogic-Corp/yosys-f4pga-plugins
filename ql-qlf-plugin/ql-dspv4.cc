@@ -1,5 +1,6 @@
 #include "kernel/sigtools.h"
 #include "kernel/yosys.h"
+#include "ql-chain-max.h"
 
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
@@ -465,7 +466,7 @@ struct QlDspV4Pass : public Pass {
                 continue;
             }
             if (a_Args[argidx] == "-chain_max" && argidx + 1 < a_Args.size()) {
-                chain_max = atoi(a_Args[++argidx].c_str());
+                chain_max = parse_chain_max(a_Args[++argidx]);
                 continue;
             }
             break;
