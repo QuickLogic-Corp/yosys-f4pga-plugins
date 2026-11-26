@@ -71,6 +71,8 @@ TESTS = \
 	qlf_k6n10f/dspv4_enable_inverter_shared \
 	qlf_k6n10f/dspv4_synplify_gnd_cin_folds \
 	qlf_k6n10f/dspv4_synplify_live_cin_keeps_m \
+	qlf_k6n10f/dspv4_enable_tied_high_evicts \
+	qlf_k6n10f/dspv4_enable_tied_high_check \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
@@ -377,3 +379,16 @@ qlf_k6n10f-dspv4_enable_inverter_shared_verify += && ! grep -q 'distinct clock e
 # A carry-in on a GND cell folds the lone MREG; a live carry-in keeps the M banks.
 qlf_k6n10f-dspv4_synplify_gnd_cin_folds_verify = true
 qlf_k6n10f-dspv4_synplify_live_cin_keeps_m_verify = true
+
+# A tied-high clock enable counts against the crossbar's three inputs (aurora2
+# #2972). The evict block must give up exactly one port, B, and the keep block
+# none; the cells that remain must not trip the check pass.
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify = grep -q '1 x  B register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify += && ! grep -q 'distinct clock enables' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+# The shared block gives up D and keeps B: B and C hold the same tied-high net, so
+# giving up B frees no slot. B is given up once, by the evict block, not twice.
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify += && grep -q '1 x  D register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify += && ! grep -q '2 x  B register chain given up' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+# The check pass: the four-net cell warns, the three-net cell does not.
+qlf_k6n10f-dspv4_enable_tied_high_check_verify = grep -q 'u_warns.u: 4 distinct clock enables' qlf_k6n10f/dspv4_enable_tied_high_check/dspv4_enable_tied_high_check.log
+qlf_k6n10f-dspv4_enable_tied_high_check_verify += && ! grep -q 'u_fits.u: [0-9]* distinct clock enables' qlf_k6n10f/dspv4_enable_tied_high_check/dspv4_enable_tied_high_check.log
