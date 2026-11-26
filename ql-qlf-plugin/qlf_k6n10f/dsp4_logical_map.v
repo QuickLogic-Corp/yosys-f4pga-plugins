@@ -182,7 +182,42 @@ module QL_DSP4 #(
     // every cycle (dsp4_top.v ties the M banks' enable high) and clears on
     // RSTN, not ACCRSTN. CEP is one pin shared with the carry-out and sign
     // registers, so with COUTREG the fold is off and the real M banks stay.
-    localparam FOLD_MREG = MREG && !PREG && ALU_MULT_ONLY && !COUTREG;
+    //
+    // Clock enables: the tile's 3:5 crossbar gives the five CE pins at most
+    // three nets, a constant included. Only the enables of instantiated banks
+    // count. CEP is never used where the fold applies, so the count of the
+    // bank enables does not depend on the fold.
+    parameter _TECHMAP_BITS_CONNMAP_ = 0;
+    parameter [_TECHMAP_BITS_CONNMAP_-1:0] _TECHMAP_CONNMAP_CEA_ = 0;
+    parameter [_TECHMAP_BITS_CONNMAP_-1:0] _TECHMAP_CONNMAP_CEB_ = 0;
+    parameter [_TECHMAP_BITS_CONNMAP_-1:0] _TECHMAP_CONNMAP_CEC_ = 0;
+    parameter [_TECHMAP_BITS_CONNMAP_-1:0] _TECHMAP_CONNMAP_CED_ = 0;
+    parameter [_TECHMAP_BITS_CONNMAP_-1:0] _TECHMAP_CONNMAP_CEP_ = 0;
+    localparam CEA_USED = AREG1 || A_FIRST_REG || A_COUT_SEL;
+    localparam CEB_USED = BREG1 || B_FIRST_REG || B_COUT_SEL;
+    localparam CEC_USED = CREG;
+    localparam CED_USED = DREG;
+    localparam CEP_USED = COUTREG || PREG || USES_P || (CARRYINSEL == 3'b100);
+    localparam CEB_NEW  = CEB_USED && !(CEA_USED && _TECHMAP_CONNMAP_CEB_ == _TECHMAP_CONNMAP_CEA_);
+    localparam CEC_NEW  = CEC_USED && !(CEA_USED && _TECHMAP_CONNMAP_CEC_ == _TECHMAP_CONNMAP_CEA_)
+                                   && !(CEB_USED && _TECHMAP_CONNMAP_CEC_ == _TECHMAP_CONNMAP_CEB_);
+    localparam CED_NEW  = CED_USED && !(CEA_USED && _TECHMAP_CONNMAP_CED_ == _TECHMAP_CONNMAP_CEA_)
+                                   && !(CEB_USED && _TECHMAP_CONNMAP_CED_ == _TECHMAP_CONNMAP_CEB_)
+                                   && !(CEC_USED && _TECHMAP_CONNMAP_CED_ == _TECHMAP_CONNMAP_CEC_);
+    localparam CEP_NEW  = CEP_USED && !(CEA_USED && _TECHMAP_CONNMAP_CEP_ == _TECHMAP_CONNMAP_CEA_)
+                                   && !(CEB_USED && _TECHMAP_CONNMAP_CEP_ == _TECHMAP_CONNMAP_CEB_)
+                                   && !(CEC_USED && _TECHMAP_CONNMAP_CEP_ == _TECHMAP_CONNMAP_CEC_)
+                                   && !(CED_USED && _TECHMAP_CONNMAP_CEP_ == _TECHMAP_CONNMAP_CED_);
+    localparam [2:0] CE_BANK_NETS = 3'd0 + CEA_USED + CEB_NEW + CEC_NEW + CED_NEW + CEP_NEW;
+    // a used enable is tied to constant 1 (connection id 1)
+    localparam CE_TIED_HIGH = (CEA_USED && _TECHMAP_CONNMAP_CEA_ == 1) || (CEB_USED && _TECHMAP_CONNMAP_CEB_ == 1)
+                           || (CEC_USED && _TECHMAP_CONNMAP_CEC_ == 1) || (CED_USED && _TECHMAP_CONNMAP_CED_ == 1)
+                           || (CEP_USED && _TECHMAP_CONNMAP_CEP_ == 1);
+    // The folded register is enabled by constant 1, which takes a crossbar
+    // net unless a tied-high enable already does. Without room for it the
+    // real M banks stay: they have no enable.
+    localparam FOLD_CE_FITS = (CE_BANK_NETS <= 3'd2) || CE_TIED_HIGH;
+    localparam FOLD_MREG = MREG && !PREG && ALU_MULT_ONLY && !COUTREG && FOLD_CE_FITS;
     localparam USE_MREG  = MREG && !FOLD_MREG;
     localparam USE_PREG  = PREG || FOLD_MREG;
 
@@ -208,7 +243,30 @@ module QL_DSP4 #(
         || (W_SEL == 2'b10)                             // reserved W encoding
         || (Y_SEL == 2'b10);                            // reserved Y encoding
 
-    wire _TECHMAP_FAIL_ = UNSUPPORTED;
+    // -- design rules --------------------------------------------------------
+    // QL-001 IP guide (dsp.qmd) and dsp_type4_bw/README.md Sec. 2.0.5 / 2.0.6.
+    // A techmap sees the parameters and the input nets, so the rules on which
+    // COUT bits a design reads are not checked here.
+    localparam SIMD   = (USE_SIMD != 2'b00);
+    localparam MULT_X = (X_SEL == 2'b01);
+    localparam MULT_Y = (Y_SEL == 2'b01);
+    localparam [1:0] WXY_USED = 2'd0 + W_CONN + X_CONN + Y_CONN;
+    // the operand of the pre-adder also drives the other multiplier port; read only by the ADREG rule, which is off
+    localparam CROSS_PATH = MULT_X && ((!PREADDINSEL && !AMULTSEL &&  BMULTSEL)
+                                    || ( PREADDINSEL &&  AMULTSEL && !BMULTSEL));
+
+    localparam DRC_FAIL =
+           (USE_SIMD == 2'b11)                          // no such segmentation
+        || (SIMD && WXY_USED > 2'd1)                    // lanes carry into each other; includes the multiplier
+        || (SIMD && USE_RSS)                            // RSS reads the result as one value
+        || (SIMD && CARRYINSEL != 3'b000)               // CCIN and the carry register enter every lane
+        || (MULT_X != MULT_Y)                           // U and V make a product only together
+        || (Z_SEL == 3'b111)                            // reserved Z encoding
+        || (Z_SEL == 3'b100 && ALUMODE != 2'b00)        // MACC_EXT: the 100-bit MACC only adds
+        // not enforced: || (CROSS_PATH && ADREG)       // AD a clock behind the operand it multiplies
+        || (CE_BANK_NETS > 3'd3);                       // more enable nets than the crossbar carries
+
+    wire _TECHMAP_FAIL_ = UNSUPPORTED || DRC_FAIL;
 
     // Each register bank is ONE wide primitive (QL_DSP4_<bank>_DFFR[E]_<W>),
     // not W bit-sliced 1-bit cells: the dsp4_logical pb_types are num_pb=1 with
