@@ -8,7 +8,14 @@ set PASS_NAME synth_quicklogic
 if { [info commands synth_ql] != {} } { set PASS_NAME synth_ql }
 
 read_verilog $::env(DESIGN_TOP).v
-$PASS_NAME -family qlf_k6n10f -top top -blif fp_owner.blif -owner_table fp_owner.json
+# Stop before the blif step to keep a copy for the check without .cname below: -write
+# removes the owner attributes, so it can only run once on a design.
+$PASS_NAME -family qlf_k6n10f -top top -blif fp_owner.blif -owner_table fp_owner.json -run :blif
+design -save before_blif
+$PASS_NAME -family qlf_k6n10f -top top -blif fp_owner.blif -owner_table fp_owner.json -run blif:
+
+# -write removes the owner attributes, so later outputs (write_ql_edif -attrprop) do not carry them.
+select -assert-none a:ql_owner a:ql_owner_rule A:ql_fp_tree A:ql_fp_names A:ql_fp_bits
 
 proc file_text {path} {
     set fh [open $path r]
@@ -69,6 +76,7 @@ if {$table_sha ne $blif_sha} { error "netlist_sha256 $table_sha is not the BLIF'
 
 # Without .cname (the -rel_ip_blif flow) VPR names a .subckt after the net on its first output
 # pin; the table names it the same and keeps its owner.
+design -load before_blif
 write_blif -param fp_owner_nocname.blif
 ql_fp_owner -write fp_owner_nocname.json -blif fp_owner_nocname.blif
 set nocname [file_text fp_owner_nocname.json]

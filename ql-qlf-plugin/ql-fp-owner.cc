@@ -904,7 +904,8 @@ struct QlFpOwnerPass : public Pass {
         log("        after the final write_blif: writes the owner table (schema version 2)\n");
         log("        for the atoms of <file>, named as VPR names them, with its sha256.\n");
         log("        An atom VPR sweeps, one whose outputs drive nothing, is left out.\n");
-        log("        Cells created since -assign get an owner first.\n");
+        log("        Cells created since -assign get an owner first. Then removes the\n");
+        log("        attributes the other modes added.\n");
         log("\n");
     }
 
@@ -950,6 +951,14 @@ struct QlFpOwnerPass : public Pass {
             log("%d cell(s) renamed\n", guard_names(top));
         } else {
             write_table(top, table_file, blif_file, front_end);
+            // Nothing reads them past this point, and write_ql_edif -attrprop would copy them out.
+            for (auto cell : top->cells()) {
+                cell->attributes.erase(kOwnerAttr);
+                cell->attributes.erase(kRuleAttr);
+            }
+            for (auto attr : {kTreeAttr, kNamesAttr, kBitsAttr})
+                top->attributes.erase(attr);
+            Records::cache = Records::Parsed();
         }
     }
 } QlFpOwnerPass;
