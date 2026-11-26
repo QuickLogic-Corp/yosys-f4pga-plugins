@@ -1117,7 +1117,9 @@ struct SynthQuickLogicPass : public ScriptPass {
                             run("techmap -map " + lib_path + family + "/dsp4_logical_map.v");
                             // The techmap leaves a QL_DSP4 it refuses as it is, with no
                             // message, and that cell would reach the BLIF with no model
-                            // for it. Stop here, while the cell is still in the design.
+                            // for it. Say why, then stop here, while the cell is still in
+                            // the design.
+                            run("ql_dsp4_explain");
                             run("select -assert-none t:QL_DSP4");
                             run("opt_clean -purge");
                         } else {

@@ -70,6 +70,9 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_regs \
 	qlf_k6n10f/dspv4_techmap_refused_stops \
 	qlf_k6n10f/dspv4_techmap_twin_maps \
+	qlf_k6n10f/dspv4_techmap_reason \
+	qlf_k6n10f/dspv4_techmap_refused_drc \
+	qlf_k6n10f/dspv4_techmap_twin_drc_maps \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
@@ -376,4 +379,31 @@ qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refus
 qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_y$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
 qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_carry$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
 qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_carryp$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+# The refused run also says why, for each of the four cells.
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_w: .*It breaks: reserved W encoding (W_SEL = 10)' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_y: .*It breaks: reserved Y encoding (Y_SEL = 10)' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_carry: .*It breaks: CARRYINSEL = 001 is not a carry source' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_carryp: .*It breaks: the carry register (CARRYINSEL = 100) with P fed back' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
 qlf_k6n10f-dspv4_techmap_twin_maps_verify = true
+
+# ql_dsp4_explain on its own (aurora2 #2973): two rules in one message, and a
+# cell that breaks none of the known rules is reported as unexplained.
+qlf_k6n10f-dspv4_techmap_reason_verify = grep -q 'dspv4_techmap_reason.u_two: .*It breaks: CARRYINSEL = 001 is not a carry source.*; reserved W encoding (W_SEL = 10)' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+qlf_k6n10f-dspv4_techmap_reason_verify += && grep -q 'dspv4_techmap_reason.u_clean: .*No known rule explains it' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+qlf_k6n10f-dspv4_techmap_reason_verify += && ! grep -q 'dspv4_techmap_reason.u_clean: .*It breaks' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+
+# The design rules of the techmap (openphy-turnkey-flow #2173, aurora2 #2973). The
+# refused run is expected to fail and its log must give the rule for each of
+# the eight cells; the twin has cells with the rule satisfied and they must map.
+qlf_k6n10f/dspv4_techmap_refused_drc_negative = 1
+qlf_k6n10f-dspv4_techmap_refused_drc_verify = grep -q 'selection is not empty: t:QL_DSP4' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simd11: .*It breaks: USE_SIMD = 11, a segmentation that does not exist' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simdwxy: .*It breaks: SIMD with more than one of W, X and Y selected' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simdrss: .*It breaks: SIMD with USE_RSS' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simdcarry: .*It breaks: SIMD with a carry-in from CCIN or the carry register' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_uwithoutv: .*It breaks: X = U without Y = V' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_zres: .*It breaks: reserved Z encoding (Z_SEL = 111)' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_maccext: .*It breaks: MACC_EXT (Z_SEL = 100) with ALUMODE != 00' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_ce4: .*It breaks: 4 clock-enable nets on the registers in use' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_ce4open: .*It breaks: 4 clock-enable nets on the registers in use' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_twin_drc_maps_verify = true
