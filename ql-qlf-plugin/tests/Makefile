@@ -68,6 +68,8 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_preg_wrap \
 	qlf_k6n10f/dspv4_preadd_adreg_trunc \
 	qlf_k6n10f/dspv4_preadd_regs \
+	qlf_k6n10f/dspv4_synplify_gnd_cin_folds \
+	qlf_k6n10f/dspv4_synplify_live_cin_keeps_m \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
@@ -364,3 +366,8 @@ qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '1 x  pre-adder: an uns
 qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x12, PREADD_B_MULT_A x3' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
 # The two four-enable cells name the B chain they give up.
 qlf_k6n10f-dspv4_preadd_regs_verify += && grep -q '2 x  B register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
+
+# GND and VCC cells become constants before the DSP-V4 techmap (aurora2 #2970).
+# A carry-in on a GND cell folds the lone MREG; a live carry-in keeps the M banks.
+qlf_k6n10f-dspv4_synplify_gnd_cin_folds_verify = true
+qlf_k6n10f-dspv4_synplify_live_cin_keeps_m_verify = true
