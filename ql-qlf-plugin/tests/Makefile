@@ -94,6 +94,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_casc_chain_max_refused \
 	qlf_k6n10f/dspv4_casc_links \
 	qlf_k6n10f/dspv4_casc_refused \
+	qlf_k6n10f/dspv4_casc_loop_no_register \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -884,6 +885,27 @@ qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_acc_tail.log,0,0)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_B_MULT_A_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b.log
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_preadd_b.log,0,0)
+
+# A loop with no register: the link into the cell first in name order is
+# dropped, once, and the rest links. casc_loop_no_register takes a block, its
+# candidate and refused counts, the number of cells that read PCIN and C, the
+# links, the longest chain and the limit. The stopped log also names the head.
+casc_loop_dir = qlf_k6n10f/dspv4_casc_loop_no_register
+casc_loop_head = test "$$(grep -c 'cascade: .* is a head now: its loop lost a link$$' $(1))" = 1
+casc_loop_no_register = $(call casc_found,$(casc_loop_dir)/$(1).log,$(2),$(3)) && $(call casc_reason,$(casc_loop_dir)/$(1).log,$(casc_loop),1) && $(call casc_loop_head,$(casc_loop_dir)/$(1).log) && $(call casc_wired,$(casc_loop_dir)/$(1).log,$(4),$(5)) && $(call casc_report,$(casc_loop_dir)/$(1).log,$(6),1,$(7),$(8)) && $(call casc_report,$(casc_loop_dir)/$(1)_flow.log,$(6),1,$(7),$(8)) && $(call casc_ranked,$(casc_loop_dir)/$(1)_flow.log,1,$(casc_loop))
+qlf_k6n10f-dspv4_casc_loop_no_register_verify = $(call casc_loop_no_register,_ring2,2,1,1,1,1,2,2)
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && $(call casc_loop_no_register,_ring2_swapped,2,1,1,1,1,2,12)
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && $(call casc_loop_no_register,_ring3,3,1,2,1,2,3,12)
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && $(call casc_loop_no_register,_ring2_tail,3,2,1,2,1,2,12)
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && $(call casc_reason,$(casc_loop_dir)/_ring2_tail.log,$(casc_shorter),1)
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_loop_dir)/_ring2.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_flow.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_swapped.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_swapped_flow.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD x2, MULT_ADD_C x1$$' $(casc_loop_dir)/_ring3.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD x2, MULT_ADD_C x1$$' $(casc_loop_dir)/_ring3_flow.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_tail.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_tail_flow.log
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true
