@@ -108,6 +108,20 @@ select -assert-count 2 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
 select -assert-count 1 t:\$add
 
+# ---- A signed link and an unsigned k, padded to a signed value: both fold. --
+
+stopped_block _addend_g2_k_padded _addend_g2_k_padded
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b110010101 %i
+select -assert-count 0 t:\$add
+select -assert-count 1 t:QL_DSP4 %ci1:+\[C\] i:k %i
+
+stopped_block _addend_g1_k_padded _addend_g1_k_padded
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b110010101 %i
+select -assert-count 0 t:\$add
+select -assert-count 1 t:QL_DSP4 %ci1:+\[C\] i:k %i
+
 # ---- A 50-bit s of two 32 x 18 products: the 50-bit cap lets it fold. -------
 
 stopped_block _addend_g1_cap _addend_g1_cap

@@ -223,3 +223,40 @@ module _addend_g1_preg (
         s_r <= a1 * b1 + prev;
     end
 endmodule
+
+// A signed link and an unsigned k: the $add is unsigned, so it zero-extends
+// the link, and PCIN would sign-extend it.
+module _addend_g2_k_unsigned (
+    input  signed [17:0] a0, b0, c0, a1, b1,
+    input         [17:0] k,
+    output signed [38:0] s_out
+);
+    wire signed [36:0] prev = a0 * b0 + c0;
+    wire signed [37:0] t = prev + k;
+    wire signed [38:0] s = a1 * b1 + t;
+    assign s_out = s;
+endmodule
+
+// The same with t wider than the sum: its top bits are constant zeros.
+module _addend_g2_k_unsigned_wide (
+    input  signed [17:0] a0, b0, c0, a1, b1,
+    input         [17:0] k,
+    output signed [40:0] s_out
+);
+    wire signed [36:0] prev = a0 * b0 + c0;
+    wire signed [39:0] t = prev + k;
+    wire signed [40:0] s = a1 * b1 + t;
+    assign s_out = s;
+endmodule
+
+// The same in grouping 1, with y as wide as s.
+module _addend_g1_k_unsigned (
+    input  signed [17:0] a0, b0, a1, b1,
+    input         [17:0] k,
+    output signed [36:0] y_out
+);
+    wire signed [35:0] prev = a0 * b0;
+    wire signed [36:0] s = a1 * b1 + prev;
+    wire signed [36:0] y = s + k;
+    assign y_out = y;
+endmodule

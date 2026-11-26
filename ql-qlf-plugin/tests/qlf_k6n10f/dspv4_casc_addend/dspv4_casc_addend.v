@@ -182,3 +182,28 @@ module _addend_g2_preg (
         s_r <= a1 * b1 + t;
     end
 endmodule
+
+// A signed link and an unsigned k, k zero-padded to a signed value so the
+// $add is signed: the link sign-extends, as PCIN does.
+module _addend_g2_k_padded (
+    input  signed [17:0] a0, b0, c0, a1, b1,
+    input         [17:0] k,
+    output signed [39:0] s_out
+);
+    wire signed [36:0] prev = a0 * b0 + c0;
+    wire signed [38:0] t = prev + $signed({1'b0, k});
+    wire signed [39:0] s = a1 * b1 + t;
+    assign s_out = s;
+endmodule
+
+// The same in grouping 1.
+module _addend_g1_k_padded (
+    input  signed [17:0] a0, b0, a1, b1,
+    input         [17:0] k,
+    output signed [37:0] y_out
+);
+    wire signed [35:0] prev = a0 * b0;
+    wire signed [36:0] s = a1 * b1 + prev;
+    wire signed [37:0] y = s + $signed({1'b0, k});
+    assign y_out = y;
+endmodule

@@ -959,6 +959,17 @@ qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_
 qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g2_preg.log,1,2)
 qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g2_preg.log,1,1,2,12)
 qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_no_declined,$(casc_addend_dir)/_addend_g2_preg.log)
+# A signed link and an unsigned k, padded to a signed value: the $add goes and
+# k moves to C, in both groupings.
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT_ADD_C x1$$' $(casc_addend_dir)/_addend_g2_k_padded.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g2_k_padded.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g2_k_padded.log,1,2)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g2_k_padded.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT x1$$' $(casc_addend_dir)/_addend_g1_k_padded.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g1_k_padded.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g1_k_padded.log,1,1)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g1_k_padded.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach b,_addend_g2_k_padded _addend_g1_k_padded,&& $(call casc_no_declined,$(casc_addend_dir)/$(b).log))
 # No block here refuses a link.
 qlf_k6n10f-dspv4_casc_addend_verify += && ! grep -q 'cascade link' $(casc_addend_dir)/*.log
 casc_addend_refused_dir = qlf_k6n10f/dspv4_casc_addend_refused
@@ -1000,6 +1011,11 @@ qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_unsigned,0,$(casc_addend_unsigned))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_pad,0,$(casc_unsigned))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_unsigned_in_pad,0,$(casc_unsigned))
+# A signed link and an unsigned k: the $add is unsigned, so the link would be
+# zero-extended. Grouping 2 refuses it by the addend guard, and by the finder's
+# zero-extension check on t when t has constant zero bits above the sum.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_k_unsigned,0,$(casc_addend_unsigned))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_k_unsigned_wide,0,$(casc_unsigned))
 # Grouping 2 read shifted, or with another cell's bits above the wire: no
 # attempt, so no candidate and no reason.
 qlf_k6n10f-dspv4_casc_addend_refused_verify += $(foreach b,_addend_g2_slice _addend_g2_in_slice,&& grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_addend_refused_dir)/$(b).log)
@@ -1022,6 +1038,7 @@ qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend
 # Grouping 1 on a consumer with PREG: k would be registered. The plain link stays.
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_preg,$(casc_addend_registered))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'grouping 1, .* folds' $(casc_addend_refused_dir)/_addend_g1_preg.log
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_k_unsigned,$(casc_addend_unsigned))
 # Grouping 1 below an accumulator: s must hold the whole 50-bit port, so a
 # 40-bit s declines the fold in rule 1's walk, after the finder took it.
 casc_full_port_log = $(casc_addend_refused_dir)/_addend_g1_full_port.log
