@@ -251,35 +251,67 @@ struct Records {
     dict<std::string, Owner> bits;
     dict<std::string, Owner> names;
 
-    static void load(RTLIL::Module *module, const char *attr, dict<std::string, Owner> &out)
+    // The attributes run to megabytes and each call used to parse them again. The last
+    // records stay parsed here, under the exact text they came from, so a call whose text is
+    // unchanged takes them instead.
+    struct Parsed {
+        std::string bits_text, names_text;
+        dict<std::string, Owner> bits, names;
+        bool valid = false;
+    };
+    static Parsed cache;
+
+    std::string bits_text, names_text;
+
+    static void load(const std::string &text, dict<std::string, Owner> &out)
     {
-        for (auto &line : split(module->get_string_attribute(attr), '\n')) {
+        for (auto &line : split(text, '\n')) {
             size_t tab = line.rfind('\t');
             if (tab != std::string::npos)
                 out[line.substr(0, tab)] = decode_owner(line.substr(tab + 1));
         }
     }
 
-    static void store(RTLIL::Module *module, const char *attr, const dict<std::string, Owner> &in)
+    static std::string store(RTLIL::Module *module, const char *attr, const dict<std::string, Owner> &in)
     {
         std::string text;
         for (auto &it : in)
             text += it.first + "\t" + encode_owner(it.second) + "\n";
         module->set_string_attribute(attr, text);
+        return text;
     }
 
-    explicit Records(RTLIL::Module *module)
+    explicit Records(RTLIL::Module *module) : bits_text(module->get_string_attribute(kBitsAttr)), names_text(module->get_string_attribute(kNamesAttr))
     {
-        load(module, kBitsAttr, bits);
-        load(module, kNamesAttr, names);
+        if (cache.valid && cache.bits_text == bits_text && cache.names_text == names_text) {
+            bits = std::move(cache.bits);
+            names = std::move(cache.names);
+        } else {
+            load(bits_text, bits);
+            load(names_text, names);
+        }
+        cache = Parsed();
     }
 
-    void save(RTLIL::Module *module) const
+    void save(RTLIL::Module *module)
     {
-        store(module, kBitsAttr, bits);
-        store(module, kNamesAttr, names);
+        bits_text = store(module, kBitsAttr, bits);
+        names_text = store(module, kNamesAttr, names);
+    }
+
+    // Hand the records back with the text they now match: the loaded one, or the saved one.
+    // Only record() changes them, and it saves before it returns.
+    ~Records()
+    {
+        cache.bits_text = std::move(bits_text);
+        cache.names_text = std::move(names_text);
+        cache.bits = std::move(bits);
+        cache.names = std::move(names);
+        cache.valid = true;
     }
 };
+
+Records::Parsed Records::cache;
 
 static std::string bit_key(const RTLIL::SigBit &bit) { return stringf("%s\t%d", bit.wire->name.c_str(), bit.offset); }
 
