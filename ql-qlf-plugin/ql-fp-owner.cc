@@ -73,6 +73,16 @@ static Owner decode_owner(const std::string &text)
     return owner;
 }
 
+// hdlname is the cell's own path; its owner is that path without the last segment. A user
+// attribute can leave it empty, which names no scope, so the owner is then the top.
+static Owner hdlname_owner(const std::string &hdlname)
+{
+    Owner owner = decode_owner(hdlname);
+    if (!owner.empty())
+        owner.pop_back();
+    return owner;
+}
+
 static std::string encode_owner(const Owner &owner)
 {
     std::string text;
@@ -311,8 +321,7 @@ struct OwnerWorker {
     bool recorded_owner(RTLIL::Cell *cell, Owner &owner)
     {
         if (cell->has_attribute(ID::hdlname)) {
-            owner = decode_owner(cell->get_string_attribute(ID::hdlname));
-            owner.pop_back();
+            owner = hdlname_owner(cell->get_string_attribute(ID::hdlname));
             return true;
         }
         if (cell->has_attribute(ID(scopename))) {
@@ -490,8 +499,7 @@ static void record_tree(RTLIL::Design *design, RTLIL::Module *top)
         for (auto cell : top->cells()) {
             Owner owner;
             if (cell->has_attribute(ID::hdlname)) {
-                owner = decode_owner(cell->get_string_attribute(ID::hdlname));
-                owner.pop_back();
+                owner = hdlname_owner(cell->get_string_attribute(ID::hdlname));
             } else if (cell->has_attribute(ID(scopename))) {
                 owner = decode_owner(cell->get_string_attribute(ID(scopename)));
             }
