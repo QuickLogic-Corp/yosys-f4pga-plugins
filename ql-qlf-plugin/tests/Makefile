@@ -23,6 +23,7 @@ TESTS = \
 	fp_owner \
 	fp_owner_clash \
 	fp_owner_dspv4 \
+	fp_owner_flat \
 	fp_owner_hdlname \
 	fp_owner_sweep \
 	qlf_k6n10f/dsp_mult \

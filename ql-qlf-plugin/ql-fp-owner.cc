@@ -540,6 +540,23 @@ static void record_tree(RTLIL::Design *design, RTLIL::Module *top)
         }
         for (auto &scope : scopes)
             lines.push_back(scope + "\t");
+        // A netlist flattened before Yosys read it (Synplify's, e.g.) may keep instance paths
+        // only in dotted cell names, which this rule does not read.
+        if (scopes.empty()) {
+            int dotted = 0;
+            RTLIL::Cell *example = nullptr;
+            for (auto cell : top->cells())
+                if (cell->name.isPublic() && cell->name.str().find('.') != std::string::npos) {
+                    dotted++;
+                    if (example == nullptr || cell->name.str() < example->name.str())
+                        example = cell;
+                }
+            if (dotted > 0)
+                log_warning("ql_fp_owner: the netlist is flat and no cell has hdlname or scopename, but %d cell name(s) "
+                            "contain a dot (e.g. %s). Every atom will be owned by the top module. If the dots are "
+                            "instance paths, give a hierarchical netlist to get instance owners.\n",
+                            dotted, log_id(example->name));
+        }
     }
     std::sort(lines.begin(), lines.end());
     lines.erase(std::unique(lines.begin(), lines.end()), lines.end());
