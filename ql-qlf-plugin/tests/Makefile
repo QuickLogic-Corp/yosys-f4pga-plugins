@@ -69,6 +69,8 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_adreg_trunc \
 	qlf_k6n10f/dspv4_preadd_regs \
 	qlf_k6n10f/dspv4_enable_inverter_shared \
+	qlf_k6n10f/dspv4_synplify_gnd_cin_folds \
+	qlf_k6n10f/dspv4_synplify_live_cin_keeps_m \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
@@ -371,3 +373,7 @@ qlf_k6n10f-dspv4_preadd_regs_verify += && grep -q '2 x  B register chain given u
 # and that ql_dsp4_check did not count one enable as several.
 qlf_k6n10f-dspv4_enable_inverter_shared_verify = grep -q 'modes inferred: MULT_ADD_C x1' qlf_k6n10f/dspv4_enable_inverter_shared/dspv4_enable_inverter_shared.log
 qlf_k6n10f-dspv4_enable_inverter_shared_verify += && ! grep -q 'distinct clock enables' qlf_k6n10f/dspv4_enable_inverter_shared/dspv4_enable_inverter_shared.log
+# GND and VCC cells become constants before the DSP-V4 techmap (aurora2 #2970).
+# A carry-in on a GND cell folds the lone MREG; a live carry-in keeps the M banks.
+qlf_k6n10f-dspv4_synplify_gnd_cin_folds_verify = true
+qlf_k6n10f-dspv4_synplify_live_cin_keeps_m_verify = true
