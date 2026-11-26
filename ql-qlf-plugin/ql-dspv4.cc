@@ -3263,4 +3263,77 @@ struct QlDsp4CheckPass : public Pass {
 
 } QlDsp4CheckPass;
 
+// Why the DSP-V4 techmap may refuse a QL_DSP4. The techmap leaves a cell it
+// refuses as it is and says nothing, so these repeat its UNSUPPORTED rules
+// (dsp4_logical_map.v), read from the cell's parameters. Keep the two in step.
+// A refusal that matches none of them is reported as unexplained, so a rule
+// added to the techmap without a message shows up instead of staying silent.
+static std::string dspv4_binary(int value, int bits)
+{
+    std::string text;
+    for (int bit = bits - 1; bit >= 0; bit--)
+        text += ((value >> bit) & 1) ? '1' : '0';
+    return text;
+}
+
+static std::vector<std::string> dspv4_refusal_reasons(RTLIL::Cell *cell)
+{
+    auto parameter = [&](RTLIL::IdString id, int fallback) { return cell->hasParam(id) ? cell->getParam(id).as_int() : fallback; };
+    int opmode = parameter(ID(OPMODE), 0b000000101);
+    int carryinsel = parameter(ID(CARRYINSEL), 0);
+    int w_sel = (opmode >> 7) & 3, z_sel = (opmode >> 4) & 7, y_sel = (opmode >> 2) & 3, x_sel = opmode & 3;
+    bool uses_p = w_sel == 1 || x_sel == 2 || z_sel == 2 || z_sel == 6;
+
+    std::vector<std::string> reasons;
+    if (carryinsel != 0 && carryinsel != 2 && carryinsel != 4)
+        reasons.push_back(stringf("CARRYINSEL = %s is not a carry source (only 000, 010 and 100 are)", dspv4_binary(carryinsel, 3).c_str()));
+    if (carryinsel == 4 && uses_p)
+        reasons.push_back("the carry register (CARRYINSEL = 100) with P fed back");
+    if (w_sel == 2)
+        reasons.push_back("reserved W encoding (W_SEL = 10)");
+    if (y_sel == 2)
+        reasons.push_back("reserved Y encoding (Y_SEL = 10)");
+    return reasons;
+}
+
+struct QlDsp4ExplainPass : public Pass {
+    QlDsp4ExplainPass() : Pass("ql_dsp4_explain", "say why the DSP-V4 techmap left a QL_DSP4 as it is") {}
+
+    void help() override
+    {
+        log("\n");
+        log("    ql_dsp4_explain [selection]\n");
+        log("\n");
+        log("Run after the DSP-V4 techmap. A QL_DSP4 still in the design is one the\n");
+        log("techmap refused. Warn for each one with the rules it breaks, read from its\n");
+        log("parameters. A cell that breaks none of the known rules is reported as\n");
+        log("unexplained.\n");
+        log("\n");
+    }
+
+    void execute(std::vector<std::string> args, RTLIL::Design *design) override
+    {
+        log_header(design, "Executing QL_DSP4_EXPLAIN pass.\n");
+        extra_args(args, 1, design);
+
+        for (auto module : design->selected_modules()) {
+            for (auto cell : module->selected_cells()) {
+                if (cell->type != ID(QL_DSP4))
+                    continue;
+                std::vector<std::string> reasons = dspv4_refusal_reasons(cell);
+                if (reasons.empty()) {
+                    log_warning("%s.%s: the DSP-V4 techmap left this QL_DSP4 as it is. No known rule explains it: "
+                                "a rule in dsp4_logical_map.v has no message in ql_dsp4_explain.\n",
+                                log_id(module), log_id(cell));
+                    continue;
+                }
+                std::string joined;
+                for (auto &reason : reasons)
+                    joined += (joined.empty() ? "" : "; ") + reason;
+                log_warning("%s.%s: the DSP-V4 techmap left this QL_DSP4 as it is. It breaks: %s.\n", log_id(module), log_id(cell), joined.c_str());
+            }
+        }
+    }
+} QlDsp4ExplainPass;
+
 PRIVATE_NAMESPACE_END

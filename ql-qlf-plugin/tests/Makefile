@@ -70,6 +70,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_regs \
 	qlf_k6n10f/dspv4_techmap_refused_stops \
 	qlf_k6n10f/dspv4_techmap_twin_maps \
+	qlf_k6n10f/dspv4_techmap_reason \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
@@ -376,4 +377,15 @@ qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refus
 qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_y$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
 qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_carry$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
 qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_carryp$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+# The refused run also says why, for each of the four cells.
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_w: .*It breaks: reserved W encoding (W_SEL = 10)' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_y: .*It breaks: reserved Y encoding (Y_SEL = 10)' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_carry: .*It breaks: CARRYINSEL = 001 is not a carry source' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_carryp: .*It breaks: the carry register (CARRYINSEL = 100) with P fed back' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
 qlf_k6n10f-dspv4_techmap_twin_maps_verify = true
+
+# ql_dsp4_explain on its own (aurora2 #2973): two rules in one message, and a
+# cell that breaks none of the known rules is reported as unexplained.
+qlf_k6n10f-dspv4_techmap_reason_verify = grep -q 'dspv4_techmap_reason.u_two: .*It breaks: CARRYINSEL = 001 is not a carry source.*; reserved W encoding (W_SEL = 10)' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+qlf_k6n10f-dspv4_techmap_reason_verify += && grep -q 'dspv4_techmap_reason.u_clean: .*No known rule explains it' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+qlf_k6n10f-dspv4_techmap_reason_verify += && ! grep -q 'dspv4_techmap_reason.u_clean: .*It breaks' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
