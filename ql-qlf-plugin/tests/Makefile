@@ -405,4 +405,5 @@ qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_uwithou
 qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_zres: .*It breaks: reserved Z encoding (Z_SEL = 111)' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
 qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_maccext: .*It breaks: MACC_EXT (Z_SEL = 100) with ALUMODE != 00' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
 qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_ce4: .*It breaks: 4 clock-enable nets on the registers in use' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_ce4open: .*It breaks: 4 clock-enable nets on the registers in use' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
 qlf_k6n10f-dspv4_techmap_twin_drc_maps_verify = true

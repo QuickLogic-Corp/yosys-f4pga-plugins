@@ -12,6 +12,7 @@
 //   u_zres       reserved Z encoding (Z_SEL = 111)
 //   u_maccext    MACC_EXT (Z_SEL = 100) with ALUMODE = 01
 //   u_ce4        four clock-enable nets on the registers in use
+//   u_ce4open    the same with CEA left open: an open pin is a net too (connection 0)
 module dspv4_techmap_refused_drc (input clk, input [15:0] a, input [15:0] b, input ea, input eb, input ec, input ep,
                                   output [49:0] p_simd11,
                                   output [49:0] p_simdwxy,
@@ -20,7 +21,8 @@ module dspv4_techmap_refused_drc (input clk, input [15:0] a, input [15:0] b, inp
                                   output [49:0] p_uwithoutv,
                                   output [49:0] p_zres,
                                   output [49:0] p_maccext,
-                                  output [49:0] p_ce4);
+                                  output [49:0] p_ce4,
+                                    output [49:0] p_ce4open);
   QL_DSP4 #(.OPMODE(9'b00_011_00_00), .USE_SIMD(2'b11)) u_simd11 (
     .CLK(clk), .A({16'b0, a}), .B({2'b0, b}), .CIN(1'b0), .RSTN(1'b1), .ACCRSTN(1'b1), .ARSTN(1'b1),
     .CEA(1'b1), .CEB(1'b1), .CEC(1'b1), .CED(1'b1), .CEP(1'b1), .P(p_simd11));
@@ -45,4 +47,7 @@ module dspv4_techmap_refused_drc (input clk, input [15:0] a, input [15:0] b, inp
   QL_DSP4 #(.OPMODE(9'b00_000_01_01), .AREG1(1'b1), .BREG1(1'b1), .CREG(1'b1), .PREG(1'b1)) u_ce4 (
     .CLK(clk), .A({16'b0, a}), .B({2'b0, b}), .CIN(1'b0), .RSTN(1'b1), .ACCRSTN(1'b1), .ARSTN(1'b1),
     .CEA(ea), .CEB(eb), .CEC(ec), .CED(1'b1), .CEP(ep), .P(p_ce4));
+  QL_DSP4 #(.OPMODE(9'b00_000_01_01), .AREG1(1'b1), .BREG1(1'b1), .CREG(1'b1), .PREG(1'b1)) u_ce4open (
+    .CLK(clk), .A({16'b0, a}), .B({2'b0, b}), .CIN(1'b0), .RSTN(1'b1), .ACCRSTN(1'b1), .ARSTN(1'b1),
+    .CEB(eb), .CEC(ec), .CED(1'b1), .CEP(ep), .P(p_ce4open));
 endmodule

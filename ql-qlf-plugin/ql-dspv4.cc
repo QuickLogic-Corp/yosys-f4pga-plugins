@@ -3333,9 +3333,10 @@ static std::vector<std::string> dspv4_refusal_reasons(RTLIL::Cell *cell, const S
     };
     std::vector<SigSpec> nets;
     for (auto &bank : banks) {
-        if (!bank.used || !cell->hasPort(bank.pin))
+        if (!bank.used)
             continue;
-        SigSpec net = sigmap(cell->getPort(bank.pin));
+        // An open pin is connection id 0 in the techmap, the same as a constant 0.
+        SigSpec net = cell->hasPort(bank.pin) ? sigmap(cell->getPort(bank.pin)) : SigSpec(State::S0);
         if (std::find(nets.begin(), nets.end(), net) == nets.end())
             nets.push_back(net);
     }
