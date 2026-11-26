@@ -6,7 +6,8 @@ if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
 
 # \n# is spelled n? by write_blif, the name of wire \n?; \w[1] is a bit of \w; \out:o is
-# the pad VPR makes for output o.
+# the pad VPR makes for output o. \x<y and \x>y are both spelled x?y, so they clash with
+# each other.
 set rtlil {
 module \top
   wire input 1 \a
@@ -14,6 +15,7 @@ module \top
   wire output 3 \o
   wire \n?
   wire width 2 \w
+  wire \p
   cell $lut \n#
     parameter \WIDTH 2
     parameter \LUT 4'1000
@@ -31,6 +33,18 @@ module \top
     parameter \LUT 4'0110
     connect \A { \w [0] \b }
     connect \Y \o
+  end
+  cell $lut \x<y
+    parameter \WIDTH 1
+    parameter \LUT 2'01
+    connect \A \a
+    connect \Y \w [1]
+  end
+  cell $lut \x>y
+    parameter \WIDTH 1
+    parameter \LUT 2'01
+    connect \A \b
+    connect \Y \p
   end
 end
 }
@@ -50,4 +64,7 @@ foreach expected {{n?$fp1} {out:o$fp2} {w[1]$fp3}} {
 }
 foreach taken {n? out:o w[1]} {
     if {[string first ".cname $taken\n" $blif] >= 0} { error "cell $taken kept a taken name" }
+}
+foreach once {x?y {x?y$fp4}} {
+    if {[llength [lsearch -all -exact [split $blif \n] ".cname $once"]] != 1} { error "expected cell $once once in\n$blif" }
 }

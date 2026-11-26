@@ -510,8 +510,9 @@ static void record_tree(RTLIL::Design *design, RTLIL::Module *top)
 }
 
 // VPR names a .names block after its output net first and renames it from .cname after; if
-// that name is already taken it aborts. So a cell name must not equal a net, a port or an
-// out: pad name. A clash gets a fixed suffix, in sorted-name order, so the result is stable.
+// that name is already taken it aborts. So a cell name must not equal a net, a port, an out:
+// pad or, as write_blif spells it (\x<y and \x>y are both x?y), another cell's name. A clash
+// gets a fixed suffix, in sorted-name order, so the result is stable.
 static int guard_names(RTLIL::Module *module)
 {
     pool<std::string> taken;
@@ -521,14 +522,16 @@ static int guard_names(RTLIL::Module *module)
             if (wire->port_output)
                 taken.insert("out:" + blif_bit_name(bit));
         }
+    std::vector<RTLIL::Cell *> cells = module->cells();
+    std::sort(cells.begin(), cells.end(), [](RTLIL::Cell *a, RTLIL::Cell *b) { return a->name.str() < b->name.str(); });
     std::vector<RTLIL::Cell *> clashing;
     pool<std::string> cell_names;
-    for (auto cell : module->cells()) {
-        cell_names.insert(blif_name(cell->name));
-        if (taken.count(blif_name(cell->name)))
+    for (auto cell : cells) {
+        std::string name = blif_name(cell->name);
+        if (taken.count(name) || cell_names.count(name))
             clashing.push_back(cell);
+        cell_names.insert(name);
     }
-    std::sort(clashing.begin(), clashing.end(), [](RTLIL::Cell *a, RTLIL::Cell *b) { return a->name.str() < b->name.str(); });
     int suffix = 0;
     for (auto cell : clashing) {
         std::string base = RTLIL::unescape_id(cell->name);
@@ -537,7 +540,7 @@ static int guard_names(RTLIL::Module *module)
             name = stringf("%s$fp%d", base.c_str(), ++suffix);
         while (taken.count(blif_name(RTLIL::escape_id(name))) || cell_names.count(blif_name(RTLIL::escape_id(name))) ||
                module->cell(RTLIL::escape_id(name)));
-        log("Renaming %s to %s: its name is also a net, port or pad name\n", log_id(cell->name), name.c_str());
+        log("Renaming %s to %s: its BLIF name is also a net, port, pad or cell name\n", log_id(cell->name), name.c_str());
         cell_names.insert(blif_name(RTLIL::escape_id(name)));
         module->rename(cell, RTLIL::escape_id(name));
     }
@@ -836,8 +839,9 @@ struct QlFpOwnerPass : public Pass {
         log("          top              the top module\n");
         log("\n");
         log("    -guard\n");
-        log("        before the final write_blif: renames each cell whose name is also a net,\n");
-        log("        port or out: pad name, which VPR aborts on, with a $fpN suffix.\n");
+        log("        before the final write_blif: renames each cell whose BLIF name is also a\n");
+        log("        net, port, out: pad or earlier cell name, which VPR aborts on, with a $fpN\n");
+        log("        suffix.\n");
         log("\n");
         log("    -write <table> -blif <file>\n");
         log("        after the final write_blif: writes the owner table (schema version 2)\n");
