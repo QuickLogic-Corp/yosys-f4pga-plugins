@@ -91,6 +91,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
 	qlf_k6n10f/dspv4_casc_flags \
+	qlf_k6n10f/dspv4_casc_chain_max_refused \
 	qlf_k6n10f/dspv4_casc_links \
 	qlf_k6n10f/dspv4_casc_refused \
 	qlf_k6n10f/dsp_madd \
@@ -358,6 +359,23 @@ qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_ranked,$(casc_flags_dir)/_t
 # three stages, the second links none.
 qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD x3, MULT_ADD_C x1$$' $(casc_flags_dir)/_reset_call1.log
 qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD_C x4$$' $(casc_flags_dir)/_reset_call2.log
+# -chain_max 3 still runs the cascade step: three stages are linked, in one chain.
+qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x2$$' $(casc_flags_dir)/_n3.log
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_report,$(casc_flags_dir)/_n3.log,2,1,3,3)
+
+# A -chain_max value that is not a plain non-negative integer is refused by both
+# synth_ql and ql_dspv4: the call fails (refused.log has 12 REFUSED lines and no
+# ACCEPTED one) and the error line naming the value is in the log twice.
+casc_bad_dir = qlf_k6n10f/dspv4_casc_chain_max_refused
+casc_bad_message = test "$$(grep -Fxc -e "ERROR: -chain_max expects a non-negative integer, got '$(1)'." $(casc_bad_dir)/dspv4_casc_chain_max_refused.log)" = 2
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify = test "$$(grep -c '^REFUSED ' $(casc_bad_dir)/refused.log)" = 12
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && ! grep -q '^ACCEPTED ' $(casc_bad_dir)/refused.log
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,twelve)
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,-4)
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,12abc)
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,)
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,1 2)
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,99999999999)
 # What the finder makes of each block: how many candidate links, and how many
 # reads it refuses itself. casc_found takes the block's log and the two counts.
 casc_found = test "$$(grep -c 'cascade candidate:' $(1))" = $(2) && test "$$(grep -c 'cascade link refused:' $(1))" = $(3)
