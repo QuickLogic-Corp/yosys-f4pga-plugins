@@ -1122,9 +1122,10 @@ struct QlDspV4Pass : public Pass {
     }
 
     // Rule 2: a loop of links has no head, and could not be placed. Each loop
-    // loses one link whose source has a P register; of several, the one into
-    // the cell first in name order. The cell it entered is then a head, so
-    // rule 1's width walk runs again from the new heads.
+    // loses one link whose source has a P register, or any link if none has;
+    // of several, the one into the cell first in name order. The cell it
+    // entered is then a head, so rule 1's width walk runs again from the new
+    // heads.
     void break_loops(SigMap &sigmap, std::vector<CascadeLink> &links)
     {
         pool<RTLIL::Cell *> heads_before = heads_of(links);
@@ -1140,7 +1141,7 @@ struct QlDspV4Pass : public Pass {
             // Bounded, so a walk that enters a loop it did not start on ends.
             for (size_t steps = 0; steps < links.size(); steps++) {
                 if (cell == start.consumer) {
-                    const CascadeLink *dropped = registered_link_on_loop(walked);
+                    const CascadeLink *dropped = loop_link_to_drop(walked);
                     for (const CascadeLink *link : walked)
                         on_a_cut_loop.insert(link);
                     cut.insert(dropped);
@@ -1169,8 +1170,9 @@ struct QlDspV4Pass : public Pass {
 
     // The loop link to drop: one whose source has a P register, the one into
     // the cell first in name order. Rule 1 has dropped every CREG link, so a
-    // loop's register is a PREG.
-    static const CascadeLink *registered_link_on_loop(const std::vector<const CascadeLink *> &loop)
+    // loop's register is a PREG. A loop with no register, a combinational loop
+    // in the RTL, drops the link into the cell first in name order.
+    static const CascadeLink *loop_link_to_drop(const std::vector<const CascadeLink *> &loop)
     {
         const CascadeLink *chosen = nullptr;
         for (const CascadeLink *link : loop) {
@@ -1179,7 +1181,10 @@ struct QlDspV4Pass : public Pass {
             if (chosen == nullptr || name_sorts_first(link->consumer, chosen->consumer))
                 chosen = link;
         }
-        log_assert(chosen != nullptr);
+        if (chosen == nullptr)
+            for (const CascadeLink *link : loop)
+                if (chosen == nullptr || name_sorts_first(link->consumer, chosen->consumer))
+                    chosen = link;
         return chosen;
     }
 
