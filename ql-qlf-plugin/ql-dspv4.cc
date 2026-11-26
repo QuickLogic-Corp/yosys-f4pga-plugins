@@ -1585,13 +1585,15 @@ struct QlDspV4Pass : public Pass {
         {
             auto distinct_enables = [&]() {
                 std::vector<SigSpec> seen;
+                // A tied-high enable is not free: it takes one of the crossbar's
+                // three inputs like a signal does. Every constant is the same
+                // net, so all of them together count once.
                 auto note = [&](const SigSpec &sig) {
-                    if (sig.is_fully_const())
-                        return; // a tied enable needs no signal
+                    SigSpec net = sig.is_fully_const() ? SigSpec(State::S1) : sig;
                     for (auto &t : seen)
-                        if (t == sig)
+                        if (t == net)
                             return;
-                    seen.push_back(sig);
+                    seen.push_back(net);
                 };
                 if (na > 0)
                     note(ca.en);
@@ -1601,8 +1603,8 @@ struct QlDspV4Pass : public Pass {
                     note(cc.en);
                 if (nd > 0)
                     note(cd.en);
-                if (ff_cell != nullptr && ff_cell->hasPort(ID(EN)))
-                    note(ff_cell->getPort(ID(EN)));
+                if (ff_cell != nullptr)
+                    note(ff_cell->hasPort(ID(EN)) ? ff_cell->getPort(ID(EN)) : SigSpec(State::S1));
                 return GetSize(seen);
             };
             // Narrowest first: B (18), D (27), A (32), C (50). P (50) is not a
@@ -1623,6 +1625,15 @@ struct QlDspV4Pass : public Pass {
                     break;
                 if (*e.n == 0)
                     continue;
+                // Giving up a port whose enable another port shares, or whose
+                // enable is a constant another port also uses, frees no slot.
+                int before = distinct_enables(), kept_n = *e.n;
+                *e.n = 0;
+                if (distinct_enables() >= before) {
+                    *e.n = kept_n;
+                    continue;
+                }
+                *e.n = kept_n;
                 log_debug("  %s: %s registers left in fabric -- the cell would "
                           "need more than %d distinct clock enables, and %s is "
                           "the narrowest port at %d bits\n",
@@ -3226,7 +3237,7 @@ struct QlDsp4CheckPass : public Pass {
                         continue;
                     SigSpec ce = sigmap(cell->getPort(u.ce));
                     if (ce.is_fully_const())
-                        continue; // a tied enable needs no routed signal
+                        ce = SigSpec(State::S1); // a tied enable takes a crossbar input too; all of them are one net
                     bool seen = false;
                     for (auto &p : used)
                         if (p.first == ce) {
@@ -3250,7 +3261,7 @@ struct QlDsp4CheckPass : public Pass {
                             "ports, but the tile crossbar feeds all five CE pins from "
                             "only 3 signals. Keep the widest (%s) inside the DSP and "
                             "move %s back to fabric, or drive the extra ports from an "
-                            "enable already in use.\n",
+                            "enable already in use. A tied-high enable counts as one.\n",
                             log_id(module), log_id(cell), GetSize(used), kept.c_str(), dropped.c_str());
             }
         }
