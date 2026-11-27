@@ -927,6 +927,7 @@ casc_addend_unsigned = link is read unsigned in addend grouping
 casc_addend_narrow = addend sum wire is too narrow
 casc_addend_wide = addend result is wider than the P port
 casc_addend_registered = consumer registered the sum (PREG), and C is added before the register
+casc_addend_kept = addend sum wire is marked keep
 # The OPMODE of each cell that reads PCIN, in text order of the cell's name.
 casc_consumer_opmodes = awk '/^  cell /{if(n!="")print n, i, o; n=$$3; i=0} /connect .PCIN /{i=1} /parameter .OPMODE /{o=$$3} END{if(n!="")print n, i, o}' $(1) | awk '$$2 == 1' | LC_ALL=C sort | awk '{printf "%s ", $$3}'
 casc_addend_dir = qlf_k6n10f/dspv4_casc_addend
@@ -1086,6 +1087,11 @@ qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_report,$(casc_full
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && test "$$(grep -c 'grouping 1, .* folds' $(casc_full_port_log))" = 1
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_declined,$(casc_full_port_log),1,$(casc_addend_narrow))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'cascade links refused' $(casc_full_port_log)
+# A wire marked keep on the $add's sum (grouping 2) or on the consumer's result
+# (grouping 1) stops the fold: the $add stays and drives the kept wire.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_kept,0,$(casc_addend_kept))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_kept,$(casc_addend_kept))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'grouping 1, .* folds' $(casc_addend_refused_dir)/_addend_g1_kept.log
 
 # A loop with no register: the link into the cell first in name order is
 # dropped, once, and the rest links. casc_loop_no_register takes a block, its
