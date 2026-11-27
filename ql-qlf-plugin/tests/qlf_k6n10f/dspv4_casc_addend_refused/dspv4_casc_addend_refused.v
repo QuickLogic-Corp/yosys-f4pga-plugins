@@ -260,3 +260,25 @@ module _addend_g1_k_unsigned (
     wire signed [36:0] y = s + k;
     assign y_out = y;
 endmodule
+
+// Grouping 2 whose t is marked keep: the fold would leave t with no driver.
+module _addend_g2_kept (
+    input  signed [17:0] a0, b0, c0, a, b,
+    input  signed [36:0] k,
+    output signed [38:0] y_out
+);
+    wire signed [36:0] prev = a0 * b0 + c0;
+    (* keep *) wire signed [37:0] t = prev + k;
+    assign y_out = a * b + t;
+endmodule
+
+// Grouping 1 whose s is marked keep: the fold would give s the consumer's
+// P, which then carries s + k.
+module _addend_g1_kept (
+    input  signed [17:0] a0, b0, a1, b1, k,
+    output signed [37:0] y_out
+);
+    wire signed [35:0] prev = a0 * b0;
+    (* keep *) wire signed [36:0] s = a1 * b1 + prev;
+    assign y_out = s + k;
+endmodule
