@@ -80,7 +80,6 @@ struct SynthQuickLogicPass : public ScriptPass {
     static constexpr int kDefaultSmallMulWidth = 2;
     static constexpr int kMaxSmallMulWidth = 8;
     static constexpr int kDefaultCmp2lutWidth = 4;
-    static constexpr int kMaxCmp2lutWidth = 8;
     static constexpr int kMaxCarryMinWidth = 128;
 
     SynthQuickLogicPass() : ScriptPass(STR(PASS_NAME), "Synthesis for QuickLogic FPGAs") {}
@@ -159,7 +158,8 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("    -cmp2lut_width <N>\n");
         log("        Compares (<, <=, >, >=) of a signal with a constant on up to N bits\n");
         log("        become one LUT rather than carry logic (cmp2lut LUT_WIDTH).\n");
-        log("        Default: %d. 6 matches the LUT size of qlf_k6n10 and qlf_k6n10f.\n", kDefaultCmp2lutWidth);
+        log("        Default: %d. At most the LUT size: 6 for qlf_k6n10 and qlf_k6n10f,\n", kDefaultCmp2lutWidth);
+        log("        4 for qlf_k4n8 and pp3.\n");
         log("\n");
         log("    -small_mul_width <N>\n");
         log("        Before DSP mapping, build multiplies with an operand of at most N bits\n");
@@ -472,7 +472,9 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (!digits || std::stoi(value) < lo || std::stoi(value) > hi)
                 log_cmd_error("%s needs a whole number from %d to %d, got '%s'\n", opt, lo, hi, value.c_str());
         };
-        check_int("-cmp2lut_width", cmp2lut_width, kMinOptionWidth, kMaxCmp2lutWidth);
+        // cmp2lut makes one $lut; wider than the family's LUT, ABC splits it again.
+        const int lut_size = (family == "qlf_k4n8" || family == "pp3") ? 4 : 6;
+        check_int("-cmp2lut_width", cmp2lut_width, kMinOptionWidth, lut_size);
         check_int("-small_mul_width", small_mul_width, kSmallMulWidthOff, kMaxSmallMulWidth);
         if (!carry_min_width.empty())
             check_int("-carry_min_width", carry_min_width, kMinOptionWidth, kMaxCarryMinWidth);

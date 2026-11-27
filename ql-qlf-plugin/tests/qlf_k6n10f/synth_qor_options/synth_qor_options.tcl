@@ -48,12 +48,17 @@ select -assert-count 4 t:*dff*
 synth dup_ff -no_keep_syn_preserve
 select -assert-count 2 t:*dff*
 
+# The -cmp2lut_width cap is the family's LUT size: 4 is fine on qlf_k4n8, 5 is not.
+design -load rtl
+synth_ql -family qlf_k4n8 -top cmp6 -cmp2lut_width 4
+
 # Bad values are rejected.
 design -load rtl
 foreach bad {
     {synth_ql -family qlf_k6n10f -top add9 -carry_min_width x}
     {synth_ql -family qlf_k6n10f -top add9 -carry_min_width 0}
-    {synth_ql -family qlf_k6n10f -top cmp6 -cmp2lut_width 9}
+    {synth_ql -family qlf_k6n10f -top cmp6 -cmp2lut_width 7}
+    {synth_ql -family qlf_k4n8 -top cmp6 -cmp2lut_width 5}
     {synth_ql -family qlf_k6n10f -top mul_c -small_mul_width 9}
 } {
     if {![catch {eval $bad} msg]} {
