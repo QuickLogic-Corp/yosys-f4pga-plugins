@@ -152,9 +152,25 @@ select -assert-count 0 t:QL_DSP4 r:OPMODE=9'b110010101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
 select -assert-count 1 t:\$add
 
-# Grouping 1 below an accumulator, from a file of its own, last.
+# Grouping 1 below an accumulator, from a file of its own.
 own_file_block _addend_g1_full_port dspv4_casc_addend_g1_full_port.v
 select -assert-count 2 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000100101 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
+select -assert-count 1 t:\$add
+
+# A wire marked keep on the $add's sum (grouping 2) or on the consumer's
+# result (grouping 1): the fold is declined and the $add stays. In grouping 2
+# the $add still drives the kept wire.
+full_block _addend_g2_kept
+stopped_block _addend_g2_kept
+select -assert-count 2 t:QL_DSP4
+select -assert-count 0 t:QL_DSP4 r:OPMODE=9'b110010101 %i
+select -assert-count 1 t:\$add
+select -assert-count 1 t:\$add %co:+\[Y\] w:t %i
+
+stopped_block _addend_g1_kept
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i
+select -assert-count 0 t:QL_DSP4 r:OPMODE=9'b110010101 %i
 select -assert-count 1 t:\$add
