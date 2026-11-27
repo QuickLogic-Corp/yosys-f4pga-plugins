@@ -107,6 +107,14 @@ select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
 select -assert-count 3 t:QL_DSP4 r:CREG=1'b0 %i
 select -assert-count 0 t:\$dff t:\$dffe t:\$sdff t:\$sdffe %u
 
+# The move leaves the source three distinct enables: it happens, and CEP is the
+# consumer's enable.
+stopped_block _reglink_enables_ok
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i
+select -assert-count 2 t:QL_DSP4 r:CREG=1'b0 %i
+select -assert-count 1 t:QL_DSP4 r:PREG=1'b1 %i %ci1:+\[CEP\] i:en_p %i
+
 # ---- One source, two consumers: one link, to the longer chain or the first
 # name. ------------------------------------------------------------------------
 

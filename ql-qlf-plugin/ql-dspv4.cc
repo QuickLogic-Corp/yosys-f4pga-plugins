@@ -1,5 +1,6 @@
 #include "kernel/sigtools.h"
 #include "kernel/yosys.h"
+#include "ql-chain-max.h"
 
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
@@ -302,6 +303,7 @@ static const char *const ADDEND_OTHER_READER = "addend adder has another reader"
 static const char *const ADDEND_READ_UNSIGNED = "link is read unsigned in addend grouping";
 static const char *const ADDEND_RESULT_TOO_WIDE = "addend result is wider than the P port";
 static const char *const ADDEND_WIRE_TOO_NARROW = "addend sum wire is too narrow";
+static const char *const ADDEND_SUM_REGISTERED = "consumer registered the sum (PREG), and C is added before the register";
 
 // A per-stage addend k beside a link: the one mode that can take one, and the
 // mode that reads PCIN and C together.
@@ -509,7 +511,7 @@ struct QlDspV4Pass : public Pass {
                 continue;
             }
             if (a_Args[argidx] == "-chain_max" && argidx + 1 < a_Args.size()) {
-                chain_max = atoi(a_Args[++argidx].c_str());
+                chain_max = parse_chain_max(a_Args[++argidx]);
                 continue;
             }
             break;
@@ -949,7 +951,27 @@ struct QlDspV4Pass : public Pass {
                 return "the source's P has another reader";
         if (source->hasPort(ID(CLK)) && sigmap(source->getPort(ID(CLK))) != sigmap(first->getPort(ID(CLK))))
             return "the source is on another clock";
+        if (enables_after_move(sigmap, not_driving, source, first) > DSPV4_MAX_CE_SIGNALS)
+            return stringf("the source would need more than %d distinct clock enables", DSPV4_MAX_CE_SIGNALS);
         return "";
+    }
+
+    // The distinct clock enables on the source's CE pins once its P bank takes
+    // the consumer's CEC. A tied pin needs no signal.
+    static int enables_after_move(SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *source, RTLIL::Cell *consumer)
+    {
+        std::vector<std::pair<bool, SigSpec>> enables;
+        auto note = [&](RTLIL::Cell *cell, RTLIL::IdString pin) {
+            if (sigmap(cell->getPort(pin)).is_fully_const())
+                return;
+            auto written = as_written(sigmap, not_driving, cell, pin);
+            if (std::find(enables.begin(), enables.end(), written) == enables.end())
+                enables.push_back(written);
+        };
+        for (auto pin : {ID(CEA), ID(CEB), ID(CEC), ID(CED)})
+            note(source, pin);
+        note(consumer, ID(CEC));
+        return GetSize(enables);
     }
 
     // Everything that reads a cell's output port: each cell port that holds one
@@ -1174,9 +1196,10 @@ struct QlDspV4Pass : public Pass {
     }
 
     // Rule 2: a loop of links has no head, and could not be placed. Each loop
-    // loses one link whose source has a P register; of several, the one into
-    // the cell first in name order. The cell it entered is then a head, so
-    // rule 1's width walk runs again from the new heads.
+    // loses one link whose source has a P register, or any link if none has;
+    // of several, the one into the cell first in name order. The cell it
+    // entered is then a head, so rule 1's width walk runs again from the new
+    // heads.
     void break_loops(SigMap &sigmap, std::vector<CascadeLink> &links)
     {
         pool<RTLIL::Cell *> heads_before = heads_of(links);
@@ -1192,7 +1215,7 @@ struct QlDspV4Pass : public Pass {
             // Bounded, so a walk that enters a loop it did not start on ends.
             for (size_t steps = 0; steps < links.size(); steps++) {
                 if (cell == start.consumer) {
-                    const CascadeLink *dropped = registered_link_on_loop(walked);
+                    const CascadeLink *dropped = loop_link_to_drop(walked);
                     for (const CascadeLink *link : walked)
                         on_a_cut_loop.insert(link);
                     cut.insert(dropped);
@@ -1221,8 +1244,9 @@ struct QlDspV4Pass : public Pass {
 
     // The loop link to drop: one whose source has a P register, the one into
     // the cell first in name order. Rule 1 has dropped every CREG link, so a
-    // loop's register is a PREG.
-    static const CascadeLink *registered_link_on_loop(const std::vector<const CascadeLink *> &loop)
+    // loop's register is a PREG. A loop with no register, a combinational loop
+    // in the RTL, drops the link into the cell first in name order.
+    static const CascadeLink *loop_link_to_drop(const std::vector<const CascadeLink *> &loop)
     {
         const CascadeLink *chosen = nullptr;
         for (const CascadeLink *link : loop) {
@@ -1231,7 +1255,10 @@ struct QlDspV4Pass : public Pass {
             if (chosen == nullptr || name_sorts_first(link->consumer, chosen->consumer))
                 chosen = link;
         }
-        log_assert(chosen != nullptr);
+        if (chosen == nullptr)
+            for (const CascadeLink *link : loop)
+                if (chosen == nullptr || name_sorts_first(link->consumer, chosen->consumer))
+                    chosen = link;
         return chosen;
     }
 
@@ -3898,6 +3925,8 @@ struct QlDspV4Pass : public Pass {
             reason = ADDEND_READ_UNSIGNED;
         else if (GetSize(add->getPort(ID::Y)) > DSPV4_P_WIDTH)
             reason = ADDEND_RESULT_TOO_WIDE;
+        else if (link.consumer->getParam(ID(PREG)).as_bool())
+            reason = ADDEND_SUM_REGISTERED;
         if (reason != nullptr) {
             decline_grouping(link, reason);
             return 0;

@@ -272,3 +272,21 @@ module _fanout_filtered (
         prev_r <= prev;
     end
 endmodule
+
+// The source's A, B and D registers use two enables, D sharing A's, and the
+// consumer registers the link on a third. The move gives the source three
+// distinct enables, so it happens.
+module _reglink_enables_ok (
+    input clk, en_a, en_b, en_d, en_p,
+    input signed [17:0] a1, b1, d1, a2, b2,
+    output signed [37:0] y
+);
+    reg signed [36:0] s1_r;
+    reg signed [17:0] a1_r, b1_r, d1_r;
+    assign y = a2 * b2 + s1_r;
+    wire signed [36:0] s1 = (a1_r + d1_r) * b1_r;
+    always @(posedge clk) if (en_a) a1_r <= a1;
+    always @(posedge clk) if (en_b) b1_r <= b1;
+    always @(posedge clk) if (en_a) d1_r <= d1;
+    always @(posedge clk) if (en_p) s1_r <= s1;
+endmodule

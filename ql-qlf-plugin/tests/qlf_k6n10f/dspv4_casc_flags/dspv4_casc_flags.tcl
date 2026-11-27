@@ -29,6 +29,10 @@ block _off_ref chain4 {}
 block _off     chain4 {-chain_max 0}
 block _n1      chain4 {-chain_max 1}
 
+# A small positive N still runs the cascade step: the chain of four is cut
+# after every third cell.
+block _n3      chain4 {-chain_max 3}
+
 # _fanout_det: the same design twice at -chain_max 12. Rule 3 picks one of two
 # consumers, the same one each run, so the two netlists are one.
 block _fanout_det_run1 fanout_det {-chain_max 12}
