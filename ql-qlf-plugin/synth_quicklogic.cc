@@ -1120,7 +1120,13 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // dsp4_logical operating-mode leaf cells (mult / alu /
                             // pre-adder / rss / bit-sliced registers) so the netlist
                             // packs onto the DSPV4 tile. Pure Verilog techmap.
-                            run("techmap -map " + lib_path + family + "/dsp4_logical_map.v");
+                            // Synplify resets a register packed into P through RSTN and
+                            // ties ACCRSTN high, while the DSP clears P on ACCRSTN alone.
+                            // SYNPLIFY_P_RESET_ON_RSTN makes the map clear the accumulator
+                            // on RSTN & ACCRSTN for Synplify netlists only. Remove once
+                            // Synplify drives ACCRSTN for the P register.
+                            run(std::string("techmap ") + (synplify ? "-D SYNPLIFY_P_RESET_ON_RSTN " : "") + "-map " + lib_path + family +
+                                "/dsp4_logical_map.v");
                             // The techmap leaves a QL_DSP4 it refuses as it is, with no
                             // message, and that cell would reach the BLIF with no model
                             // for it. Say why, then stop here, while the cell is still in
