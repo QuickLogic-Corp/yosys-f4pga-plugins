@@ -1,0 +1,90 @@
+# ql_fp_owner golden ownership: which RTL instance owns each atom, and by which step of the
+# rule (aurora2#1725 design.md 3.2).
+yosys -import
+if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
+yosys -import
+
+set PASS_NAME synth_quicklogic
+if { [info commands synth_ql] != {} } { set PASS_NAME synth_ql }
+
+read_verilog $::env(DESIGN_TOP).v
+# Stop before the blif step to keep a copy for the check without .cname below: -write
+# removes the owner attributes, so it can only run once on a design.
+$PASS_NAME -family qlf_k6n10f -top top -blif fp_owner.blif -owner_table fp_owner.json -run :blif
+design -save before_blif
+$PASS_NAME -family qlf_k6n10f -top top -blif fp_owner.blif -owner_table fp_owner.json -run blif:
+
+# -write removes the owner attributes, so later outputs (write_ql_edif -attrprop) do not carry them.
+select -assert-none a:ql_owner a:ql_owner_rule A:ql_fp_tree A:ql_fp_names A:ql_fp_bits
+
+proc file_text {path} {
+    set fh [open $path r]
+    set txt [read $fh]
+    close $fh
+    return $txt
+}
+set table [file_text fp_owner.json]
+
+proc atom_row {name} {
+    global table
+    set quoted [string map {\\ \\\\ \[ \\\[ \] \\\] $ \\$ . \\.} $name]
+    if {![regexp -line -- "\\{\"name\": \"$quoted\",.*\\}" $table row]} {
+        error "no atom $name in the owner table"
+    }
+    return $row
+}
+
+proc assert_owner {name owners rule} {
+    set row [atom_row $name]
+    if {[string first "\"owners\": $owners, \"rule\": \"$rule\"" $row] < 0} {
+        error "$name: expected owners $owners by $rule, got $row"
+    }
+}
+
+# A LUT named after the top port it drives is still the leaf's.
+assert_owner {c_$lut_Y} {[["u_leaf"]]} recorded
+assert_owner {y_$lut_Y} {[["u_mid", "u_leaf"]]} recorded
+assert_owner {gen[0].u.c_$lut_Y} {[["gen[0].u"]]} recorded
+assert_owner {gen[1].u.c_$lut_Y} {[["gen[1].u"]]} recorded
+
+# Every register of u_mid, and only those, is owned by u_mid.
+set ffs [regexp -all -line -- {"type": "sdffre", "owners": \[\["u_mid"\]\]} $table]
+if {$ffs != 4} { error "expected 4 registers owned by u_mid, found $ffs" }
+
+# The merged cone gets one owner, not two and not top.
+set merged [regexp -all -line -- {"type": "\$lut", "owners": \[\["u_m[01]"\]\], "rule": "recorded"} $table]
+if {$merged != 1} { error "expected the merged LUT owned by one of u_m0/u_m1, found $merged rows" }
+if {[regexp -line -- {"owners": \[\["u_m0"\], \["u_m1"\]\]} $table]} { error "a merged LUT lists two owners" }
+
+# The shared FF gets one owner, not two and not top.
+set shared [regexp -all -line -- {"type": "[a-z]*dff[a-z]*", "owners": \[\["u_s[01]"\]\], "rule": "recorded"} $table]
+if {$shared != 1} { error "expected the shared FF owned by one of u_s0/u_s1, found $shared rows" }
+if {[regexp -line -- {"owners": \[\["u_s0"\], \["u_s1"\]\]} $table]} { error "a shared FF lists two owners" }
+
+# A BRAM is named after its memory by memory_libmap and keeps that memory's owner.
+if {![regexp -line -- {"name": "u_ram\.mem[^"]*", "type": "TDP[^"]*", "owners": \[\["u_ram"\]\], "rule": "recorded"} $table]} {
+    error "the BRAM of u_ram is not owned by u_ram"
+}
+
+# The tree before flatten, and the hash of the BLIF the table describes.
+foreach path {{["u_leaf"]} {["u_mid"]} {["u_mid", "u_leaf"]} {["gen[0].u"]} {["u_m1"]}} {
+    if {[string first "\"path\": $path," $table] < 0} { error "instance $path missing from the tree" }
+}
+regexp {"netlist_sha256": "([0-9a-f]+)"} $table -> table_sha
+set blif_sha [lindex [exec sha256sum fp_owner.blif] 0]
+if {$table_sha ne $blif_sha} { error "netlist_sha256 $table_sha is not the BLIF's $blif_sha" }
+
+# Without .cname (the -rel_ip_blif flow) VPR names a .subckt after the net on its first output
+# pin; the table names it the same and keeps its owner.
+design -load before_blif
+write_blif -param fp_owner_nocname.blif
+ql_fp_owner -write fp_owner_nocname.json -blif fp_owner_nocname.blif
+set nocname [file_text fp_owner_nocname.json]
+if {[string first {"name": "",} $nocname] >= 0} { error "a .subckt without .cname has no name in the table" }
+set ffs [regexp -all -line -- {"type": "sdffre", "owners": \[\["u_mid"\]\]} $nocname]
+if {$ffs != 4} { error "without .cname, expected 4 registers owned by u_mid, found $ffs" }
+# Without .cname a LUT is named after its output net and still keeps its recorded owner.
+foreach {net owners} {c {[["u_leaf"]]} y {[["u_mid", "u_leaf"]]} gen[0].u.c {[["gen[0].u"]]}} {
+    set row "\"name\": \"$net\", \"type\": \"\$lut\", \"owners\": $owners, \"rule\": \"recorded\""
+    if {[string first $row $nocname] < 0} { error "without .cname, LUT $net is not owned by $owners" }
+}
