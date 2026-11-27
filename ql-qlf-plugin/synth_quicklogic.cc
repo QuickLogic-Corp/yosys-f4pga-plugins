@@ -111,6 +111,19 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        write the design to the specified BLIF file. Writing of an output file\n");
         log("        is omitted if this parameter is not specified.\n");
         log("\n");
+        log("    -owner_table <file>\n");
+        log("        write the owner table (schema version 2) for the BLIF: which RTL instance\n");
+        log("        owns each atom, by ql_fp_owner's rule, and the instance tree. Needs -blif.\n");
+        log("\n");
+        log("    -owner_front_end <name>\n");
+        log("        the front end named in the owner table: yosys (default), verific or\n");
+        log("        synplify (the default with -synplify).\n");
+        log("\n");
+        log("    -no_iname\n");
+        log("        write .cname for .subckt cells only (flip-flops, BRAMs, DSPs), not for\n");
+        log("        LUTs, so VPR names each LUT after its output net. LUT names in the owner\n");
+        log("        table and in VPR can then differ.\n");
+        log("\n");
         log("    -rel_ip_blif <file>\n");
         log("        link a pre-synthesized IP netlist (extended BLIF with relative-placement\n");
         log("        .attr annotations) in place of the IP's empty (* blackbox *) stub after\n");
@@ -226,6 +239,8 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool noOpt;
     bool synplify;
     std::vector<std::string> rel_ip_blif_files;
+    std::string owner_table, owner_front_end;
+    bool no_iname;
 
     void clear_flags() override
     {
@@ -258,6 +273,9 @@ struct SynthQuickLogicPass : public ScriptPass {
         mince_num = "";
         de = "";
         rel_ip_blif_files.clear();
+        owner_table = "";
+        owner_front_end = "";
+        no_iname = false;
     }
 
     pool<RTLIL::Wire *> find_clock_wires(RTLIL::Module *mod)
@@ -351,6 +369,8 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-custom_abc_script", &custom_abc_script},
           {"-mince_num", &mince_num},
           {"-de", &de},
+          {"-owner_table", &owner_table},
+          {"-owner_front_end", &owner_front_end},
         };
         const SwitchOption switch_options[] = {
           {"-no_dsp", &nodsp, true},
@@ -368,6 +388,7 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-dspv4", &dspv4, true},
           {"-no_tdpram", &notdpram, true},
           {"-synplify", &synplify, true},
+          {"-no_iname", &no_iname, true},
         };
 
         size_t argidx;
@@ -460,6 +481,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             log_cmd_error("This command only operates on fully selected designs!\n");
 
         finalize_options(design);
+        if (!owner_table.empty() && blif_file.empty())
+            log_cmd_error("-owner_table needs -blif: the table describes the BLIF\n");
+        if (owner_front_end.empty())
+            owner_front_end = synplify ? "synplify" : "yosys";
 
         log_header(design, "Executing SYNTH_QUICKLOGIC pass.\n");
         log_push();
@@ -730,7 +755,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         if (help_mode) {
             run("read_blif -wideports <file>", "(for each -rel_ip_blif file)");
             run("setattr -set keep 1 a:REL_MACRO_TYPE");
-            run("flatten");
+            run("flatten -scopename");
             run("opt_expr");
             run("opt_lut", "(unless -no_opt)");
             run("setattr -unset keep a:REL_MACRO_TYPE");
@@ -756,7 +781,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         // keep stops opt_lut from merging an annotated LUT into a neighbour.
         run("setattr -set keep 1 a:REL_MACRO_TYPE");
-        run("flatten");
+        run("flatten -scopename");
         // Fold the constants the linked netlist still carries. opt_expr never
         // rewrites $lut cells, so the annotated LUTs are safe.
         run("opt_expr");
@@ -851,6 +876,8 @@ struct SynthQuickLogicPass : public ScriptPass {
                 // Full behavioural QL_DSPV2.v is only used by the dspv2->dspv1
                 // translation path.
                 run("read_verilog " + family_path + "/QL_DSPV2.v");
+                // It also defines VCC and GND as modules; ql_cell_lib keeps their cells out of the owner tree.
+                run("setattr -mod -set ql_cell_lib 1 VCC GND");
             }
             if (dspv4 && family == "qlf_k6n10f") {
                 // V4 path: read the QL_DSP4 base-cell primitive (the conversion
@@ -880,7 +907,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                 // "Subckt instantiates model 'dff'".
                 run("ql_io_translate");
                 run("proc");
-                run("flatten");
+                if (help_mode || !owner_table.empty())
+                    run("ql_fp_owner -tree", "(if -owner_table)");
+                run("flatten -scopename");
+                if (help_mode || !owner_table.empty())
+                    run("ql_fp_owner -record", "(if -owner_table)");
                 run("opt -nodffe -nosdff");
                 run("fsm");
                 run("wreduce");
@@ -889,7 +920,11 @@ struct SynthQuickLogicPass : public ScriptPass {
                 run("share");
             } else {
                 run("proc");
-                run("flatten");
+                if (help_mode || !owner_table.empty())
+                    run("ql_fp_owner -tree", "(if -owner_table)");
+                run("flatten -scopename");
+                if (help_mode || !owner_table.empty())
+                    run("ql_fp_owner -record", "(if -owner_table)");
                 if (help_mode || family == "pp3") {
                     run("tribuf -logic", "                   (for pp3)");
                 }
@@ -1120,6 +1155,10 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // dsp4_logical operating-mode leaf cells (mult / alu /
                             // pre-adder / rss / bit-sliced registers) so the netlist
                             // packs onto the DSPV4 tile. Pure Verilog techmap.
+                            // Its leaves are named after the QL_DSP4 they replace, so
+                            // record that name's owner first.
+                            if (help_mode || !owner_table.empty())
+                                run("ql_fp_owner -record", "(if -owner_table)");
                             run("techmap -map " + lib_path + family + "/dsp4_logical_map.v");
                             // The techmap leaves a QL_DSP4 it refuses as it is, with no
                             // message, and that cell would reach the BLIF with no model
@@ -1170,6 +1209,9 @@ struct SynthQuickLogicPass : public ScriptPass {
             if (!noOpt) {
                 run("opt_clean");
             }
+            // memory_libmap names each BRAM after its memory, so record the memory's owner.
+            if (help_mode || !owner_table.empty())
+                run("ql_fp_owner -record", "(if -owner_table)");
             //}
         }
 
@@ -1181,10 +1223,14 @@ struct SynthQuickLogicPass : public ScriptPass {
                 }
                 if (notdpram) {
                     run("memory_libmap -lib " + lib_path + family + "/libmap_brams_sdp.txt", "(for qlf_k6n10f)");
+                    if (help_mode || !owner_table.empty())
+                        run("ql_fp_owner -record", "(if -owner_table)");
                     run("ql_sdpbram_merge", "(for qlf_k6n10f)");
                     run("techmap -map " + lib_path + family + "/libmap_brams_map_sdp.v", "(for qlf_k6n10f)");
                 } else {
                     run("memory_libmap -lib " + lib_path + family + "/libmap_brams_tdp.txt", "(for qlf_k6n10f)");
+                    if (help_mode || !owner_table.empty())
+                        run("ql_fp_owner -record", "(if -owner_table)");
                     run("ql_tdpbram_merge", "(for qlf_k6n10f)");
                     run("techmap -map " + lib_path + family + "/libmap_brams_map_tdp.v", "(for qlf_k6n10f)");
                 }
@@ -1328,7 +1374,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                             else {
                                 if (synplify) {
                                     std::string family_path = " " + lib_path + family;
-                                    run("flatten");
+                                    run("flatten -scopename");
                                     run("techmap -map" + family_path + "/synplify_map.v");
                                     run("techmap");
                                 }
@@ -1453,6 +1499,10 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("check")) {
             if (!synplify) {
+                // Before autoname, which renames the private cells whose names still say
+                // where they came from.
+                if (help_mode || !owner_table.empty())
+                    run("ql_fp_owner -assign", "(if -owner_table)");
                 run("autoname");
                 run("hierarchy -check");
                 run("stat");
@@ -1529,19 +1579,24 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
         if (check_label("blif", "(if -blif)")) {
             if (help_mode || !blif_file.empty()) {
-                // Only the relative-placement flow adds flags: -attr/-iattr keep
-                // the REL_* annotations, -blackbox writes a .model per primitive
-                // (the constraint generator derives VPR atom names from them).
+                // The relative-placement flow: -attr/-iattr keep the REL_*
+                // annotations, -blackbox writes a .model per primitive (the
+                // constraint generator derives VPR atom names from them).
+                // Otherwise -cname -iname makes VPR name every atom after its cell,
+                // so the owner table and VPR use the same names.
                 bool rel_flow = !rel_ip_blif_files.empty();
-                const char *blif_flags = rel_flow ? "-param -attr -iattr -blackbox" : "-param";
+                const char *blif_flags = rel_flow ? "-param -attr -iattr -blackbox" : no_iname ? "-param -cname" : "-param -cname -iname";
                 if (!help_mode && rel_flow) {
                     // Work on a scratch copy: the in-memory netlist is still
                     // needed for -edif and -verilog.
                     run("design -push-copy");
                     prepare_rel_blif_scratch();
+                    run("setattr -unset ql_owner -unset ql_owner_rule");
                 }
+                if (!rel_flow)
+                    run("ql_fp_owner -guard", "(unless -rel_ip_blif)");
                 run(stringf("write_blif %s %s", blif_flags, help_mode ? "<file-name>" : blif_file.c_str()),
-                    "(-attr -iattr -blackbox with -rel_ip_blif)");
+                    "(-cname -iname; -attr -iattr -blackbox instead with -rel_ip_blif)");
                 if (dspv4 && !help_mode && !blif_file.empty()) {
                     // ---------------------------------------------------------------
                     // DSP-V4 BLIF buffer cleanup (round-trip).
@@ -1584,6 +1639,10 @@ struct SynthQuickLogicPass : public ScriptPass {
                 }
                 if (!help_mode && rel_flow)
                     run("design -pop"); // discard the scratch copy
+                if (help_mode || !owner_table.empty())
+                    run(stringf("ql_fp_owner -write %s -blif %s -front_end %s", help_mode ? "<table>" : owner_table.c_str(),
+                                help_mode ? "<file-name>" : blif_file.c_str(), help_mode ? "<name>" : owner_front_end.c_str()),
+                        "(if -owner_table)");
             }
         }
 
