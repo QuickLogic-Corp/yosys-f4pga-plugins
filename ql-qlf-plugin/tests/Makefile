@@ -380,6 +380,14 @@ qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,12a
 qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,)
 qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,1 2)
 qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,99999999999)
+
+# -chain_max that cannot apply is reported by synth_ql, once, naming the reason.
+# With -dspv4 and DSPs mapped it applies and nothing is reported.
+casc_ignored = test "$$(grep -c 'Warning: -chain_max is ignored: $(2)' $(casc_flags_dir)/_ignored_$(1).log)" = 1
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_ignored,no_dspv4,it applies only with -dspv4[.])
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_ignored,synplify,ql_dspv4 does not run with -synplify[.])
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_ignored,no_dsp,ql_dspv4 does not run with -no_dsp[.])
+qlf_k6n10f-dspv4_casc_flags_verify += && ! grep -q 'chain_max is ignored' $(casc_flags_dir)/_applied.log
 # What the finder makes of each block: how many candidate links, and how many
 # reads it refuses itself. casc_found takes the block's log and the two counts.
 casc_found = test "$$(grep -c 'cascade candidate:' $(1))" = $(2) && test "$$(grep -c 'cascade link refused:' $(1))" = $(3)
@@ -921,6 +929,7 @@ casc_addend_unsigned = link is read unsigned in addend grouping
 casc_addend_narrow = addend sum wire is too narrow
 casc_addend_wide = addend result is wider than the P port
 casc_addend_registered = consumer registered the sum (PREG), and C is added before the register
+casc_addend_kept = addend sum wire is marked keep
 # The OPMODE of each cell that reads PCIN, in text order of the cell's name.
 casc_consumer_opmodes = awk '/^  cell /{if(n!="")print n, i, o; n=$$3; i=0} /connect .PCIN /{i=1} /parameter .OPMODE /{o=$$3} END{if(n!="")print n, i, o}' $(1) | awk '$$2 == 1' | LC_ALL=C sort | awk '{printf "%s ", $$3}'
 casc_addend_dir = qlf_k6n10f/dspv4_casc_addend
@@ -1004,6 +1013,7 @@ qlf_k6n10f-dspv4_casc_addend_verify += $(foreach b,_addend_g2_k_padded _addend_g
 # No block here refuses a link.
 qlf_k6n10f-dspv4_casc_addend_verify += && ! grep -q 'cascade link' $(casc_addend_dir)/*.log
 casc_addend_refused_dir = qlf_k6n10f/dspv4_casc_addend_refused
+$(casc_addend_refused_dir)/ok: $(wildcard $(casc_addend_refused_dir)/*.v)
 # Grouping 1 with a registered link that cannot move: rule 1 refuses the link,
 # so the $add stays with it.
 qlf_k6n10f-dspv4_casc_addend_refused_verify = grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_addend_refused_dir)/_addend_reglink.log
@@ -1148,6 +1158,11 @@ qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_found,$(casc_pread
 qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_wired,$(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log,1,2)
 qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_report,$(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log,1,1,2,12)
 qlf_k6n10f-dspv4_casc_preadd_refused_verify += && ! grep -q 'cascade links refused' $(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log
+# A wire marked keep on the $add's sum (grouping 2) or on the consumer's result
+# (grouping 1) stops the fold: the $add stays and drives the kept wire.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_kept,0,$(casc_addend_kept))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_kept,$(casc_addend_kept))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'grouping 1, .* folds' $(casc_addend_refused_dir)/_addend_g1_kept.log
 
 # A loop with no register: the link into the cell first in name order is
 # dropped, once, and the rest links. casc_loop_no_register takes a block, its

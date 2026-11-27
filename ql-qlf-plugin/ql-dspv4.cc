@@ -336,6 +336,7 @@ static const char *const ADDEND_OTHER_READER = "addend adder has another reader"
 static const char *const ADDEND_READ_UNSIGNED = "link is read unsigned in addend grouping";
 static const char *const ADDEND_RESULT_TOO_WIDE = "addend result is wider than the P port";
 static const char *const ADDEND_WIRE_TOO_NARROW = "addend sum wire is too narrow";
+static const char *const ADDEND_KEPT = "addend sum wire is marked keep";
 static const char *const ADDEND_SUM_REGISTERED = "consumer registered the sum (PREG), and C is added before the register";
 
 // A per-stage addend k beside a link: the one mode that can take one, and the
@@ -858,7 +859,7 @@ struct QlDspV4Pass : public Pass {
         }
         dict<SigBit, RTLIL::Cell *> adder_of_bit_0;
         for (auto cell : module->cells())
-            if (cell->type == ID($add)) {
+            if (is_foldable_add(cell)) {
                 SigBit bit = sigmap(cell->getPort(ID::Y))[0];
                 if (bit.wire != nullptr)
                     adder_of_bit_0[bit] = cell;
@@ -900,6 +901,12 @@ struct QlDspV4Pass : public Pass {
             links.push_back(link);
         } else if (read.extension == Extension::ZERO)
             refuse_in_finder(link, CASCADE_READ_UNSIGNED);
+    }
+
+    // An $add the addend folds may index bit 0 of: A, B and Y all have bits.
+    static bool is_foldable_add(RTLIL::Cell *cell)
+    {
+        return cell->type == ID($add) && !cell->getPort(ID::A).empty() && !cell->getPort(ID::B).empty() && !cell->getPort(ID::Y).empty();
     }
 
     void refuse_in_finder(const CascadeLink &link, const std::string &reason)
@@ -1009,21 +1016,24 @@ struct QlDspV4Pass : public Pass {
         return GetSize(enables);
     }
 
-    // True when a wire marked keep holds a bit of the source's P: that wire
-    // must keep the sum before the register.
-    static bool p_is_kept(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *source)
+    // True when a wire marked keep holds a bit of the net.
+    static bool net_is_kept(RTLIL::Module *module, SigMap &sigmap, const SigSpec &net)
     {
-        pool<SigBit> p_bits;
-        for (auto bit : sigmap(source->getPort(ID(P))))
+        pool<SigBit> net_bits;
+        for (auto bit : sigmap(net))
             if (bit.wire != nullptr)
-                p_bits.insert(bit);
+                net_bits.insert(bit);
         for (auto wire : module->wires())
             if (wire->get_bool_attribute(ID::keep))
                 for (auto bit : sigmap(wire))
-                    if (p_bits.count(bit))
+                    if (net_bits.count(bit))
                         return true;
         return false;
     }
+
+    // True when a wire marked keep holds a bit of the source's P: that wire
+    // must keep the sum before the register.
+    static bool p_is_kept(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *source) { return net_is_kept(module, sigmap, source->getPort(ID(P))); }
 
     // Everything that reads a cell's output port: each cell port that holds one
     // of its bits, and each module output that does. The port itself is not.
@@ -3903,6 +3913,10 @@ struct QlDspV4Pass : public Pass {
             refuse_in_finder(link, ADDEND_OTHER_READER);
             return;
         }
+        if (add->get_bool_attribute(ID::keep) || net_is_kept(module, sigmap, t)) {
+            refuse_in_finder(link, ADDEND_KEPT);
+            return;
+        }
         link.grouping = 2;
         link.addend_adder = add;
         link.removed_bits = GetSize(t);
@@ -3940,7 +3954,7 @@ struct QlDspV4Pass : public Pass {
             const Reader *on_adder = nullptr;
             bool claimed = false;
             for (auto &reader : readers)
-                if (reader.cell != nullptr && reader.cell->type == ID($add) && reader.port.in(ID::A, ID::B)) {
+                if (reader.cell != nullptr && is_foldable_add(reader.cell) && reader.port.in(ID::A, ID::B)) {
                     claimed = claimed || claimed_adders.count(reader.cell);
                     if (on_adder == nullptr)
                         on_adder = &reader;
@@ -3963,7 +3977,7 @@ struct QlDspV4Pass : public Pass {
             const Grouping1Try *chosen = nullptr;
             int chosen_s_bits = 0, passed = 0;
             for (auto &attempt : tries) {
-                int s_bits = check_grouping_1(sigmap, add, attempt);
+                int s_bits = check_grouping_1(module, sigmap, add, attempt);
                 if (s_bits == 0)
                     continue;
                 passed++;
@@ -3981,7 +3995,7 @@ struct QlDspV4Pass : public Pass {
     // prev, as the $add reads it, or 0 when this consumer cannot take the $add.
     // A failed check is a counted decline; a read that is not all of s from
     // bit 0 is no attempt and is not counted.
-    int check_grouping_1(SigMap &sigmap, RTLIL::Cell *add, const Grouping1Try &attempt)
+    int check_grouping_1(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *add, const Grouping1Try &attempt)
     {
         CascadeLink &link = *attempt.link;
         AlignedRead s_read = aligned_read(sigmap(add->getPort(attempt.port)), sigmap(link.consumer->getPort(ID(P))));
@@ -4000,6 +4014,8 @@ struct QlDspV4Pass : public Pass {
             reason = ADDEND_RESULT_TOO_WIDE;
         else if (link.consumer->getParam(ID(PREG)).as_bool())
             reason = ADDEND_SUM_REGISTERED;
+        else if (add->get_bool_attribute(ID::keep) || p_is_kept(module, sigmap, link.consumer))
+            reason = ADDEND_KEPT;
         if (reason != nullptr) {
             decline_grouping(link, reason);
             return 0;
