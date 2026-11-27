@@ -1114,6 +1114,19 @@ qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_found,$(casc_pread
 qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_wired,$(casc_preadd_refused_dir)/_preadd_addend_g2.log,0,2)
 qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_report,$(casc_preadd_refused_dir)/_preadd_addend_g2.log,0,0,0,12)
 qlf_k6n10f-dspv4_casc_preadd_refused_verify += && ! grep -q 'cascade links refused' $(casc_preadd_refused_dir)/_preadd_addend_g2.log
+# A pre-subtract stage has no cascade word: it is not a candidate, keeps its C
+# link, and no reason is given, because nothing was refused.
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && grep -q 'modes inferred: PREADD_A_SUB_B_C x1, MULT_ADD_C x1$$' $(casc_preadd_refused_dir)/_preadd_sub_c.log
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_found,$(casc_preadd_refused_dir)/_preadd_sub_c.log,0,0)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_wired,$(casc_preadd_refused_dir)/_preadd_sub_c.log,0,2)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_report,$(casc_preadd_refused_dir)/_preadd_sub_c.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && ! grep -q 'cascade links refused' $(casc_preadd_refused_dir)/_preadd_sub_c.log
+# The same below a link that is made: one candidate and one PCIN link, into s2.
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && grep -q 'modes inferred: PREADD_A_SUB_B_C x1, PREADD_A_MULT_B_CASC x1, PREADD_A_MULT_B_C x1$$' $(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_found,$(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log,1,0)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_wired,$(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log,1,2)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_report,$(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && ! grep -q 'cascade links refused' $(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log
 
 # A loop with no register: the link into the cell first in name order is
 # dropped, once, and the rest links. casc_loop_no_register takes a block, its

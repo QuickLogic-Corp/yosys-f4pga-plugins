@@ -26,3 +26,26 @@ module _preadd_addend_g2 (
     wire signed [38:0] s = (d1 + a1) * b1 + t;
     assign s_out = s;
 endmodule
+
+// A pre-subtract stage, (d1 - a1) * b1 + s1, after a plain MULT_ADD_C head.
+// There is no pre-subtract cascade word, so its C stays: no link.
+module _preadd_sub_c (
+    input  signed [17:0] a0, b0, c0, d1, a1, b1,
+    output signed [38:0] s2_out
+);
+    wire signed [37:0] s1 = a0 * b0 + c0;
+    wire signed [38:0] s2 = (d1 - a1) * b1 + s1;
+    assign s2_out = s2;
+endmodule
+
+// The same pre-subtract stage, s3, below two pre-adder stages. The link into
+// s2 is made; the link into s3 is not.
+module _preadd_sub_c_after_link (
+    input  signed [17:0] d0, a0, b0, c0, d1, a1, b1, d2, a2, b2,
+    output signed [39:0] s3_out
+);
+    wire signed [37:0] s1 = (d0 + a0) * b0 + c0;
+    wire signed [38:0] s2 = (d1 + a1) * b1 + s1;
+    wire signed [39:0] s3 = (d2 - a2) * b2 + s2;
+    assign s3_out = s3;
+endmodule
