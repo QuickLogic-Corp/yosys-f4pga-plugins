@@ -1011,6 +1011,7 @@ qlf_k6n10f-dspv4_casc_addend_verify += $(foreach b,_addend_g2_k_padded _addend_g
 # No block here refuses a link.
 qlf_k6n10f-dspv4_casc_addend_verify += && ! grep -q 'cascade link' $(casc_addend_dir)/*.log
 casc_addend_refused_dir = qlf_k6n10f/dspv4_casc_addend_refused
+$(casc_addend_refused_dir)/ok: $(wildcard $(casc_addend_refused_dir)/*.v)
 # Grouping 1 with a registered link that cannot move: rule 1 refuses the link,
 # so the $add stays with it.
 qlf_k6n10f-dspv4_casc_addend_refused_verify = grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_addend_refused_dir)/_addend_reglink.log
