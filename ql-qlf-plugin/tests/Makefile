@@ -1284,6 +1284,7 @@ chain_ends = test "$$(grep -c '^  chain of ' $(1))" = $(2)
 # in <block>_cells.log beside the cells it reads; the mode line says which
 # cells the flow made, and casc_wired how the dumped cells are wired.
 chain_report_dir = qlf_k6n10f/dspv4_chain_report
+$(chain_report_dir)/ok: $(wildcard $(chain_report_dir)/*.v)
 qlf_k6n10f-dspv4_chain_report_verify = true
 qlf_k6n10f-dspv4_chain_report_verify += $(foreach l,_none _none_cells,&& $(call chain_length_line,$(chain_report_dir)/$(l).log,0,0,0))
 qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c 'modes inferred: MULT x1$$' $(chain_report_dir)/_none.log)" = 1
@@ -1351,6 +1352,7 @@ qlf_k6n10f-dspv4_chain_report_loop_verify += && $(call chain_ends,$(chain_report
 # QL_DSP4 cells pass through the bridge untouched; the bridge makes the pair's
 # cells and their link.
 chain_report_synplify_dir = qlf_k6n10f/dspv4_chain_report_synplify
+$(chain_report_synplify_dir)/ok: $(wildcard $(chain_report_synplify_dir)/*.v $(chain_report_synplify_dir)/*.vm)
 qlf_k6n10f-dspv4_chain_report_synplify_verify = true
 qlf_k6n10f-dspv4_chain_report_synplify_verify += $(foreach l,_direct_cells _direct_cells_cells,&& $(call chain_length_line,$(chain_report_synplify_dir)/$(l).log,3,2,1))
 qlf_k6n10f-dspv4_chain_report_synplify_verify += $(foreach l,_direct_cells _direct_cells_cells,&& test "$$(grep -c ' -> QL_DSP4 ' $(chain_report_synplify_dir)/$(l).log)" = 0)
