@@ -25,27 +25,13 @@ proc full_block {name flags} {
     check -assert
 }
 
-# The map_dsp steps of the flow, up to the chain report, so the QL_DSP4 cells
-# it reads can be dumped beside its line. The log is <name>_cells.log.
+# The flow up to the chain report (the dsp4_lower label), then a dump of the
+# QL_DSP4 cells it read. The log is <name>_cells.log.
 proc cells_block {name flags} {
     global PASS_NAME LIB
     design -load read
     hierarchy -top $name
-    $PASS_NAME -family qlf_k6n10f -top $name -dspv4 -no_abc9 -run :map_dsp -lib_path $LIB/
-    wreduce t:\$mul
-    ql_dspv4 {*}$flags
-    techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=32 -D DSP_B_MAXWIDTH=18 -D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 -D DSP_SIGNEDONLY -D DSP_NAME=\$__QL_DSP4_MUL
-    chtype -set \$mul t:\$__QL_DSP4_MUL
-    select a:mul2dsp
-    setattr -unset mul2dsp
-    opt_expr -fine
-    wreduce
-    select -clear
-    ql_dspv4 {*}$flags
-    chtype -set \$mul t:\$__soft_mul
-    ql_dspv2_to_dspv4
-    ql_dsp4_check
-    tee -o ${name}_cells.log ql_dsp4_chain_report
+    tee -o ${name}_cells.log $PASS_NAME -family qlf_k6n10f -top $name -dspv4 -no_abc9 {*}$flags -run :dsp4_lower -lib_path $LIB/
     tee -a ${name}_cells.log dump t:QL_DSP4
     yosys cd $name
     check -assert

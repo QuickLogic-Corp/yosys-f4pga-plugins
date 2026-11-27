@@ -22,17 +22,13 @@ proc full_block {name top file} {
     check -assert
 }
 
-# The map_dsp steps of the flow, up to the chain report, so the QL_DSP4 cells
-# it reads can be dumped beside its line. The log is <name>_cells.log.
+# The flow up to the chain report (the dsp4_lower label), then a dump of the
+# QL_DSP4 cells it read. The log is <name>_cells.log.
 proc cells_block {name top file} {
     global PASS_NAME LIB
     design -reset
     read_verilog $file
-    $PASS_NAME -family qlf_k6n10f -top $top -synplify -dspv4 -no_abc9 -run :map_dsp -lib_path $LIB/
-    wreduce t:\$mul
-    tee -o ${name}_cells.log ql_dspv2_to_dspv4
-    ql_dsp4_check
-    tee -a ${name}_cells.log ql_dsp4_chain_report
+    tee -o ${name}_cells.log $PASS_NAME -family qlf_k6n10f -top $top -synplify -dspv4 -no_abc9 -run :dsp4_lower -lib_path $LIB/
     tee -a ${name}_cells.log dump t:QL_DSP4
     yosys cd $top
     check -assert
