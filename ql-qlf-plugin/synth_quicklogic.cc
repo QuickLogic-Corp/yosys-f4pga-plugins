@@ -348,6 +348,19 @@ struct SynthQuickLogicPass : public ScriptPass {
     // between calls.
     std::string chain_max_option() const { return chain_max.empty() ? "" : " -chain_max " + chain_max; }
 
+    // -chain_max reaches ql_dspv4 only on the native -dspv4 path with DSPs mapped.
+    void warn_if_chain_max_ignored() const
+    {
+        if (chain_max.empty())
+            return;
+        if (!dspv4)
+            log_warning("-chain_max is ignored: it applies only with -dspv4.\n");
+        else if (synplify)
+            log_warning("-chain_max is ignored: ql_dspv4 does not run with -synplify.\n");
+        else if (nodsp)
+            log_warning("-chain_max is ignored: ql_dspv4 does not run with -no_dsp.\n");
+    }
+
     // Fill the option members from the command line. Returns the index of
     // the first non-option argument.
     size_t parse_options(const std::vector<std::string> &args, std::string &run_from, std::string &run_to)
@@ -448,6 +461,8 @@ struct SynthQuickLogicPass : public ScriptPass {
         //   -dspv4           : ql_dspv4 infers QL_DSP4 from RTL directly,
         //                      dsp4_logical_map.v lowers.
         // Until Phase 2 the second had no implementation and was refused here.
+
+        warn_if_chain_max_ignored();
 
         if (family == "qlf_k4n8") {
             nosdff = true;

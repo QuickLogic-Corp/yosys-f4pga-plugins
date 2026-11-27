@@ -73,3 +73,17 @@ design -load prep_a
 tee -o _reset_call1.log ql_dspv4 -chain_max 12
 design -load prep_b
 tee -o _reset_call2.log ql_dspv4
+
+# -chain_max reaches ql_dspv4 only with -dspv4, without -synplify and with DSPs
+# mapped. Anywhere else synth_ql warns that the option is ignored; the control
+# run with -dspv4 prints no such warning.
+proc warning_block {name flags} {
+    global PASS_NAME LIB
+    design -load read
+    hierarchy -top chain4
+    tee -o $name.log $PASS_NAME -family qlf_k6n10f -top chain4 -no_abc9 {*}$flags -chain_max 8 -lib_path $LIB/
+}
+warning_block _ignored_no_dspv4 {}
+warning_block _ignored_synplify {-dspv4 -synplify}
+warning_block _ignored_no_dsp {-dspv4 -no_dsp}
+warning_block _applied {-dspv4}

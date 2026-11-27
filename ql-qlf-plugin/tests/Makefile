@@ -368,6 +368,14 @@ qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,12a
 qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,)
 qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,1 2)
 qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,99999999999)
+
+# -chain_max that cannot apply is reported by synth_ql, once, naming the reason.
+# With -dspv4 and DSPs mapped it applies and nothing is reported.
+casc_ignored = test "$$(grep -c 'Warning: -chain_max is ignored: $(2)' $(casc_flags_dir)/_ignored_$(1).log)" = 1
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_ignored,no_dspv4,it applies only with -dspv4[.])
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_ignored,synplify,ql_dspv4 does not run with -synplify[.])
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_ignored,no_dsp,ql_dspv4 does not run with -no_dsp[.])
+qlf_k6n10f-dspv4_casc_flags_verify += && ! grep -q 'chain_max is ignored' $(casc_flags_dir)/_applied.log
 # What the finder makes of each block: how many candidate links, and how many
 # reads it refuses itself. casc_found takes the block's log and the two counts.
 casc_found = test "$$(grep -c 'cascade candidate:' $(1))" = $(2) && test "$$(grep -c 'cascade link refused:' $(1))" = $(3)
