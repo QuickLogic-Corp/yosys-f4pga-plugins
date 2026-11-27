@@ -858,7 +858,7 @@ struct QlDspV4Pass : public Pass {
         }
         dict<SigBit, RTLIL::Cell *> adder_of_bit_0;
         for (auto cell : module->cells())
-            if (cell->type == ID($add)) {
+            if (is_foldable_add(cell)) {
                 SigBit bit = sigmap(cell->getPort(ID::Y))[0];
                 if (bit.wire != nullptr)
                     adder_of_bit_0[bit] = cell;
@@ -900,6 +900,12 @@ struct QlDspV4Pass : public Pass {
             links.push_back(link);
         } else if (read.extension == Extension::ZERO)
             refuse_in_finder(link, CASCADE_READ_UNSIGNED);
+    }
+
+    // An $add the addend folds may index bit 0 of: A, B and Y all have bits.
+    static bool is_foldable_add(RTLIL::Cell *cell)
+    {
+        return cell->type == ID($add) && !cell->getPort(ID::A).empty() && !cell->getPort(ID::B).empty() && !cell->getPort(ID::Y).empty();
     }
 
     void refuse_in_finder(const CascadeLink &link, const std::string &reason)
@@ -3947,7 +3953,7 @@ struct QlDspV4Pass : public Pass {
             const Reader *on_adder = nullptr;
             bool claimed = false;
             for (auto &reader : readers)
-                if (reader.cell != nullptr && reader.cell->type == ID($add) && reader.port.in(ID::A, ID::B)) {
+                if (reader.cell != nullptr && is_foldable_add(reader.cell) && reader.port.in(ID::A, ID::B)) {
                     claimed = claimed || claimed_adders.count(reader.cell);
                     if (on_adder == nullptr)
                         on_adder = &reader;
