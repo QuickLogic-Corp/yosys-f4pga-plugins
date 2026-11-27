@@ -1,4 +1,6 @@
 // Parser for the -chain_max value, shared by synth_ql and ql_dspv4.
+#pragma once
+#include "kernel/yosys.h"
 #include <limits.h>
 #include <string>
 
