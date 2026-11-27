@@ -76,6 +76,11 @@ stopped_block _reglink_clock
 select -assert-count 3 t:QL_DSP4
 select -assert-count 1 t:QL_DSP4 r:CREG=1'b1 %i
 
+stopped_block _reglink_kept_sum
+select -assert-count 3 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:CREG=1'b1 %i
+select -assert-count 0 t:QL_DSP4 r:PREG=1'b1 %i
+
 stopped_block _reglink_two_consumers_diff
 select -assert-count 4 t:QL_DSP4
 select -assert-count 2 t:QL_DSP4 r:CREG=1'b1 %i
