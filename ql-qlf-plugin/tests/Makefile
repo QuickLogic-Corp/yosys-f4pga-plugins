@@ -102,6 +102,10 @@ TESTS = \
 	qlf_k6n10f/dspv4_casc_pcin17_refused \
 	qlf_k6n10f/dspv4_casc_pcin17_loop \
 	qlf_k6n10f/dspv4_casc_loop_no_register \
+	qlf_k6n10f/dspv4_chain_report \
+	qlf_k6n10f/dspv4_chain_report_loop \
+	qlf_k6n10f/dspv4_chain_report_synplify \
+	qlf_k6n10f/dspv4_chain_report_no_dsp \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
 	qlf_k6n10f/sdffr_inst \
@@ -591,7 +595,7 @@ casc_too_long = chain would exceed the device limit
 casc_unsigned = link is read unsigned, and PCIN sign-extends
 # The chain report: its count line, once, with the links, the chains, the cells
 # in the longest chain and the limit; and one line of one of its lists.
-casc_report = test "$$(grep -c '^ql_dspv4: cascade: [0-9]* PCIN link' $(1))" = 1 && grep -q '^ql_dspv4: cascade: $(2) PCIN link(s) in $(3) chain(s), longest $(4) (limit $(5))$$' $(1)
+casc_report = test "$$(grep -c '^ql_dspv4: cascade: [0-9]* PCIN link' $(1))" = 1 && grep -q '^ql_dspv4: cascade: $(2) PCIN link(s) in $(3) chain(s), longest plain chain $(4) (limit $(5))$$' $(1)
 casc_ranked = grep -q "^ *$(2) x  $(3)$$" $(1)
 # Step 0's report line, once, with the number of registers moved.
 casc_moved_report = test "$$(grep -c '^ql_dspv4: cascade: [0-9]* link register(s) moved' $(1))" = 1 && grep -q "^ql_dspv4: cascade: $(2) link register(s) moved to the source's PREG$$" $(1)
@@ -1276,6 +1280,104 @@ qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MUL
 qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD x2, MULT_ADD_C x1$$' $(casc_loop_dir)/_ring3_flow.log
 qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_tail.log
 qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_tail_flow.log
+# The chain length line, once per log, with its three numbers.
+chain_length_line = test "$$(grep -c '^ql_dsp4_chain_report: longest DSP chain ' $(1))" = 1 && grep -q '^ql_dsp4_chain_report: longest DSP chain $(2) ($(3) link(s) in $(4) chain(s))$$' $(1)
+# The loop warning, an exact number of times, and once for a named cell.
+chain_loop_warnings = test "$$(grep -c 'is in or fed from a PCIN loop; not counted' $(1))" = $(2)
+chain_loop_cell = test "$$(grep -c '^Warning: ql_dsp4_chain_report: $(2) is in or fed from a PCIN loop; not counted\.$$' $(1))" = 1
+# The report's debug line for each chain it counts: the length and the last
+# cell, <module>.<cell>. chain_ends is the number of such lines.
+chain_end = test "$$(grep -c '^  chain of $(2) ending at $(3)$$' $(1))" = 1
+chain_ends = test "$$(grep -c '^  chain of ' $(1))" = $(2)
+# Chains the flow makes. Each flow block's line is in the whole flow's log and
+# in <block>_cells.log beside the cells it reads; the mode line says which
+# cells the flow made, and casc_wired how the dumped cells are wired.
+chain_report_dir = qlf_k6n10f/dspv4_chain_report
+$(chain_report_dir)/ok: $(wildcard $(chain_report_dir)/*.v)
+qlf_k6n10f-dspv4_chain_report_verify = true
+qlf_k6n10f-dspv4_chain_report_verify += $(foreach l,_none _none_cells,&& $(call chain_length_line,$(chain_report_dir)/$(l).log,0,0,0))
+qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c 'modes inferred: MULT x1$$' $(chain_report_dir)/_none.log)" = 1
+qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c 'ql_dspv4: cascade' $(chain_report_dir)/_none.log)" = 0
+qlf_k6n10f-dspv4_chain_report_verify += && $(call casc_wired,$(chain_report_dir)/_none_cells.log,0,0)
+qlf_k6n10f-dspv4_chain_report_verify += $(foreach l,_two _two_cells,&& $(call chain_length_line,$(chain_report_dir)/$(l).log,2,1,1))
+qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c 'modes inferred: MULT_ADD x1, MULT x1$$' $(chain_report_dir)/_two.log)" = 1
+qlf_k6n10f-dspv4_chain_report_verify += && $(call casc_wired,$(chain_report_dir)/_two_cells.log,1,0)
+# For a PCIN >> 17 link, ql_dspv4: cascade: prints no length and
+# ql_dsp4_chain_report: prints 2.
+qlf_k6n10f-dspv4_chain_report_verify += $(foreach l,_pcin17 _pcin17_cells,&& $(call chain_length_line,$(chain_report_dir)/$(l).log,2,1,1))
+qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT x1$$' $(chain_report_dir)/_pcin17.log)" = 1
+qlf_k6n10f-dspv4_chain_report_verify += && $(call casc_pcin17_report,$(chain_report_dir)/_pcin17.log,1)
+qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c '^ql_dspv4: cascade: .*longest' $(chain_report_dir)/_pcin17.log)" = 0
+qlf_k6n10f-dspv4_chain_report_verify += && $(call casc_wired,$(chain_report_dir)/_pcin17_cells.log,1,0)
+# Here ql_dspv4: cascade: says longest plain chain 2 and ql_dsp4_chain_report: says 3,
+# the cells the column holds.
+qlf_k6n10f-dspv4_chain_report_verify += $(foreach l,_mixed_at_cap _mixed_at_cap_cells,&& $(call chain_length_line,$(chain_report_dir)/$(l).log,3,2,1))
+qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT_ADD x1, MULT x1$$' $(chain_report_dir)/_mixed_at_cap.log)" = 1
+qlf_k6n10f-dspv4_chain_report_verify += && $(call casc_report,$(chain_report_dir)/_mixed_at_cap.log,1,1,2,3)
+qlf_k6n10f-dspv4_chain_report_verify += && $(call casc_wired,$(chain_report_dir)/_mixed_at_cap_cells.log,2,0)
+qlf_k6n10f-dspv4_chain_report_verify += $(foreach l,_two_readers _two_readers_cells,&& $(call chain_length_line,$(chain_report_dir)/$(l).log,2,2,2))
+qlf_k6n10f-dspv4_chain_report_verify += $(foreach l,_two_readers_at_cap _two_readers_at_cap_cells,&& $(call chain_length_line,$(chain_report_dir)/$(l).log,3,2,1))
+qlf_k6n10f-dspv4_chain_report_verify += $(foreach b,_two_readers _two_readers_at_cap,&& test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(chain_report_dir)/$(b).log)" = 1)
+qlf_k6n10f-dspv4_chain_report_verify += $(foreach b,_two_readers _two_readers_at_cap,&& $(call casc_wired,$(chain_report_dir)/$(b)_cells.log,2,1))
+# Cells wired by hand: the report reads wires, whoever made the cells.
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_length_line,$(chain_report_dir)/_by_hand.log,3,3,2)
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_end,$(chain_report_dir)/_by_hand.log,3,_by_hand.c2)
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_end,$(chain_report_dir)/_by_hand.log,2,_by_hand.c4)
+# A PCIN that reads a P, a module input or a constant is not a link.
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_length_line,$(chain_report_dir)/_not_pcout.log,0,0,0)
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_ends,$(chain_report_dir)/_not_pcout.log,0)
+# A PCOUT tied to a constant, a PCOUT read by a cell that is not a QL_DSP4, and
+# a PCIN reading a cell that is not a QL_DSP4, are not links. The dump shows
+# the constant on c0's PCOUT and on both PCINs.
+qlf_k6n10f-dspv4_chain_report_verify += $(foreach l,_constant_pcout _not_dsp_reader _not_dsp_source,&& $(call chain_length_line,$(chain_report_dir)/$(l).log,0,0,0) && $(call chain_ends,$(chain_report_dir)/$(l).log,0))
+qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c 'connect .PCOUT 50.0\{50\}$$' $(chain_report_dir)/_constant_pcout.log)" = 1
+qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c 'connect .PCIN 50.0\{50\}$$' $(chain_report_dir)/_constant_pcout.log)" = 2
+# Two modules: the links and chains add up, the longest is the longer one.
+# With only the first module selected, only its chain is counted.
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_length_line,$(chain_report_dir)/_two_modules.log,3,3,2)
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_end,$(chain_report_dir)/_two_modules.log,3,_two_modules_three.c2)
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_end,$(chain_report_dir)/_two_modules.log,2,_two_modules_two.c1)
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_length_line,$(chain_report_dir)/_two_modules_first.log,3,2,1)
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_end,$(chain_report_dir)/_two_modules_first.log,3,_two_modules_three.c2)
+qlf_k6n10f-dspv4_chain_report_verify += && $(call chain_ends,$(chain_report_dir)/_two_modules_first.log,1)
+qlf_k6n10f-dspv4_chain_report_verify += $(foreach l,_none _none_cells _two _two_cells _pcin17 _pcin17_cells _mixed_at_cap _mixed_at_cap_cells _two_readers _two_readers_cells _two_readers_at_cap _two_readers_at_cap_cells _by_hand _not_pcout _constant_pcout _not_dsp_reader _not_dsp_source _two_modules _two_modules_first,&& $(call chain_loop_warnings,$(chain_report_dir)/$(l).log,0))
+# PCIN loops, wired by hand: each cell in or below a loop gets one warning, and
+# no chain is counted for it. The loop's links are still in the link count.
+chain_report_loop_dir = qlf_k6n10f/dspv4_chain_report_loop
+qlf_k6n10f-dspv4_chain_report_loop_verify = $(call chain_length_line,$(chain_report_loop_dir)/_loop3.log,0,3,0)
+qlf_k6n10f-dspv4_chain_report_loop_verify += && $(call chain_loop_warnings,$(chain_report_loop_dir)/_loop3.log,3)
+qlf_k6n10f-dspv4_chain_report_loop_verify += $(foreach c,r0 r1 r2,&& $(call chain_loop_cell,$(chain_report_loop_dir)/_loop3.log,_loop3.$(c)))
+qlf_k6n10f-dspv4_chain_report_loop_verify += && $(call chain_ends,$(chain_report_loop_dir)/_loop3.log,0)
+qlf_k6n10f-dspv4_chain_report_loop_verify += && $(call chain_length_line,$(chain_report_loop_dir)/_loop_tail.log,0,3,0)
+qlf_k6n10f-dspv4_chain_report_loop_verify += && $(call chain_loop_warnings,$(chain_report_loop_dir)/_loop_tail.log,3)
+qlf_k6n10f-dspv4_chain_report_loop_verify += $(foreach c,r0 r1 tail,&& $(call chain_loop_cell,$(chain_report_loop_dir)/_loop_tail.log,_loop_tail.$(c)))
+qlf_k6n10f-dspv4_chain_report_loop_verify += && $(call chain_ends,$(chain_report_loop_dir)/_loop_tail.log,0)
+qlf_k6n10f-dspv4_chain_report_loop_verify += && $(call chain_length_line,$(chain_report_loop_dir)/_loop_beside.log,2,3,1)
+qlf_k6n10f-dspv4_chain_report_loop_verify += && $(call chain_loop_warnings,$(chain_report_loop_dir)/_loop_beside.log,2)
+qlf_k6n10f-dspv4_chain_report_loop_verify += $(foreach c,r0 r1,&& $(call chain_loop_cell,$(chain_report_loop_dir)/_loop_beside.log,_loop_beside.$(c)))
+qlf_k6n10f-dspv4_chain_report_loop_verify += && $(call chain_end,$(chain_report_loop_dir)/_loop_beside.log,2,_loop_beside.tail)
+qlf_k6n10f-dspv4_chain_report_loop_verify += && $(call chain_ends,$(chain_report_loop_dir)/_loop_beside.log,1)
+# Chains on the -synplify path, where ql_dspv4 does not run. Synplify's own
+# QL_DSP4 cells pass through the bridge untouched; the bridge makes the pair's
+# cells and their link.
+chain_report_synplify_dir = qlf_k6n10f/dspv4_chain_report_synplify
+$(chain_report_synplify_dir)/ok: $(wildcard $(chain_report_synplify_dir)/*.v $(chain_report_synplify_dir)/*.vm)
+qlf_k6n10f-dspv4_chain_report_synplify_verify = true
+qlf_k6n10f-dspv4_chain_report_synplify_verify += $(foreach l,_direct_cells _direct_cells_cells,&& $(call chain_length_line,$(chain_report_synplify_dir)/$(l).log,3,2,1))
+qlf_k6n10f-dspv4_chain_report_synplify_verify += $(foreach l,_direct_cells _direct_cells_cells,&& test "$$(grep -c ' -> QL_DSP4 ' $(chain_report_synplify_dir)/$(l).log)" = 0)
+qlf_k6n10f-dspv4_chain_report_synplify_verify += $(foreach l,_bridge_pair _bridge_pair_cells,&& $(call chain_length_line,$(chain_report_synplify_dir)/$(l).log,2,1,1))
+qlf_k6n10f-dspv4_chain_report_synplify_verify += $(foreach l,_bridge_pair _bridge_pair_cells,&& test "$$(grep -c '^  d1: MULTADD -> QL_DSP4 d1_DSP4 .OPMODE=000010101 ' $(chain_report_synplify_dir)/$(l).log)" = 1)
+qlf_k6n10f-dspv4_chain_report_synplify_verify += $(foreach l,_direct_cells _bridge_pair,&& test "$$(grep -c 'Executing QL_DSPV4 pass' $(chain_report_synplify_dir)/$(l).log)" = 0)
+qlf_k6n10f-dspv4_chain_report_synplify_verify += $(foreach l,_direct_cells _direct_cells_cells _bridge_pair _bridge_pair_cells,&& $(call chain_loop_warnings,$(chain_report_synplify_dir)/$(l).log,0))
+# -no_dsp skips the DSP steps: no chain length line, no ql_dspv4 and no
+# ql_dsp4_check, while a step late in the flow (autoname) still ran. Reading
+# QL_DSP4.v shows -dspv4 took effect.
+chain_report_no_dsp_log = qlf_k6n10f/dspv4_chain_report_no_dsp/_two.log
+qlf_k6n10f-dspv4_chain_report_no_dsp_verify = test "$$(grep -c 'ql_dsp4_chain_report' $(chain_report_no_dsp_log))" = 0
+qlf_k6n10f-dspv4_chain_report_no_dsp_verify += && test "$$(grep -c 'Executing Verilog-2005 frontend: .*/QL_DSP4\.v$$' $(chain_report_no_dsp_log))" = 1
+qlf_k6n10f-dspv4_chain_report_no_dsp_verify += && test "$$(grep -c 'Executing QL_DSPV4 pass' $(chain_report_no_dsp_log))" = 0
+qlf_k6n10f-dspv4_chain_report_no_dsp_verify += && test "$$(grep -c 'Executing QL_DSP4_CHECK pass' $(chain_report_no_dsp_log))" = 0
+qlf_k6n10f-dspv4_chain_report_no_dsp_verify += && test "$$(grep -c 'Executing AUTONAME pass' $(chain_report_no_dsp_log))" = 1
 dffs_verify = true
 shreg_verify = true
 full_adder_verify = true

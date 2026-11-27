@@ -1191,22 +1191,25 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // and direct instantiation. Warn here about configurations
                             // whose arithmetic wraps silently.
                             run("ql_dsp4_check");
-                            // Phase 2: decompose each monolithic QL_DSP4 into the
-                            // dsp4_logical operating-mode leaf cells (mult / alu /
-                            // pre-adder / rss / bit-sliced registers) so the netlist
-                            // packs onto the DSPV4 tile. Pure Verilog techmap.
-                            // Its leaves are named after the QL_DSP4 they replace, so
-                            // record that name's owner first.
-                            if (help_mode || !owner_table.empty())
-                                run("ql_fp_owner -record", "(if -owner_table)");
-                            run("techmap -map " + lib_path + family + "/dsp4_logical_map.v");
-                            // The techmap leaves a QL_DSP4 it refuses as it is, with no
-                            // message, and that cell would reach the BLIF with no model
-                            // for it. Say why, then stop here, while the cell is still in
-                            // the design.
-                            run("ql_dsp4_explain");
-                            run("select -assert-none t:QL_DSP4");
-                            run("opt_clean -purge");
+                            run("ql_dsp4_chain_report");
+                            if (check_label("dsp4_lower")) {
+                                // Phase 2: decompose each monolithic QL_DSP4 into the
+                                // dsp4_logical operating-mode leaf cells (mult / alu /
+                                // pre-adder / rss / bit-sliced registers) so the netlist
+                                // packs onto the DSPV4 tile. Pure Verilog techmap.
+                                // Its leaves are named after the QL_DSP4 they replace, so
+                                // record that name's owner first.
+                                if (help_mode || !owner_table.empty())
+                                    run("ql_fp_owner -record", "(if -owner_table)");
+                                run("techmap -map " + lib_path + family + "/dsp4_logical_map.v");
+                                // The techmap leaves a QL_DSP4 it refuses as it is, with no
+                                // message, and that cell would reach the BLIF with no model
+                                // for it. Say why, then stop here, while the cell is still in
+                                // the design.
+                                run("ql_dsp4_explain");
+                                run("select -assert-none t:QL_DSP4");
+                                run("opt_clean -purge");
+                            }
                         } else {
                             run("ql_dspv2_types");
                         }

@@ -1,0 +1,648 @@
+module cascade_shared_1reg_regout_regout (
+  clk,
+  rst,
+  a_cc,
+  b_cc,
+  a1,
+  a2,
+  a3,
+  b_shared,
+  p_out
+)
+;
+
+/*  Synopsys
+.origName=cascade_shared_1reg_regout_regout
+.langParams="A_WIDTH B_WIDTH P_WIDTH"
+A_WIDTH=18
+B_WIDTH=18
+P_WIDTH=36
+ */
+input clk ;
+input rst ;
+input [17:0] a_cc ;
+input [17:0] b_cc ;
+input [17:0] a1 ;
+input [17:0] a2 ;
+input [17:0] a3 ;
+input [17:0] b_shared ;
+output [37:0] p_out ;
+wire clk ;
+wire rst ;
+wire [35:0] ma1_mul_reg_2_0_0;
+wire [31:0] \ma1_mul_reg_2_0_35_0_.un1_inst_dsp_5 ;
+wire [17:0] \ma1_mul_reg_2_0_35_0_.un1_inst_dsp_4 ;
+wire [3:0] \ma1_mul_reg_2_0_35_0_.un1_inst_dsp ;
+wire [49:0] casc;
+wire [35:0] cc_p_reg_2_0_0;
+wire [36:36] cc_p_reg_2_0;
+wire [31:0] \cc_p_reg_2_0_35_0_.un1_inst_dsp_4 ;
+wire [17:0] \cc_p_reg_2_0_35_0_.un1_inst_dsp_2 ;
+wire [3:0] \cc_p_reg_2_0_35_0_.un1_inst_dsp_3 ;
+wire [49:0] casc_0;
+wire [35:0] ma2_mul_reg_2_0_0;
+wire [36:36] ma2_mul_reg_2_0;
+wire [31:0] \ma2_mul_reg_2_0_35_0_.un1_inst_dsp_4 ;
+wire [17:0] \ma2_mul_reg_2_0_35_0_.un1_inst_dsp_2 ;
+wire [49:0] \ma2_mul_reg_2_0_35_0_.un1_inst_dsp_1 ;
+wire [3:0] \ma2_mul_reg_2_0_35_0_.un1_inst_dsp_3 ;
+wire [35:0] ma3_mul_reg_2_0_0;
+wire [37:36] ma3_mul_reg_2_0;
+wire [31:0] \ma3_mul_reg_2_0_35_0_.un1_inst_dsp_4 ;
+wire [17:0] \ma3_mul_reg_2_0_35_0_.un1_inst_dsp_2 ;
+wire [49:0] \ma3_mul_reg_2_0_35_0_.un1_inst_dsp_1 ;
+wire [3:0] \ma3_mul_reg_2_0_35_0_.un1_inst_dsp_3 ;
+wire GND ;
+wire VCC ;
+wire N_37 ;
+wire N_38 ;
+wire N_39 ;
+wire N_40 ;
+wire N_41 ;
+wire N_42 ;
+wire N_43 ;
+wire N_44 ;
+wire N_45 ;
+wire N_46 ;
+wire N_47 ;
+wire N_48 ;
+wire N_49 ;
+wire N_50 ;
+wire \ma1_mul_reg_2_0_35_0_.un1_inst_dsp_2  ;
+wire \ma1_mul_reg_2_0_35_0_.un1_inst_dsp_1  ;
+wire N_89 ;
+wire N_90 ;
+wire N_91 ;
+wire N_92 ;
+wire N_93 ;
+wire N_94 ;
+wire N_95 ;
+wire N_96 ;
+wire N_97 ;
+wire N_98 ;
+wire N_99 ;
+wire N_100 ;
+wire N_101 ;
+wire \cc_p_reg_2_0_35_0_.un1_inst_dsp_5  ;
+wire \cc_p_reg_2_0_35_0_.un1_inst_dsp  ;
+wire N_140 ;
+wire N_141 ;
+wire N_142 ;
+wire N_143 ;
+wire N_144 ;
+wire N_145 ;
+wire N_146 ;
+wire N_147 ;
+wire N_148 ;
+wire N_149 ;
+wire N_150 ;
+wire N_151 ;
+wire N_152 ;
+wire \ma2_mul_reg_2_0_35_0_.un1_inst_dsp_5  ;
+wire \ma2_mul_reg_2_0_35_0_.un1_inst_dsp  ;
+wire N_192 ;
+wire N_193 ;
+wire N_194 ;
+wire N_195 ;
+wire N_196 ;
+wire N_197 ;
+wire N_198 ;
+wire N_199 ;
+wire N_200 ;
+wire N_201 ;
+wire N_202 ;
+wire N_203 ;
+wire \ma3_mul_reg_2_0_35_0_.un1_inst_dsp_5  ;
+wire \ma3_mul_reg_2_0_35_0_.un1_inst_dsp  ;
+  GND GND_cZ (
+	.G(GND)
+);
+  VCC VCC_cZ (
+	.P(VCC)
+);
+// @4:51
+  sdffre \p_out_Z[0]  (
+	.Q(p_out[0]),
+	.D(ma3_mul_reg_2_0_0[0]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[1]  (
+	.Q(p_out[1]),
+	.D(ma3_mul_reg_2_0_0[1]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[2]  (
+	.Q(p_out[2]),
+	.D(ma3_mul_reg_2_0_0[2]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[3]  (
+	.Q(p_out[3]),
+	.D(ma3_mul_reg_2_0_0[3]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[4]  (
+	.Q(p_out[4]),
+	.D(ma3_mul_reg_2_0_0[4]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[5]  (
+	.Q(p_out[5]),
+	.D(ma3_mul_reg_2_0_0[5]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[6]  (
+	.Q(p_out[6]),
+	.D(ma3_mul_reg_2_0_0[6]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[7]  (
+	.Q(p_out[7]),
+	.D(ma3_mul_reg_2_0_0[7]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[8]  (
+	.Q(p_out[8]),
+	.D(ma3_mul_reg_2_0_0[8]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[9]  (
+	.Q(p_out[9]),
+	.D(ma3_mul_reg_2_0_0[9]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[10]  (
+	.Q(p_out[10]),
+	.D(ma3_mul_reg_2_0_0[10]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[11]  (
+	.Q(p_out[11]),
+	.D(ma3_mul_reg_2_0_0[11]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[12]  (
+	.Q(p_out[12]),
+	.D(ma3_mul_reg_2_0_0[12]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[13]  (
+	.Q(p_out[13]),
+	.D(ma3_mul_reg_2_0_0[13]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[14]  (
+	.Q(p_out[14]),
+	.D(ma3_mul_reg_2_0_0[14]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[15]  (
+	.Q(p_out[15]),
+	.D(ma3_mul_reg_2_0_0[15]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[16]  (
+	.Q(p_out[16]),
+	.D(ma3_mul_reg_2_0_0[16]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[17]  (
+	.Q(p_out[17]),
+	.D(ma3_mul_reg_2_0_0[17]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[18]  (
+	.Q(p_out[18]),
+	.D(ma3_mul_reg_2_0_0[18]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[19]  (
+	.Q(p_out[19]),
+	.D(ma3_mul_reg_2_0_0[19]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[20]  (
+	.Q(p_out[20]),
+	.D(ma3_mul_reg_2_0_0[20]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[21]  (
+	.Q(p_out[21]),
+	.D(ma3_mul_reg_2_0_0[21]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[22]  (
+	.Q(p_out[22]),
+	.D(ma3_mul_reg_2_0_0[22]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[23]  (
+	.Q(p_out[23]),
+	.D(ma3_mul_reg_2_0_0[23]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[24]  (
+	.Q(p_out[24]),
+	.D(ma3_mul_reg_2_0_0[24]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[25]  (
+	.Q(p_out[25]),
+	.D(ma3_mul_reg_2_0_0[25]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[26]  (
+	.Q(p_out[26]),
+	.D(ma3_mul_reg_2_0_0[26]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[27]  (
+	.Q(p_out[27]),
+	.D(ma3_mul_reg_2_0_0[27]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[28]  (
+	.Q(p_out[28]),
+	.D(ma3_mul_reg_2_0_0[28]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[29]  (
+	.Q(p_out[29]),
+	.D(ma3_mul_reg_2_0_0[29]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[30]  (
+	.Q(p_out[30]),
+	.D(ma3_mul_reg_2_0_0[30]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[31]  (
+	.Q(p_out[31]),
+	.D(ma3_mul_reg_2_0_0[31]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[32]  (
+	.Q(p_out[32]),
+	.D(ma3_mul_reg_2_0_0[32]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[33]  (
+	.Q(p_out[33]),
+	.D(ma3_mul_reg_2_0_0[33]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[34]  (
+	.Q(p_out[34]),
+	.D(ma3_mul_reg_2_0_0[34]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[35]  (
+	.Q(p_out[35]),
+	.D(ma3_mul_reg_2_0_0[35]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[36]  (
+	.Q(p_out[36]),
+	.D(ma3_mul_reg_2_0[36]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:51
+  sdffre \p_out_Z[37]  (
+	.Q(p_out[37]),
+	.D(ma3_mul_reg_2_0[37]),
+	.C(clk),
+	.E(VCC),
+	.R(rst)
+);
+// @4:35
+  QL_DSP4 \ma3_mul_reg_2_0_35_0_.inst_dsp  (
+	.A({b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17:0]}),
+	.B(a3[17:0]),
+	.C({ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0[36], ma2_mul_reg_2_0_0[35:0]}),
+	.D({GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND}),
+	.CIN(GND),
+	.ACIN(),
+	.BCIN(),
+	.PCIN(),
+	.CCIN(),
+	.SIGNCIN(),
+	.P({N_203, N_202, N_201, N_200, N_199, N_198, N_197, N_196, N_195, N_194, N_193, N_192, ma3_mul_reg_2_0[37:36], ma3_mul_reg_2_0_0[35:0]}),
+	.ACOUT(\ma3_mul_reg_2_0_35_0_.un1_inst_dsp_4 [31:0]),
+	.BCOUT(\ma3_mul_reg_2_0_35_0_.un1_inst_dsp_2 [17:0]),
+	.PCOUT(\ma3_mul_reg_2_0_35_0_.un1_inst_dsp_1 [49:0]),
+	.CCOUT(\ma3_mul_reg_2_0_35_0_.un1_inst_dsp_5 ),
+	.SIGNCOUT(\ma3_mul_reg_2_0_35_0_.un1_inst_dsp ),
+	.COUT(\ma3_mul_reg_2_0_35_0_.un1_inst_dsp_3 [3:0]),
+	.CLK(clk),
+	.CEA(VCC),
+	.CEB(GND),
+	.CEC(GND),
+	.CED(GND),
+	.CEP(VCC),
+	.ARSTN(VCC),
+	.RSTN(rst),
+	.ACCRSTN(VCC)
+);
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .OPMODE=9'b000110101;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .ALUMODE=2'b00;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .INMODE=5'b00000;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .CARRYINSEL=3'b000;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .USE_SIMD=2'b00;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .AREG0=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .AREG1=1'b1;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .BREG0=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .BREG1=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .A_COUT_SEL=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .B_COUT_SEL=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .CREG=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .DREG=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .ADREG=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .MREG=1'b1;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .PREG=1'b1;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .COUTREG=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .A_IN_SEL=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .B_IN_SEL=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .AMULTSEL=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .BMULTSEL=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .PREADDINSEL=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .USE_RSS=1'b0;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .ROUND=3'b000;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .SHIFT=6'b000000;
+defparam \ma3_mul_reg_2_0_35_0_.inst_dsp .SATURATE=1'b0;
+// @4:34
+  QL_DSP4 \ma2_mul_reg_2_0_35_0_.inst_dsp  (
+	.A({b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17], b_shared[17:0]}),
+	.B(a2[17:0]),
+	.C({GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND}),
+	.D({GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND}),
+	.CIN(GND),
+	.ACIN(),
+	.BCIN(),
+	.PCIN(casc_0[49:0]),
+	.CCIN(),
+	.SIGNCIN(),
+	.P({N_152, N_151, N_150, N_149, N_148, N_147, N_146, N_145, N_144, N_143, N_142, N_141, N_140, ma2_mul_reg_2_0[36], ma2_mul_reg_2_0_0[35:0]}),
+	.ACOUT(\ma2_mul_reg_2_0_35_0_.un1_inst_dsp_4 [31:0]),
+	.BCOUT(\ma2_mul_reg_2_0_35_0_.un1_inst_dsp_2 [17:0]),
+	.PCOUT(\ma2_mul_reg_2_0_35_0_.un1_inst_dsp_1 [49:0]),
+	.CCOUT(\ma2_mul_reg_2_0_35_0_.un1_inst_dsp_5 ),
+	.SIGNCOUT(\ma2_mul_reg_2_0_35_0_.un1_inst_dsp ),
+	.COUT(\ma2_mul_reg_2_0_35_0_.un1_inst_dsp_3 [3:0]),
+	.CLK(clk),
+	.CEA(VCC),
+	.CEB(GND),
+	.CEC(GND),
+	.CED(GND),
+	.CEP(GND),
+	.ARSTN(VCC),
+	.RSTN(rst),
+	.ACCRSTN(VCC)
+);
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .OPMODE=9'b000010101;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .ALUMODE=2'b00;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .INMODE=5'b00000;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .CARRYINSEL=3'b000;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .USE_SIMD=2'b00;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .AREG0=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .AREG1=1'b1;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .BREG0=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .BREG1=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .A_COUT_SEL=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .B_COUT_SEL=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .CREG=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .DREG=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .ADREG=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .MREG=1'b1;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .PREG=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .COUTREG=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .A_IN_SEL=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .B_IN_SEL=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .AMULTSEL=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .BMULTSEL=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .PREADDINSEL=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .USE_RSS=1'b0;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .ROUND=3'b000;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .SHIFT=6'b000000;
+defparam \ma2_mul_reg_2_0_35_0_.inst_dsp .SATURATE=1'b0;
+// @4:32
+  QL_DSP4 \cc_p_reg_2_0_35_0_.inst_dsp  (
+	.A({a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17], a_cc[17:0]}),
+	.B(b_cc[17:0]),
+	.C({GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND}),
+	.D({GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND}),
+	.CIN(GND),
+	.ACIN(),
+	.BCIN(),
+	.PCIN(casc[49:0]),
+	.CCIN(),
+	.SIGNCIN(),
+	.P({N_101, N_100, N_99, N_98, N_97, N_96, N_95, N_94, N_93, N_92, N_91, N_90, N_89, cc_p_reg_2_0[36], cc_p_reg_2_0_0[35:0]}),
+	.ACOUT(\cc_p_reg_2_0_35_0_.un1_inst_dsp_4 [31:0]),
+	.BCOUT(\cc_p_reg_2_0_35_0_.un1_inst_dsp_2 [17:0]),
+	.PCOUT(casc_0[49:0]),
+	.CCOUT(\cc_p_reg_2_0_35_0_.un1_inst_dsp_5 ),
+	.SIGNCOUT(\cc_p_reg_2_0_35_0_.un1_inst_dsp ),
+	.COUT(\cc_p_reg_2_0_35_0_.un1_inst_dsp_3 [3:0]),
+	.CLK(clk),
+	.CEA(GND),
+	.CEB(GND),
+	.CEC(GND),
+	.CED(GND),
+	.CEP(GND),
+	.ARSTN(VCC),
+	.RSTN(rst),
+	.ACCRSTN(VCC)
+);
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .OPMODE=9'b000010101;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .ALUMODE=2'b00;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .INMODE=5'b00000;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .CARRYINSEL=3'b000;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .USE_SIMD=2'b00;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .AREG0=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .AREG1=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .BREG0=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .BREG1=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .A_COUT_SEL=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .B_COUT_SEL=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .CREG=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .DREG=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .ADREG=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .MREG=1'b1;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .PREG=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .COUTREG=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .A_IN_SEL=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .B_IN_SEL=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .AMULTSEL=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .BMULTSEL=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .PREADDINSEL=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .USE_RSS=1'b0;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .ROUND=3'b000;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .SHIFT=6'b000000;
+defparam \cc_p_reg_2_0_35_0_.inst_dsp .SATURATE=1'b0;
+// @4:33
+  QL_DSP4 \ma1_mul_reg_2_0_35_0_.inst_dsp  (
+	.A({a1[17], a1[17], a1[17], a1[17], a1[17], a1[17], a1[17], a1[17], a1[17], a1[17], a1[17], a1[17], a1[17], a1[17], a1[17:0]}),
+	.B(b_shared[17:0]),
+	.C({GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND}),
+	.D({GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND, GND}),
+	.CIN(GND),
+	.ACIN(),
+	.BCIN(),
+	.PCIN(),
+	.CCIN(),
+	.SIGNCIN(),
+	.P({N_50, N_49, N_48, N_47, N_46, N_45, N_44, N_43, N_42, N_41, N_40, N_39, N_38, N_37, ma1_mul_reg_2_0_0[35:0]}),
+	.ACOUT(\ma1_mul_reg_2_0_35_0_.un1_inst_dsp_5 [31:0]),
+	.BCOUT(\ma1_mul_reg_2_0_35_0_.un1_inst_dsp_4 [17:0]),
+	.PCOUT(casc[49:0]),
+	.CCOUT(\ma1_mul_reg_2_0_35_0_.un1_inst_dsp_2 ),
+	.SIGNCOUT(\ma1_mul_reg_2_0_35_0_.un1_inst_dsp_1 ),
+	.COUT(\ma1_mul_reg_2_0_35_0_.un1_inst_dsp [3:0]),
+	.CLK(clk),
+	.CEA(GND),
+	.CEB(VCC),
+	.CEC(GND),
+	.CED(GND),
+	.CEP(VCC),
+	.ARSTN(VCC),
+	.RSTN(rst),
+	.ACCRSTN(VCC)
+);
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .OPMODE=9'b000000101;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .ALUMODE=2'b00;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .INMODE=5'b00000;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .CARRYINSEL=3'b000;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .USE_SIMD=2'b00;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .AREG0=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .AREG1=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .BREG0=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .BREG1=1'b1;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .A_COUT_SEL=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .B_COUT_SEL=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .CREG=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .DREG=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .ADREG=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .MREG=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .PREG=1'b1;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .COUTREG=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .A_IN_SEL=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .B_IN_SEL=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .AMULTSEL=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .BMULTSEL=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .PREADDINSEL=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .USE_RSS=1'b0;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .ROUND=3'b000;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .SHIFT=6'b000000;
+defparam \ma1_mul_reg_2_0_35_0_.inst_dsp .SATURATE=1'b0;
+endmodule /* cascade_shared_1reg_regout_regout */
+
