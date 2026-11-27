@@ -525,6 +525,7 @@ qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_ch
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_chains_unequal_cells.log,4,0)
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_report,$(casc_links_dir)/_chains_unequal_cells.log,4,2,4,12)
 casc_refused_dir = qlf_k6n10f/dspv4_casc_refused
+$(casc_refused_dir)/ok: $(wildcard $(casc_refused_dir)/*.v)
 casc_read_unsigned = cascade link refused: .*: link is read unsigned, and PCIN sign-extends$$
 # How many of a block's refused links carry this reason: the log, the reason,
 # the count. Double quotes, because a reason can hold an apostrophe.
@@ -540,6 +541,7 @@ casc_has_preg = the source already has a P register
 casc_other_clock = the source is on another clock
 casc_enables = the source would need more than 3 distinct clock enables
 casc_differently = the source's readers register it differently (different CLK, CEC, or RSTN)
+casc_kept_sum = the source's P is marked keep
 casc_loop = links form a loop
 casc_shorter = source already feeds a chain at least as long
 casc_too_long = chain would exceed the device limit
@@ -574,6 +576,12 @@ qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_reglink_clock.log,1,1)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_not_moved,$(casc_refused_dir)/_reglink_clock.log,$(casc_other_clock),1)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_moved,$(casc_refused_dir)/_reglink_clock.log,0)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_refused_dir)/_reglink_kept_sum.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_reglink_kept_sum.log,2,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_reglink_kept_sum.log,$(casc_registered),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_reglink_kept_sum.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_not_moved,$(casc_refused_dir)/_reglink_kept_sum.log,$(casc_kept_sum),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_moved,$(casc_refused_dir)/_reglink_kept_sum.log,0)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1, MULT x1$$' $(casc_refused_dir)/_reglink_two_consumers_diff.log
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_reglink_two_consumers_diff.log,3,2)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_reglink_two_consumers_diff.log,$(casc_registered),2)
@@ -1055,6 +1063,7 @@ qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'cascade links refus
 # candidate and refused counts, the number of cells that read PCIN and C, the
 # links, the longest chain and the limit. The stopped log also names the head.
 casc_loop_dir = qlf_k6n10f/dspv4_casc_loop_no_register
+$(casc_loop_dir)/ok: $(wildcard $(casc_loop_dir)/*.v)
 casc_loop_head = test "$$(grep -c 'cascade: .* is a head now: its loop lost a link$$' $(1))" = 1
 casc_loop_no_register = $(call casc_found,$(casc_loop_dir)/$(1).log,$(2),$(3)) && $(call casc_reason,$(casc_loop_dir)/$(1).log,$(casc_loop),1) && $(call casc_loop_head,$(casc_loop_dir)/$(1).log) && $(call casc_wired,$(casc_loop_dir)/$(1).log,$(4),$(5)) && $(call casc_report,$(casc_loop_dir)/$(1).log,$(6),1,$(7),$(8)) && $(call casc_report,$(casc_loop_dir)/$(1)_flow.log,$(6),1,$(7),$(8)) && $(call casc_ranked,$(casc_loop_dir)/$(1)_flow.log,1,$(casc_loop))
 qlf_k6n10f-dspv4_casc_loop_no_register_verify = $(call casc_loop_no_register,_ring2,2,1,1,1,1,2,2)
