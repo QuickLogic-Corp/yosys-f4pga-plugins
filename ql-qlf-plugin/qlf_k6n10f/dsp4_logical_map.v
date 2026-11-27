@@ -30,7 +30,7 @@
 // Function is defined by behavioral_model/dspv4_sim.v; the leaf interface and
 // wiring by the vpr-rendered <mode name="dsp4_logical">.
 //
-// Rationale, defect history and the INMODE[0]/[4] rejection are in aurora2
+// Rationale and defect history are in aurora2
 // docs/development/DSPV2-to-DSPV4-Synthesis/DSPV4_CODE_CHANGES_PHASE1_3.md.
 
 module QL_DSP4 #(
@@ -106,12 +106,18 @@ module QL_DSP4 #(
     // -- mode decode (constants) --
     // INMODE decode. dsp4_top.v is authoritative; the names matter because the
     // obvious reading of INMODE[2] is wrong:
+    //   [0] A register-path select -- the multiplier / pre-adder A operand is
+    //                            the first A register (A1) instead of the
+    //                            AREG0/AREG1 path; A:B on X ignores it
     //   [1] operand zero-gate -- gates A when PREADDINSEL=0, B when it is 1
     //   [2] D-operand gate    -- NOT a pre-adder enable. The pre-adder is always
     //                            in the datapath; [2] only decides whether D or
     //                            zero is its I0. INMODE[3] with [2] low is a
     //                            legal negate: AD = sat(0 - operand).
     //   [3] pre-adder subtract
+    //   [4] B register-path select, as [0] for B (first B register, B1)
+    localparam A_FIRST_REG = INMODE[0];
+    localparam B_FIRST_REG = INMODE[4];
     localparam D_ACTIVE   = INMODE[2];
     localparam PREADD_SUB = INMODE[3];
     localparam GATE_A     = (!PREADDINSEL) && INMODE[1];
@@ -139,13 +145,11 @@ module QL_DSP4 #(
     localparam Z_CONN = (Z_SEL != 3'b000) && (Z_SEL != 3'b111);
     localparam Z_ACC  = (Z_SEL == 3'b010);         // kept: used by the ACC block
 
-    // Any operand taking the P feedback node. dsp4_top.v:390 has
-    // `p_acc = PREG ? p_reg : alu_result`, so selecting P without a P register
-    // closes a combinational loop through the ALU -- reject it.
-    // Z = 110 (P>>17) reads p_reg just as 010 does, so it is a P-feedback mode
-    // too and needs PREG -- without this the combinational-loop guard below
-    // would let it through. Z = 100 (MACC_EXT) does NOT read P: it is the pure
-    // sign word {64{SIGNCIN}} (ffb 4.2.6 correctness fix).
+    // Any operand taking the P feedback node. The W/X/Z feedback paths always
+    // read p_reg (the internal accumulator register), whatever PREG is -- ffb
+    // clarified this in 5698dfd. PREG only controls what appears on P output.
+    // Z = 110 (P>>17) reads p_reg just as 010 does. Z = 100 (MACC_EXT) does
+    // NOT read P: it is {64{SIGNCIN}} (ffb 4.2.6).
     localparam Z_READS_P = Z_ACC || (Z_SEL == 3'b110);
     localparam USES_P = (W_SEL == 2'b01) || (X_SEL == 2'b10) || Z_READS_P;
 
@@ -158,12 +162,14 @@ module QL_DSP4 #(
     // live carry-out (a borrow), which the fold would also move a cycle
     // early; an adding one's carry is always 0.
     // The carry-in is an ALU input too: a live one would be stored with the
-    // product and reach P a cycle late. So it must be tied to 0.
+    // product and reach P a cycle late. So it must be tied to 0. The carry
+    // register (CARRYINSEL = 100) is always live.
     parameter _TECHMAP_CONSTMSK_CIN_  = 1'b0;
     parameter _TECHMAP_CONSTVAL_CIN_  = 1'bx;
     parameter _TECHMAP_CONSTMSK_CCIN_ = 1'b0;
     parameter _TECHMAP_CONSTVAL_CCIN_ = 1'bx;
-    localparam CARRY_IN_ZERO = (CARRYINSEL == 3'b010)
+    localparam CARRY_IN_ZERO = (CARRYINSEL == 3'b100) ? 1'b0
+        : (CARRYINSEL == 3'b010)
         ? (_TECHMAP_CONSTMSK_CCIN_ == 1'b1 && _TECHMAP_CONSTVAL_CCIN_ === 1'b0)
         : (_TECHMAP_CONSTMSK_CIN_  == 1'b1 && _TECHMAP_CONSTVAL_CIN_  === 1'b0);
     localparam ALU_MULT_ONLY = (X_SEL == 2'b01)                    // X = U
@@ -176,7 +182,42 @@ module QL_DSP4 #(
     // every cycle (dsp4_top.v ties the M banks' enable high) and clears on
     // RSTN, not ACCRSTN. CEP is one pin shared with the carry-out and sign
     // registers, so with COUTREG the fold is off and the real M banks stay.
-    localparam FOLD_MREG = MREG && !PREG && ALU_MULT_ONLY && !COUTREG;
+    //
+    // Clock enables: the tile's 3:5 crossbar gives the five CE pins at most
+    // three nets, a constant included. Only the enables of instantiated banks
+    // count. CEP is never used where the fold applies, so the count of the
+    // bank enables does not depend on the fold.
+    parameter _TECHMAP_BITS_CONNMAP_ = 0;
+    parameter [_TECHMAP_BITS_CONNMAP_-1:0] _TECHMAP_CONNMAP_CEA_ = 0;
+    parameter [_TECHMAP_BITS_CONNMAP_-1:0] _TECHMAP_CONNMAP_CEB_ = 0;
+    parameter [_TECHMAP_BITS_CONNMAP_-1:0] _TECHMAP_CONNMAP_CEC_ = 0;
+    parameter [_TECHMAP_BITS_CONNMAP_-1:0] _TECHMAP_CONNMAP_CED_ = 0;
+    parameter [_TECHMAP_BITS_CONNMAP_-1:0] _TECHMAP_CONNMAP_CEP_ = 0;
+    localparam CEA_USED = AREG1 || A_FIRST_REG || A_COUT_SEL;
+    localparam CEB_USED = BREG1 || B_FIRST_REG || B_COUT_SEL;
+    localparam CEC_USED = CREG;
+    localparam CED_USED = DREG;
+    localparam CEP_USED = COUTREG || PREG || USES_P || (CARRYINSEL == 3'b100);
+    localparam CEB_NEW  = CEB_USED && !(CEA_USED && _TECHMAP_CONNMAP_CEB_ == _TECHMAP_CONNMAP_CEA_);
+    localparam CEC_NEW  = CEC_USED && !(CEA_USED && _TECHMAP_CONNMAP_CEC_ == _TECHMAP_CONNMAP_CEA_)
+                                   && !(CEB_USED && _TECHMAP_CONNMAP_CEC_ == _TECHMAP_CONNMAP_CEB_);
+    localparam CED_NEW  = CED_USED && !(CEA_USED && _TECHMAP_CONNMAP_CED_ == _TECHMAP_CONNMAP_CEA_)
+                                   && !(CEB_USED && _TECHMAP_CONNMAP_CED_ == _TECHMAP_CONNMAP_CEB_)
+                                   && !(CEC_USED && _TECHMAP_CONNMAP_CED_ == _TECHMAP_CONNMAP_CEC_);
+    localparam CEP_NEW  = CEP_USED && !(CEA_USED && _TECHMAP_CONNMAP_CEP_ == _TECHMAP_CONNMAP_CEA_)
+                                   && !(CEB_USED && _TECHMAP_CONNMAP_CEP_ == _TECHMAP_CONNMAP_CEB_)
+                                   && !(CEC_USED && _TECHMAP_CONNMAP_CEP_ == _TECHMAP_CONNMAP_CEC_)
+                                   && !(CED_USED && _TECHMAP_CONNMAP_CEP_ == _TECHMAP_CONNMAP_CED_);
+    localparam [2:0] CE_BANK_NETS = 3'd0 + CEA_USED + CEB_NEW + CEC_NEW + CED_NEW + CEP_NEW;
+    // a used enable is tied to constant 1 (connection id 1)
+    localparam CE_TIED_HIGH = (CEA_USED && _TECHMAP_CONNMAP_CEA_ == 1) || (CEB_USED && _TECHMAP_CONNMAP_CEB_ == 1)
+                           || (CEC_USED && _TECHMAP_CONNMAP_CEC_ == 1) || (CED_USED && _TECHMAP_CONNMAP_CED_ == 1)
+                           || (CEP_USED && _TECHMAP_CONNMAP_CEP_ == 1);
+    // The folded register is enabled by constant 1, which takes a crossbar
+    // net unless a tied-high enable already does. Without room for it the
+    // real M banks stay: they have no enable.
+    localparam FOLD_CE_FITS = (CE_BANK_NETS <= 3'd2) || CE_TIED_HIGH;
+    localparam FOLD_MREG = MREG && !PREG && ALU_MULT_ONLY && !COUTREG && FOLD_CE_FITS;
     localparam USE_MREG  = MREG && !FOLD_MREG;
     localparam USE_PREG  = PREG || FOLD_MREG;
 
@@ -197,16 +238,35 @@ module QL_DSP4 #(
     // Reject rather than mis-map (see the header). Each term is a capability
     // tracked by scripts/dspv4/techmap_coverage.py in aurora2.
     localparam UNSUPPORTED =
-           (CARRYINSEL != 3'b000 && CARRYINSEL != 3'b010)  // only CIN / CCIN
+           (CARRYINSEL != 3'b000 && CARRYINSEL != 3'b010 && CARRYINSEL != 3'b100)  // CIN, CCIN, carry register
+        || (CARRYINSEL == 3'b100 && USES_P)             // carry register with P fed back: no benchmark
         || (W_SEL == 2'b10)                             // reserved W encoding
-        || (Y_SEL == 2'b10)                             // reserved Y encoding
-        || (A_IN_SEL || B_IN_SEL)                       // ACIN / BCIN inputs
-        || (INMODE[0] || INMODE[4])                     // reg-path select, see below
-        // Combinational P feedback. Tests PREG, *not* USE_PREG, so a lone MREG can
-        // never satisfy it: dsp4_top.v has `p_acc = PREG ? p_reg : alu_result`.
-        || (USES_P && !PREG);                           // combinational P feedback
+        || (Y_SEL == 2'b10);                            // reserved Y encoding
 
-    wire _TECHMAP_FAIL_ = UNSUPPORTED;
+    // -- design rules --------------------------------------------------------
+    // QL-001 IP guide (dsp.qmd) and dsp_type4_bw/README.md Sec. 2.0.5 / 2.0.6.
+    // A techmap sees the parameters and the input nets, so the rules on which
+    // COUT bits a design reads are not checked here.
+    localparam SIMD   = (USE_SIMD != 2'b00);
+    localparam MULT_X = (X_SEL == 2'b01);
+    localparam MULT_Y = (Y_SEL == 2'b01);
+    localparam [1:0] WXY_USED = 2'd0 + W_CONN + X_CONN + Y_CONN;
+    // the operand of the pre-adder also drives the other multiplier port; read only by the ADREG rule, which is off
+    localparam CROSS_PATH = MULT_X && ((!PREADDINSEL && !AMULTSEL &&  BMULTSEL)
+                                    || ( PREADDINSEL &&  AMULTSEL && !BMULTSEL));
+
+    localparam DRC_FAIL =
+           (USE_SIMD == 2'b11)                          // no such segmentation
+        || (SIMD && WXY_USED > 2'd1)                    // lanes carry into each other; includes the multiplier
+        || (SIMD && USE_RSS)                            // RSS reads the result as one value
+        || (SIMD && CARRYINSEL != 3'b000)               // CCIN and the carry register enter every lane
+        || (MULT_X != MULT_Y)                           // U and V make a product only together
+        || (Z_SEL == 3'b111)                            // reserved Z encoding
+        || (Z_SEL == 3'b100 && ALUMODE != 2'b00)        // MACC_EXT: the 100-bit MACC only adds
+        // not enforced: || (CROSS_PATH && ADREG)       // AD a clock behind the operand it multiplies
+        || (CE_BANK_NETS > 3'd3);                       // more enable nets than the crossbar carries
+
+    wire _TECHMAP_FAIL_ = UNSUPPORTED || DRC_FAIL;
 
     // Each register bank is ONE wide primitive (QL_DSP4_<bank>_DFFR[E]_<W>),
     // not W bit-sliced 1-bit cells: the dsp4_logical pb_types are num_pb=1 with
@@ -214,38 +274,46 @@ module QL_DSP4 #(
     // cell. R/E/clk are per-bank in hardware, which is why they stay 1 bit here.
 
     // =======================================================================
-    // A input path : optional stage-0 (A1, AREG0) then optional stage-1 (A2,
-    // AREG1). A single register stage uses A2 (matches the areg0/areg1 bypass
-    // muxes in the mode); two stages chain A1 -> A2.
+    // A input path (ql_reg_path). a_in is A, or ACIN with A_IN_SEL. a_r1 (A1)
+    // loads a_in, a_r2 (A2) loads AREG0 ? a_r1 : a_in, and PATH_OUT =
+    // AREG1 ? a_r2 : a_in feeds A:B on X: AREG1 alone is one stage (A2), AREG0
+    // with AREG1 two (A1 -> A2), AREG0 alone a bypass. The multiplier /
+    // pre-adder operand is INMODE[0] ? a_r1 : PATH_OUT, so INMODE[0] gives it
+    // one stage (A1) whatever AREG0 / AREG1. ACOUT taps A1 with A_COUT_SEL.
     // =======================================================================
-    wire [31:0] a_s0, a_path;
+    wire [31:0] a_in = A_IN_SEL ? ACIN : A;
+    wire [31:0] a_r1, a_path;
     generate
-        if (AREG0) begin : g_a1
-            QL_DSP4_A1_DFFRE_32 ff (.D(A), .E(CEA), .R(RSTN), .clk(CLK), .Q(a_s0));
+        if ((AREG0 && AREG1) || A_FIRST_REG || A_COUT_SEL) begin : g_a1
+            QL_DSP4_A1_DFFRE_32 ff (.D(a_in), .E(CEA), .R(RSTN), .clk(CLK), .Q(a_r1));
         end else begin : g_a1_byp
-            assign a_s0 = A;
+            assign a_r1 = a_in;   // unread: nothing taps the first register
         end
         if (AREG1) begin : g_a2
-            QL_DSP4_A2_DFFRE_32 ff (.D(a_s0), .E(CEA), .R(RSTN), .clk(CLK), .Q(a_path));
+            QL_DSP4_A2_DFFRE_32 ff (.D(AREG0 ? a_r1 : a_in), .E(CEA), .R(RSTN), .clk(CLK), .Q(a_path));
         end else begin : g_a2_byp
-            assign a_path = a_s0;
+            assign a_path = a_in;
         end
     endgenerate
 
     // =======================================================================
-    // B input path : optional B1 (BREG0) then optional B2 (BREG1).
+    // B input path, as A: b_in is B, or BCIN with B_IN_SEL. BREG1 selects the
+    // registered path (B2), BREG0 adds B1 in front of it, BREG0 alone is a
+    // bypass, INMODE[4] gives the multiplier / pre-adder operand one stage
+    // (B1), and BCOUT taps B1 with B_COUT_SEL.
     // =======================================================================
-    wire [17:0] b_s0, b_path;
+    wire [17:0] b_in = B_IN_SEL ? BCIN : B;
+    wire [17:0] b_r1, b_path;
     generate
-        if (BREG0) begin : g_b1
-            QL_DSP4_B1_DFFRE_18 ff (.D(B), .E(CEB), .R(RSTN), .clk(CLK), .Q(b_s0));
+        if ((BREG0 && BREG1) || B_FIRST_REG || B_COUT_SEL) begin : g_b1
+            QL_DSP4_B1_DFFRE_18 ff (.D(b_in), .E(CEB), .R(RSTN), .clk(CLK), .Q(b_r1));
         end else begin : g_b1_byp
-            assign b_s0 = B;
+            assign b_r1 = b_in;   // unread: nothing taps the first register
         end
         if (BREG1) begin : g_b2
-            QL_DSP4_B2_DFFRE_18 ff (.D(b_s0), .E(CEB), .R(RSTN), .clk(CLK), .Q(b_path));
+            QL_DSP4_B2_DFFRE_18 ff (.D(BREG0 ? b_r1 : b_in), .E(CEB), .R(RSTN), .clk(CLK), .Q(b_path));
         end else begin : g_b2_byp
-            assign b_path = b_s0;
+            assign b_path = b_in;
         end
     endgenerate
 
@@ -273,12 +341,12 @@ module QL_DSP4 #(
     // the 32-bit port. Non-pre-adder modes multiply A (32b) * B (18b) directly.
     // =======================================================================
     wire [31:0] ad_raw, ad_path;
-    // Operand zero-gates (INMODE[1]). The multiplier and the pre-adder both
-    // take the gated A and the gated B (preadd_path.v: AMULT = AMULTSEL ?
-    // preadd_r_sel : a_n_gate, since ffb #198). Only the A:B concatenation
-    // reads the ungated a_path / b_path.
-    wire [31:0] a_gate = GATE_A ? 32'b0 : a_path;
-    wire [17:0] b_gate = GATE_B ? 18'b0 : b_path;
+    // Operand register taps (INMODE[0] / [4]) and zero-gates (INMODE[1]). The
+    // multiplier and the pre-adder both take the gated A and the gated B
+    // (preadd_path.v: AMULT = AMULTSEL ? preadd_r_sel : a_n_gate, since ffb
+    // #198). Only the A:B concatenation reads a_path / b_path directly.
+    wire [31:0] a_gate = GATE_A ? 32'b0 : (A_FIRST_REG ? a_r1 : a_path);
+    wire [17:0] b_gate = GATE_B ? 18'b0 : (B_FIRST_REG ? b_r1 : b_path);
     // Pre-adder I1: B sign-extended 18 -> 32, or the A path (PREADDINSEL).
     wire [31:0] preadd_i1 = PREADDINSEL ? {{14{b_gate[17]}}, b_gate} : a_gate;
     // Pre-adder I0: D, or zero when INMODE[2] gates it off.
@@ -386,8 +454,14 @@ module QL_DSP4 #(
         end else if (USE_PREG) begin : g_acc
             QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(CEP), .R(ACCRSTN), .clk(CLK), .Q(acc_q));
             assign p_node = acc_q;
+        end else if (USES_P) begin : g_acc_fb
+            // PREG=0 with P feedback: p_reg always exists in silicon and the
+            // ALU's W/X/Z feedback reads it unconditionally (ffb 5698dfd).
+            // P output bypasses the register (p_acc = alu_result when PREG=0).
+            QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(CEP), .R(ACCRSTN), .clk(CLK), .Q(acc_q));
+            assign p_node = alu_out;
         end else begin : g_acc_byp
-            assign acc_q  = 64'b0;   // unused (Z selects ACC.Q only when PREG=1)
+            assign acc_q  = 64'b0;
             assign p_node = alu_out;
         end
     endgenerate
@@ -416,10 +490,11 @@ module QL_DSP4 #(
     wire [63:0] ab_ext   = {{14{a_path[31]}}, a_path, b_path};
 
     // ALU carry-in. CARRYINSEL 000 takes the fabric CIN port, 010 the cascaded
-    // carry from the lower slice; both are real nets. 100 -- this slice's own
-    // registered carry-out -- is rejected: without COUTREG it closes a
-    // combinational loop ALU.CARRYOUT -> ALU.CIN.
-    wire alu_cin = (CARRYINSEL == 3'b010) ? CCIN : CIN;
+    // carry from the lower slice, 100 bit 3 of this slice's carry-out register
+    // (cout_r, below), which loads on CEP whatever COUTREG selects for COUT.
+    wire [3:0] cout_r;
+    wire alu_cin = (CARRYINSEL == 3'b010) ? CCIN :
+                   (CARRYINSEL == 3'b100) ? cout_r[3] : CIN;
 
     wire [63:0] alu_w = (W_SEL == 2'b01) ? acc_q : c_ext;
     wire [63:0] alu_y = (Y_SEL == 2'b01) ? v_ext : c_ext;
@@ -668,8 +743,9 @@ module QL_DSP4 #(
     wire       sco_w;
     generate
         if (COUTREG) begin : g_co
-            QL_DSP4_CO_DFFRE_4 ff     (.D(alu_co),   .E(CEP), .R(RSTN), .clk(CLK), .Q(cout_w));
+            QL_DSP4_CO_DFFRE_4 ff     (.D(alu_co),   .E(CEP), .R(RSTN), .clk(CLK), .Q(cout_r));
             QL_DSP4_SCO_DFFRE  ff_sco (.D(alu_sign), .E(CEP), .R(RSTN), .clk(CLK), .Q(sco_w));
+            assign cout_w = cout_r;
         end else if (FOLD_MREG) begin : g_co_fold
             // The folded M register sits after the ALU, so the ALU's sign comes
             // out a clock early. This register puts it back in step with P. It
@@ -679,6 +755,12 @@ module QL_DSP4 #(
             // COUTREG select (cout_sel), so both take the register leg.
             QL_DSP4_CO_DFFRE_4 ff     (.D(alu_co),   .E(1'b1), .R(RSTN), .clk(CLK), .Q(cout_w));
             QL_DSP4_SCO_DFFRE  ff_sco (.D(alu_sign), .E(1'b1), .R(RSTN), .clk(CLK), .Q(sco_w));
+        end else if (CARRYINSEL == 3'b100) begin : g_co_fb
+            // The carry register feeds only the ALU carry-in (cin_sel); COUT and
+            // the sign leave unregistered (cout_sel).
+            QL_DSP4_CO_DFFRE_4 ff     (.D(alu_co),   .E(CEP), .R(RSTN), .clk(CLK), .Q(cout_r));
+            assign cout_w = alu_co;
+            assign sco_w  = alu_sign;
         end else begin : g_co_byp
             assign cout_w = alu_co;
             assign sco_w  = alu_sign;
@@ -688,9 +770,11 @@ module QL_DSP4 #(
     assign CCOUT    = cout_w[3];     // a tap, not a register
     assign SIGNCOUT = sco_w;         // product sign, per alu.v SIGN_M
 
-    // A/B cascade outputs (registered path taps). Unused in Phase-1 designs
-    // (dropped by `clean`), driven here to match the operating-mode taps.
-    assign ACOUT = a_path;
-    assign BCOUT = b_path;
+    // A/B cascade outputs (reg_path COUT): the first register with
+    // A_COUT_SEL / B_COUT_SEL, else PATH_OUT. Only a register tap reaches the
+    // next slice on the dsp_a_chain / dsp_b_chain direct: a bypassed PATH_OUT
+    // is the A / B net itself, which VPR routes through the fabric instead.
+    assign ACOUT = A_COUT_SEL ? a_r1 : a_path;
+    assign BCOUT = B_COUT_SEL ? b_r1 : b_path;
 
 endmodule
