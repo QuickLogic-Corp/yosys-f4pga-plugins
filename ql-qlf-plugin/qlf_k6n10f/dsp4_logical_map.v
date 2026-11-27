@@ -447,18 +447,26 @@ module QL_DSP4 #(
     wire        alu_sign;   // product sign, SIGN_M (alu.v, ffb 4.2.7)
     wire [63:0] acc_q;
     wire [63:0] p_node;
+    // Synplify resets a register packed into P through RSTN and ties ACCRSTN
+    // high. synth_ql defines SYNPLIFY_P_RESET_ON_RSTN for Synplify netlists so
+    // the accumulator clears on either pin; every other flow keeps ACCRSTN alone.
+`ifdef SYNPLIFY_P_RESET_ON_RSTN
+    wire acc_rstn = RSTN & ACCRSTN;
+`else
+    wire acc_rstn = ACCRSTN;
+`endif
     generate
         if (FOLD_MREG) begin : g_acc_as_m
             QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(1'b1), .R(RSTN), .clk(CLK), .Q(acc_q));
             assign p_node = acc_q;
         end else if (USE_PREG) begin : g_acc
-            QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(CEP), .R(ACCRSTN), .clk(CLK), .Q(acc_q));
+            QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(CEP), .R(acc_rstn), .clk(CLK), .Q(acc_q));
             assign p_node = acc_q;
         end else if (USES_P) begin : g_acc_fb
             // PREG=0 with P feedback: p_reg always exists in silicon and the
             // ALU's W/X/Z feedback reads it unconditionally (ffb 5698dfd).
             // P output bypasses the register (p_acc = alu_result when PREG=0).
-            QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(CEP), .R(ACCRSTN), .clk(CLK), .Q(acc_q));
+            QL_DSP4_ACC_DFFRE_64 ff (.D(alu_out), .E(CEP), .R(acc_rstn), .clk(CLK), .Q(acc_q));
             assign p_node = alu_out;
         end else begin : g_acc_byp
             assign acc_q  = 64'b0;
