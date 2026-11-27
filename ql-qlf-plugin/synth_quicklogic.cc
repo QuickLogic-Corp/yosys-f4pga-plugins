@@ -203,8 +203,14 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("\n");
         log("    -chain_max <number>\n");
         log("        With -dspv4 and without -synplify: the most DSPs one PCIN chain\n");
-        log("        may hold. Passed to ql_dspv4. 0 and 1 mean no chain, and 0 is\n");
-        log("        the default.\n");
+        log("        may hold, counting the cells joined by PCIN>>17 links too.\n");
+        log("        Passed to ql_dspv4. 0 and 1 make no plain PCIN link, and 0 is\n");
+        log("        the default. PCIN>>17 links are still made then, at most two\n");
+        log("        DSPs per chain; -no_pcin17 turns them off.\n");
+        log("\n");
+        log("    -no_pcin17\n");
+        log("        With -dspv4 and without -synplify: disable PCIN>>17 cascade links\n");
+        log("        (MULT_ADD_PCIN17). The pass still runs; no links are made.\n");
         log("\n");
         log("    -no_tdpram\n");
         log("        By default infer TDP BRAM for architectures that support them.\n");
@@ -241,6 +247,7 @@ struct SynthQuickLogicPass : public ScriptPass {
     bool bramecc;
     bool dspv2;
     bool dspv4;
+    bool nopcin17;
     bool notdpram;
     bool noOpt;
     bool synplify;
@@ -278,6 +285,7 @@ struct SynthQuickLogicPass : public ScriptPass {
         lib_path = "+/quicklogic/";
         mince_num = "";
         chain_max = "";
+        nopcin17 = false;
         de = "";
         rel_ip_blif_files.clear();
         owner_table = "";
@@ -362,9 +370,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
     }
 
-    // -chain_max goes on every ql_dspv4 call: the pass resets its own copy
-    // between calls.
+    // -chain_max and -no_pcin17 go on every ql_dspv4 call: the pass resets
+    // its own copies between calls.
     std::string chain_max_option() const { return chain_max.empty() ? "" : " -chain_max " + chain_max; }
+    std::string no_pcin17_option() const { return nopcin17 ? " -no_pcin17" : ""; }
 
     // -chain_max reaches ql_dspv4 only on the native -dspv4 path with DSPs mapped.
     void warn_if_chain_max_ignored() const
@@ -410,6 +419,7 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-bramecc", &bramecc, true},
           {"-dspv2", &dspv2, true},
           {"-dspv4", &dspv4, true},
+          {"-no_pcin17", &nopcin17, true},
           {"-no_tdpram", &notdpram, true},
           {"-synplify", &synplify, true},
           {"-no_iname", &no_iname, true},
@@ -1061,7 +1071,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                             //
                             // Multiplies the DSP cannot hold stay as $mul for the
                             // ordinary soft path, each named by a log_debug (IN-7).
-                            run("ql_dspv4" + chain_max_option());
+                            run("ql_dspv4" + chain_max_option() + no_pcin17_option());
 
                             // Wide multiplies. ql_dspv4 above only takes what
                             // fits one cell's 32x18 ports, so a 48x32 was still
@@ -1109,7 +1119,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                                 run("wreduce");
                             }
                             run("select -clear");
-                            run("ql_dspv4" + chain_max_option());
+                            run("ql_dspv4" + chain_max_option() + no_pcin17_option());
                             // Restore the multiplies mul2dsp declined as too
                             // narrow. Last, so they stay a distinct type across
                             // the run above and MINWIDTH keeps meaning something
