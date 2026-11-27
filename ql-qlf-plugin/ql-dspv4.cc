@@ -4233,8 +4233,41 @@ struct QlDspV4Pass : public Pass {
         return kept;
     }
 
+    // The cells on the longest column that starts at `cell`: through PCIN>>17
+    // candidates, and through the plain chain a cell heads. No loop is left.
+    static int column_length_from(RTLIL::Cell *cell, const std::vector<Pcin17Link> &candidates,
+                                  const dict<RTLIL::Cell *, std::vector<int>> &candidates_out_of, const dict<RTLIL::Cell *, int> &plain_chain_cells,
+                                  dict<RTLIL::Cell *, int> &length_of)
+    {
+        auto known = length_of.find(cell);
+        if (known != length_of.end())
+            return known->second;
+        auto plain = plain_chain_cells.find(cell);
+        int below = plain == plain_chain_cells.end() ? 0 : plain->second - 1;
+        auto out = candidates_out_of.find(cell);
+        if (out != candidates_out_of.end())
+            for (int i : out->second)
+                below = std::max(below, column_length_from(candidates[i].consumer, candidates, candidates_out_of, plain_chain_cells, length_of));
+        return length_of[cell] = below + 1;
+    }
+
+    // Rule 3's order for one source's candidates: the consumer whose column
+    // below is longest first, equal ones by name.
+    static std::vector<int> longest_column_first(std::vector<int> indexes, const std::vector<Pcin17Link> &candidates,
+                                                 const dict<RTLIL::Cell *, std::vector<int>> &candidates_out_of,
+                                                 const dict<RTLIL::Cell *, int> &plain_chain_cells, dict<RTLIL::Cell *, int> &length_of)
+    {
+        auto length = [&](int i) { return column_length_from(candidates[i].consumer, candidates, candidates_out_of, plain_chain_cells, length_of); };
+        std::sort(indexes.begin(), indexes.end(), [&](int a, int b) {
+            if (length(a) != length(b))
+                return length(a) > length(b);
+            return name_sorts_first(candidates[a].consumer, candidates[b].consumer);
+        });
+        return indexes;
+    }
+
     // Down each chain from its head. A source's PCOUT goes to the first of its
-    // candidates that fits the cap, and is claimed only then. A candidate that
+    // candidates in rule 3's order that fits the cap, and is claimed only then. A candidate that
     // would make the column longer than the cap stays on C, and the count
     // starts again below it. A plain chain the consumer already heads is in the
     // same column. No loop is left, so every candidate is below a head.
@@ -4255,6 +4288,7 @@ struct QlDspV4Pass : public Pass {
         for (auto &candidate : candidates)
             if (!consumers.count(candidate.source) && heads.insert(candidate.source).second)
                 to_walk.push_back({candidate.source, 1});
+        dict<RTLIL::Cell *, int> length_of;
         // A consumer reads one source, so each cell is walked once.
         while (!to_walk.empty()) {
             RTLIL::Cell *source = to_walk.back().first;
@@ -4263,7 +4297,7 @@ struct QlDspV4Pass : public Pass {
             auto out = candidates_out_of.find(source);
             if (out == candidates_out_of.end())
                 continue;
-            for (int i : out->second) {
+            for (int i : longest_column_first(out->second, candidates, candidates_out_of, plain_chain_cells, length_of)) {
                 const Pcin17Link &candidate = candidates[i];
                 auto plain = plain_chain_cells.find(candidate.consumer);
                 int plain_cells_below = plain == plain_chain_cells.end() ? 0 : plain->second - 1;

@@ -91,8 +91,8 @@ select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i %co1:+\[PCOUT\] w:* %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i %ci1:+\[PCIN\] w:* %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i %co1:+\[PCOUT\] w:* %i
 
-# ---- The same RTL at -chain_max 3: x fits. The finder meets x first, so x
-# takes p0's PCOUT and z reads p0 on C. -----------------------------------------
+# ---- The same RTL at -chain_max 3: x fits and has the longer chain below it,
+# so x takes p0's PCOUT and z reads p0 on C. -----------------------------------------
 
 full_block _two_readers_at_cap {-chain_max 3}
 stopped_block _two_readers_at_cap {-chain_max 3}
@@ -104,4 +104,30 @@ select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i %co1:+\[P\] w:z %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i %ci1:+\[C\] w:p0 %i
 select -assert-count 0 t:QL_DSP4 r:OPMODE=9'b000110101 %i %co1:+\[PCOUT\] w:* %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i %ci1:+\[PCIN\] w:* %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i %co1:+\[PCOUT\] w:* %i
+
+# ---- Two readers of p0 >>> 17, and z heads a plain link to y. Both fit
+# -chain_max 4, and z has the longer chain below it, so z takes p0's PCOUT
+# although x comes first in the RTL. ---------------------------------------------
+
+full_block _longer_chain_later {-chain_max 4}
+stopped_block _longer_chain_later {-chain_max 4}
+select -assert-count 4 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b001010101 %i %co1:+\[P\] w:z %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b001010101 %i %co1:+\[PCOUT\] w:* %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i %co1:+\[P\] w:x %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i %ci1:+\[C\] w:p0 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i %ci1:+\[PCIN\] w:* %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i %co1:+\[PCOUT\] w:* %i
+
+# ---- Two readers of p0 >>> 17 with chains of one cell each: the first in name
+# order, x, takes p0's PCOUT. ---------------------------------------------------
+
+full_block _equal_chains {-chain_max 4}
+stopped_block _equal_chains {-chain_max 4}
+select -assert-count 3 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b001010101 %i %co1:+\[P\] w:x %i
+select -assert-count 0 t:QL_DSP4 r:OPMODE=9'b001010101 %i %co1:+\[PCOUT\] w:* %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i %co1:+\[P\] w:z %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i %ci1:+\[C\] w:p0 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i %co1:+\[PCOUT\] w:* %i

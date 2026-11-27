@@ -1156,13 +1156,21 @@ qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_pcin17_report,$(casc_pcin1
 qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_pcin17_report,$(casc_pcin17_dir)/_mixed_at_cap_cells.log,1)
 qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_wired,$(casc_pcin17_dir)/_mixed_at_cap_cells.log,2,0)
 # Two readers of one source's P >> 17, one of them heading a plain link. At
-# -chain_max 2 the other reader takes the source's PCOUT; at 3 the first does.
+# -chain_max 2 the other reader takes the source's PCOUT; at 3 x does, the one with the longer chain below it.
 # Either way one PCIN >> 17 link and one plain link.
 qlf_k6n10f-dspv4_casc_pcin17_verify += $(foreach b,_two_readers _two_readers_at_cap,&& test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_pcin17_dir)/$(b).log)" = 1)
 qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_report,$(casc_pcin17_dir)/_two_readers.log,1,1,2,2)
 qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_report,$(casc_pcin17_dir)/_two_readers_at_cap.log,1,1,2,3)
 qlf_k6n10f-dspv4_casc_pcin17_verify += $(foreach b,_two_readers _two_readers_cells _two_readers_at_cap _two_readers_at_cap_cells,&& $(call casc_pcin17_report,$(casc_pcin17_dir)/$(b).log,1))
 qlf_k6n10f-dspv4_casc_pcin17_verify += $(foreach b,_two_readers _two_readers_at_cap,&& $(call casc_wired,$(casc_pcin17_dir)/$(b)_cells.log,2,1))
+# Of two readers of one source's P >> 17, the consumer with the longer chain
+# below it takes the PCOUT, and of equal chains the first in name order.
+qlf_k6n10f-dspv4_casc_pcin17_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_pcin17_dir)/_longer_chain_later.log)" = 1
+qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_report,$(casc_pcin17_dir)/_longer_chain_later.log,1,1,2,4)
+qlf_k6n10f-dspv4_casc_pcin17_verify += $(foreach b,_longer_chain_later _longer_chain_later_cells _equal_chains _equal_chains_cells,&& $(call casc_pcin17_report,$(casc_pcin17_dir)/$(b).log,1))
+qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_wired,$(casc_pcin17_dir)/_longer_chain_later_cells.log,2,1)
+qlf_k6n10f-dspv4_casc_pcin17_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT_ADD_C x1, MULT x1$$' $(casc_pcin17_dir)/_equal_chains.log)" = 1
+qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_wired,$(casc_pcin17_dir)/_equal_chains_cells.log,1,1)
 # No PCIN >> 17 link. -no_pcin17: the upper piece stays MULT_ADD_C and reads C.
 # dspv4_casc_pcin17 is the same RTL, with the link made.
 casc_pcin17_refused_dir = qlf_k6n10f/dspv4_casc_pcin17_refused
