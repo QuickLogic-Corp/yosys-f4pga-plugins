@@ -4889,9 +4889,14 @@ struct QlDsp4ChainReportPass : public Pass {
         log("\n");
         log("    ql_dsp4_chain_report [selection]\n");
         log("\n");
-        log("Report how many QL_DSP4 cells the longest PCOUT -> PCIN chain holds.\n");
-        log("One chain needs one DSP column at least that tall. The count is taken\n");
-        log("from the wires alone, so it covers every producer of QL_DSP4 cells.\n");
+        log("Report how many QL_DSP4 cells the longest PCIN chain holds. A PCIN\n");
+        log("chain follows PCOUT to PCIN wires only. One chain needs one DSP column\n");
+        log("at least that tall. The count is taken from the wires alone, so it\n");
+        log("covers every producer of QL_DSP4 cells.\n");
+        log("\n");
+        log("0 means no cascade link. It is not a column height: a lone DSP that\n");
+        log("is linked to nothing gives 0. The two slices of a ql_dsp4_macc100 are\n");
+        log("joined on CCOUT/CCIN and SIGNCOUT/SIGNCIN, not PCIN, and count as 0.\n");
         log("\n");
         log("Only the module selection is honoured: a selected module is reported\n");
         log("whole, whichever of its cells are selected.\n");
