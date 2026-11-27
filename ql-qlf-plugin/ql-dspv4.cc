@@ -4893,6 +4893,9 @@ struct QlDsp4ChainReportPass : public Pass {
         log("One chain needs one DSP column at least that tall. The count is taken\n");
         log("from the wires alone, so it covers every producer of QL_DSP4 cells.\n");
         log("\n");
+        log("Only the module selection is honoured: a selected module is reported\n");
+        log("whole, whichever of its cells are selected.\n");
+        log("\n");
     }
 
     void execute(std::vector<std::string> args, RTLIL::Design *design) override
