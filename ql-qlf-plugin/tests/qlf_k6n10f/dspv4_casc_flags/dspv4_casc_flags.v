@@ -75,3 +75,24 @@ module chain9 (
     wire signed [39:0] s7 = a7 * b7 + s6;
     assign y = a8 * b8 + s7;
 endmodule
+
+// Grouping 1, (a*b + prev) + k, for two pass calls in a row. In declined_a the
+// sum s is one bit short of two products, so the fold of the $add is declined;
+// in declined_b it is wide enough.
+module declined_a (
+    input  signed [17:0] a0, b0, a1, b1, k,
+    output signed [37:0] y
+);
+    wire signed [35:0] prev = a0 * b0;
+    wire signed [35:0] s = a1 * b1 + prev;
+    assign y = s + k;
+endmodule
+
+module declined_b (
+    input  signed [17:0] a0, b0, a1, b1, k,
+    output signed [37:0] y
+);
+    wire signed [35:0] prev = a0 * b0;
+    wire signed [36:0] s = a1 * b1 + prev;
+    assign y = s + k;
+endmodule

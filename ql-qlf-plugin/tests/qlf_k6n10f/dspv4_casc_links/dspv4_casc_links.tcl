@@ -125,6 +125,18 @@ select -assert-count 3 t:QL_DSP4
 stopped_block _fanout_longest
 select -assert-count 4 t:QL_DSP4
 
+# The longer chain's first stage (the a1 cell) keeps its register in CREG and
+# reads the source on C. The links are a0 into a2, and a1 into a3.
+full_block _fanout_filtered
+stopped_block _fanout_filtered
+select -assert-count 4 t:QL_DSP4
+select -assert-count 4 t:QL_DSP4 r:PREG=1'b0 %i
+select -assert-count 1 t:QL_DSP4 r:CREG=1'b1 %i
+select -assert-count 1 i:a1 %co1:+\[A\] t:QL_DSP4 %i r:CREG=1'b1 %i w:prev %co1:+\[C\] %i
+select -assert-count 1 i:a0 %co1:+\[A\] t:QL_DSP4 %i %co1:+\[PCOUT\] %co1:+\[PCIN\] i:a2 %co1:+\[A\] t:QL_DSP4 %i %i
+select -assert-count 1 i:a1 %co1:+\[A\] t:QL_DSP4 %i %co1:+\[PCOUT\] %co1:+\[PCIN\] i:a3 %co1:+\[A\] t:QL_DSP4 %i %i
+select -assert-count 0 t:\$dff t:\$dffe t:\$sdff t:\$sdffe %u
+
 # The head's P keeps driving its port beside PCOUT.
 stopped_block _head_fanout
 select -assert-count 2 t:QL_DSP4

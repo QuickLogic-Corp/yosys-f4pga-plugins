@@ -94,6 +94,8 @@ TESTS = \
 	qlf_k6n10f/dspv4_casc_chain_max_refused \
 	qlf_k6n10f/dspv4_casc_links \
 	qlf_k6n10f/dspv4_casc_refused \
+	qlf_k6n10f/dspv4_casc_addend \
+	qlf_k6n10f/dspv4_casc_addend_refused \
 	qlf_k6n10f/dspv4_casc_loop_no_register \
 	qlf_k6n10f/dsp_madd \
 	qlf_k6n10f/ioff \
@@ -360,6 +362,14 @@ qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_ranked,$(casc_flags_dir)/_t
 # three stages, the second links none.
 qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD x3, MULT_ADD_C x1$$' $(casc_flags_dir)/_reset_call1.log
 qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD_C x4$$' $(casc_flags_dir)/_reset_call2.log
+# The declined addend groupings do not carry over either: the first call
+# declines one, the second folds its $add and lists nothing.
+qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD x1, MULT x1$$' $(casc_flags_dir)/_declined_reset_call1.log
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_report,$(casc_flags_dir)/_declined_reset_call1.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_declined,$(casc_flags_dir)/_declined_reset_call1.log,1,addend sum wire is too narrow)
+qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT x1$$' $(casc_flags_dir)/_declined_reset_call2.log
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_report,$(casc_flags_dir)/_declined_reset_call2.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_no_declined,$(casc_flags_dir)/_declined_reset_call2.log)
 # -chain_max 3 still runs the cascade step: three stages are linked, in one chain.
 qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x2$$' $(casc_flags_dir)/_n3.log
 qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_report,$(casc_flags_dir)/_n3.log,2,1,3,3)
@@ -462,6 +472,21 @@ qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD_C x2,
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_fanout_longest_cells.log,3,1)
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_reason,$(casc_links_dir)/_fanout_longest_cells.log,$(casc_shorter),1)
 qlf_k6n10f-dspv4_casc_links_verify += && test "$$($(call casc_cells,$(casc_links_dir)/_fanout_longest_cells.log) | awk '$$2 + $$3 == 2' | wc -l)" = 1
+# The longer chain's link is registered and its register cannot move: rule 1
+# refuses that link before rule 3 picks, so the source links to the other stage.
+qlf_k6n10f-dspv4_casc_links_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_C x2, MULT_ADD x2$$' $(casc_links_dir)/_fanout_filtered.log)" = 1
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x2$$' $(casc_links_dir)/_fanout_filtered_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_fanout_filtered_cells.log,3,1)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_reason,$(casc_links_dir)/_fanout_filtered_cells.log,$(casc_registered),1)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_not_moved,$(casc_links_dir)/_fanout_filtered_cells.log,$(casc_other_reader),1)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_moved,$(casc_links_dir)/_fanout_filtered_cells.log,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_fanout_filtered_cells.log,2,2)
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& $(call casc_report,$(casc_links_dir)/$(l).log,2,2,2,12))
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& grep -q '^ql_dspv4: link registers not moved:$$' $(casc_links_dir)/$(l).log)
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& $(call casc_ranked,$(casc_links_dir)/$(l).log,1,$(casc_other_reader)))
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& $(call casc_ranked,$(casc_links_dir)/$(l).log,1,$(casc_registered)))
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& ! grep -q '$(casc_shorter)' $(casc_links_dir)/$(l).log)
+qlf_k6n10f-dspv4_casc_links_verify += $(foreach l,_fanout_filtered _fanout_filtered_cells,&& ! grep -q 'link register(s) moved' $(casc_links_dir)/$(l).log)
 # The head's P keeps its port; PCOUT is a wire of its own.
 qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_links_dir)/_head_fanout_cells.log
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_head_fanout_cells.log,1,0)
@@ -901,6 +926,182 @@ qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_acc_tail.log,0,0)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_B_MULT_A_C x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_preadd_b.log
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_preadd_b.log,0,0)
+# A per-stage addend. The groupings declined, a list -verbose prints after the
+# refused one: the log and its one entry, or no such list at all.
+casc_declined_list = awk '/^ql_dspv4: addend groupings declined:$$/{on=1; next} /^ql_dspv4: /{on=0} /^ +[0-9]+ x  /{if (on) print}' $(1) | sed 's/^ *//'
+casc_declined = test "$$($(call casc_declined_list,$(1)))" = '$(2) x  $(3)'
+casc_no_declined = ! grep -q 'addend groupings declined' $(1)
+casc_other_adder_reader = addend adder has another reader
+casc_addend_unsigned = link is read unsigned in addend grouping
+casc_addend_narrow = addend sum wire is too narrow
+casc_addend_wide = addend result is wider than the P port
+casc_addend_registered = consumer registered the sum (PREG), and C is added before the register
+casc_addend_kept = addend sum wire is marked keep
+# The OPMODE of each cell that reads PCIN, in text order of the cell's name.
+casc_consumer_opmodes = awk '/^  cell /{if(n!="")print n, i, o; n=$$3; i=0} /connect .PCIN /{i=1} /parameter .OPMODE /{o=$$3} END{if(n!="")print n, i, o}' $(1) | awk '$$2 == 1' | LC_ALL=C sort | awk '{printf "%s ", $$3}'
+casc_addend_dir = qlf_k6n10f/dspv4_casc_addend
+# Grouping 2: every $add goes and every consumer takes MULT_ADD_C_CASC.
+qlf_k6n10f-dspv4_casc_addend_verify = grep -q 'modes inferred: MULT_ADD_C_CASC x2, MULT_ADD_C x1$$' $(casc_addend_dir)/_addend.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend.log,2,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend.log,2,3)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend.log,2,1,3,12)
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT_ADD_C x1$$' $(casc_addend_dir)/_addend_g2_swapped.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g2_swapped.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g2_swapped.log,1,2)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g2_swapped.log,1,1,2,12)
+# Grouping 1 written left to right: the tail's $add stays, the others go as grouping 2.
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x2, MULT_ADD_C x1, MULT_ADD x1$$' $(casc_addend_dir)/_addend_grouped.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_grouped.log,3,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_grouped.log,3,3)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_grouped.log,3,1,4,12)
+qlf_k6n10f-dspv4_casc_addend_verify += && test "$$(grep -c 'grouping 1 skipped' $(casc_addend_dir)/_addend_grouped.log)" = 1
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT_ADD_C x1$$' $(casc_addend_dir)/_addend_creg.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_creg.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_creg.log,1,2)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_creg.log,1,1,2,12)
+# One $add in both groupings: grouping 2 takes it, and the skip is not counted.
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT_ADD x1, MULT x1$$' $(casc_addend_dir)/_addend_both.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_both.log,2,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_both.log,2,1)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_both.log,2,1,3,12)
+qlf_k6n10f-dspv4_casc_addend_verify += && test "$$(grep -c 'grouping 1 skipped' $(casc_addend_dir)/_addend_both.log)" = 1
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_no_declined,$(casc_addend_dir)/_addend_both.log)
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT x1$$' $(casc_addend_dir)/_double_prev.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_double_prev.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_double_prev.log,1,1)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_double_prev.log,1,1,2,12)
+# A $add that does not read the whole result from bit 0 is no grouping 1, and
+# is not counted.
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach b,_addend_g1_shifted _addend_g1_in_zero_pad,&& grep -q 'modes inferred: MULT_ADD x1, MULT x1$$' $(casc_addend_dir)/$(b).log)
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach b,_addend_g1_shifted _addend_g1_in_zero_pad,&& $(call casc_found,$(casc_addend_dir)/$(b).log,1,0))
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach b,_addend_g1_shifted _addend_g1_in_zero_pad,&& $(call casc_report,$(casc_addend_dir)/$(b).log,1,1,2,12))
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach b,_addend_g1_shifted _addend_g1_in_zero_pad,&& test "$$(grep -c 'not grouping 1' $(casc_addend_dir)/$(b).log)" = 1)
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach b,_addend_g1_shifted _addend_g1_in_zero_pad,&& $(call casc_no_declined,$(casc_addend_dir)/$(b).log))
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT x1$$' $(casc_addend_dir)/_addend_g1_cap.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g1_cap.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g1_cap.log,1,1)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g1_cap.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_no_declined,$(casc_addend_dir)/_addend_g1_cap.log)
+# Two cells' results on one $add: the consumer first in name order takes it,
+# in both line orders. The same RTL through the whole flow gives one BLIF.
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2 run3,&& grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD_C_CASC x1, MULT_ADD x1$$' $(casc_addend_dir)/_addend_g1_tie_$(r).log)
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2 run3,&& $(call casc_found,$(casc_addend_dir)/_addend_g1_tie_$(r).log,2,0))
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2 run3,&& $(call casc_wired,$(casc_addend_dir)/_addend_g1_tie_$(r).log,2,3))
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2 run3,&& $(call casc_report,$(casc_addend_dir)/_addend_g1_tie_$(r).log,2,2,2,12))
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2 run3,&& test "$$($(call casc_consumer_opmodes,$(casc_addend_dir)/_addend_g1_tie_$(r).log))" = "9'110010101 9'000010101 ")
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,flow1 flow2,&& test "$$(grep -c 'modes inferred: MULT_ADD_C x2, MULT_ADD_C_CASC x1, MULT_ADD x1$$' $(casc_addend_dir)/_addend_g1_tie_$(r).log)" = 1)
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,flow1 flow2,&& $(call casc_report,$(casc_addend_dir)/_addend_g1_tie_$(r).log,2,2,2,12))
+qlf_k6n10f-dspv4_casc_addend_verify += && cmp $(casc_addend_dir)/_addend_g1_tie_flow1.blif $(casc_addend_dir)/_addend_g1_tie_flow2.blif
+# One of the two cells' results also leaves on a port: that cell declines, and
+# the other takes the $add, in both line orders.
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD_C_CASC x1, MULT_ADD x1$$' $(casc_addend_dir)/_addend_g1_tie_partial_$(r).log)
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& $(call casc_found,$(casc_addend_dir)/_addend_g1_tie_partial_$(r).log,2,0))
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& $(call casc_wired,$(casc_addend_dir)/_addend_g1_tie_partial_$(r).log,2,3))
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& $(call casc_report,$(casc_addend_dir)/_addend_g1_tie_partial_$(r).log,2,2,2,12))
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& $(call casc_declined,$(casc_addend_dir)/_addend_g1_tie_partial_$(r).log,1,$(casc_other_adder_reader)))
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& ! grep -q 'cascade links refused' $(casc_addend_dir)/_addend_g1_tie_partial_$(r).log)
+# Grouping 2 on a consumer with PREG: the $add goes.
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT_ADD_C x1$$' $(casc_addend_dir)/_addend_g2_preg.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g2_preg.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g2_preg.log,1,2)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g2_preg.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_no_declined,$(casc_addend_dir)/_addend_g2_preg.log)
+# A signed link and an unsigned k, padded to a signed value: the $add goes and
+# k moves to C, in both groupings.
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT_ADD_C x1$$' $(casc_addend_dir)/_addend_g2_k_padded.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g2_k_padded.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g2_k_padded.log,1,2)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g2_k_padded.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT x1$$' $(casc_addend_dir)/_addend_g1_k_padded.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g1_k_padded.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g1_k_padded.log,1,1)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g1_k_padded.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach b,_addend_g2_k_padded _addend_g1_k_padded,&& $(call casc_no_declined,$(casc_addend_dir)/$(b).log))
+# No block here refuses a link.
+qlf_k6n10f-dspv4_casc_addend_verify += && ! grep -q 'cascade link' $(casc_addend_dir)/*.log
+casc_addend_refused_dir = qlf_k6n10f/dspv4_casc_addend_refused
+$(casc_addend_refused_dir)/ok: $(wildcard $(casc_addend_refused_dir)/*.v)
+# Grouping 1 with a registered link that cannot move: rule 1 refuses the link,
+# so the $add stays with it.
+qlf_k6n10f-dspv4_casc_addend_refused_verify = grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_addend_refused_dir)/_addend_reglink.log
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_found,$(casc_addend_refused_dir)/_addend_reglink.log,2,1)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_reason,$(casc_addend_refused_dir)/_addend_reglink.log,$(casc_registered),1)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_wired,$(casc_addend_refused_dir)/_addend_reglink.log,1,1)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_not_moved,$(casc_addend_refused_dir)/_addend_reglink.log,$(casc_other_reader),1)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_moved,$(casc_addend_refused_dir)/_addend_reglink.log,0)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && test "$$(grep -c 'grouping 1, .* folds' $(casc_addend_refused_dir)/_addend_reglink.log)" = 1
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_report,$(casc_addend_refused_dir)/_addend_reglink.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_ranked,$(casc_addend_refused_dir)/_addend_reglink.log,1,$(casc_other_reader))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_ranked,$(casc_addend_refused_dir)/_addend_reglink.log,1,$(casc_registered))
+# Grouping 2 with the register on t: the $add is the reader of the source's P.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_addend_refused_dir)/_reglink_grp2_creg.log
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_found,$(casc_addend_refused_dir)/_reglink_grp2_creg.log,1,1)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_reason,$(casc_addend_refused_dir)/_reglink_grp2_creg.log,$(casc_registered),1)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_not_moved,$(casc_addend_refused_dir)/_reglink_grp2_creg.log,$(casc_other_reader),1)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_moved,$(casc_addend_refused_dir)/_reglink_grp2_creg.log,0)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_report,$(casc_addend_refused_dir)/_reglink_grp2_creg.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_ranked,$(casc_addend_refused_dir)/_reglink_grp2_creg.log,1,$(casc_other_reader))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_ranked,$(casc_addend_refused_dir)/_reglink_grp2_creg.log,1,$(casc_registered))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += $(foreach b,_addend_reglink _reglink_grp2_creg,&& ! grep -q 'link register(s) moved' $(casc_addend_refused_dir)/$(b).log)
+# Grouping 2: a failed check refuses the link, with its reason, on the stopped
+# run and in the whole flow.
+casc_g2_refusal = grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_addend_refused_dir)/$(1).log \
+  && $(call casc_found,$(casc_addend_refused_dir)/$(1).log,$(2),1) \
+  && $(call casc_reason,$(casc_addend_refused_dir)/$(1).log,$(3),1) \
+  && $(call casc_report,$(casc_addend_refused_dir)/$(1).log,0,0,0,12) \
+  && $(call casc_ranked,$(casc_addend_refused_dir)/$(1).log,1,$(3)) \
+  && test "$$(grep -c 'modes inferred: MULT_ADD_C x2$$' $(casc_addend_refused_dir)/$(1)_flow.log)" = 1 \
+  && $(call casc_report,$(casc_addend_refused_dir)/$(1)_flow.log,0,0,0,12) \
+  && $(call casc_ranked,$(casc_addend_refused_dir)/$(1)_flow.log,1,$(3))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_shared,0,$(casc_other_adder_reader))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_narrow,1,$(casc_addend_narrow))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_link_narrow,1,$(casc_too_narrow))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_unsigned,0,$(casc_addend_unsigned))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_pad,0,$(casc_unsigned))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_unsigned_in_pad,0,$(casc_unsigned))
+# A signed link and an unsigned k: the $add is unsigned, so the link would be
+# zero-extended. Grouping 2 refuses it by the addend guard, and by the finder's
+# zero-extension check on t when t has constant zero bits above the sum.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_k_unsigned,0,$(casc_addend_unsigned))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_k_unsigned_wide,0,$(casc_unsigned))
+# Grouping 2 read shifted, or with another cell's bits above the wire: no
+# attempt, so no candidate and no reason.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += $(foreach b,_addend_g2_slice _addend_g2_in_slice,&& grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_addend_refused_dir)/$(b).log)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += $(foreach b,_addend_g2_in_multicell _addend_g2_multicell,&& grep -q 'modes inferred: MULT_ADD_C x2, MULT x1$$' $(casc_addend_refused_dir)/$(b).log)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += $(foreach b,_addend_g2_slice _addend_g2_in_slice _addend_g2_in_multicell _addend_g2_multicell,&& $(call casc_found,$(casc_addend_refused_dir)/$(b).log,0,0))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += $(foreach b,_addend_g2_slice _addend_g2_in_slice _addend_g2_in_multicell _addend_g2_multicell,&& $(call casc_report,$(casc_addend_refused_dir)/$(b).log,0,0,0,12))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += $(foreach b,_addend_g2_slice _addend_g2_in_slice _addend_g2_in_multicell _addend_g2_multicell,&& ! grep -q 'cascade links refused' $(casc_addend_refused_dir)/$(b).log)
+# Grouping 1: a failed check declines the fold; the plain link is made, and
+# the reason is in the declined list, not the refused one.
+casc_g1_decline = grep -q 'modes inferred: MULT_ADD x1, MULT x1$$' $(casc_addend_refused_dir)/$(1).log \
+  && $(call casc_found,$(casc_addend_refused_dir)/$(1).log,1,0) \
+  && $(call casc_wired,$(casc_addend_refused_dir)/$(1).log,1,0) \
+  && $(call casc_report,$(casc_addend_refused_dir)/$(1).log,1,1,2,12) \
+  && $(call casc_declined,$(casc_addend_refused_dir)/$(1).log,1,$(2)) \
+  && ! grep -q 'cascade links refused' $(casc_addend_refused_dir)/$(1).log
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_narrow,$(casc_addend_narrow))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_shared,$(casc_other_adder_reader))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_unsigned,$(casc_addend_unsigned))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_wide_y,$(casc_addend_wide))
+# Grouping 1 on a consumer with PREG: k would be registered. The plain link stays.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_preg,$(casc_addend_registered))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'grouping 1, .* folds' $(casc_addend_refused_dir)/_addend_g1_preg.log
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_k_unsigned,$(casc_addend_unsigned))
+# Grouping 1 below an accumulator: s must hold the whole 50-bit port, so a
+# 40-bit s declines the fold in rule 1's walk, after the finder took it.
+casc_full_port_log = $(casc_addend_refused_dir)/_addend_g1_full_port.log
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && grep -q 'modes inferred: MULT_ADD x1, MULT_ACC x1$$' $(casc_full_port_log)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_found,$(casc_full_port_log),1,0)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_wired,$(casc_full_port_log),1,0)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_report,$(casc_full_port_log),1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && test "$$(grep -c 'grouping 1, .* folds' $(casc_full_port_log))" = 1
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_declined,$(casc_full_port_log),1,$(casc_addend_narrow))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'cascade links refused' $(casc_full_port_log)
+# A wire marked keep on the $add's sum (grouping 2) or on the consumer's result
+# (grouping 1) stops the fold: the $add stays and drives the kept wire.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_kept,0,$(casc_addend_kept))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_kept,$(casc_addend_kept))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'grouping 1, .* folds' $(casc_addend_refused_dir)/_addend_g1_kept.log
 
 # A loop with no register: the link into the cell first in name order is
 # dropped, once, and the rest links. casc_loop_no_register takes a block, its

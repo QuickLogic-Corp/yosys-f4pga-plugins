@@ -348,6 +348,17 @@ static const char *const CASCADE_NO_FORMULA = "source mode has no P range formul
 static const char *const CASCADE_LOOP = "links form a loop";
 static const char *const CASCADE_SHORTER = "source already feeds a chain at least as long";
 static const char *const CASCADE_TOO_LONG = "chain would exceed the device limit";
+static const char *const ADDEND_OTHER_READER = "addend adder has another reader";
+static const char *const ADDEND_READ_UNSIGNED = "link is read unsigned in addend grouping";
+static const char *const ADDEND_RESULT_TOO_WIDE = "addend result is wider than the P port";
+static const char *const ADDEND_WIRE_TOO_NARROW = "addend sum wire is too narrow";
+static const char *const ADDEND_KEPT = "addend sum wire is marked keep";
+static const char *const ADDEND_SUM_REGISTERED = "consumer registered the sum (PREG), and C is added before the register";
+
+// A per-stage addend k beside a link: the one mode that can take one, and the
+// mode that reads PCIN and C together.
+static const char *const ADDEND_CONSUMER_MODE = "MULT_ADD_C";
+static const char *const ADDEND_LINK_MODE = "MULT_ADD_C_CASC";
 
 // The two numbers a mode multiplies. The pre-adder sums D with port A or B.
 enum class ProductOperands { A_TIMES_B, PREADD_A_TIMES_B, PREADD_B_TIMES_A, PREADD_A_TIMES_A, PREADD_B_TIMES_B };
@@ -432,14 +443,123 @@ struct CascadeLink {
     std::string consumer_mode;
     // Width of a per-stage addend on the link; 0 means none.
     int addend_bits = 0;
+    // 0: no addend. 1: (a*b + prev) + k, a fabric $add reads the consumer's P.
+    // 2: a*b + (prev + k), a fabric $add drives the consumer's C.
+    int grouping = 0;
+    // That $add, which the rewrite removes.
+    RTLIL::Cell *addend_adder = nullptr;
+    // Width of the RTL wire the rewrite removes: a*b + prev in grouping 1,
+    // prev + k in grouping 2.
+    int removed_bits = 0;
 };
 
-// One thing that reads a source's P: a cell's port, or a module output (cell
-// is nullptr, port is the output wire's name).
-struct PReader {
+// One thing that reads a cell's output: a cell's port, or a module output
+// (cell is nullptr, port is the output wire's name).
+struct Reader {
     RTLIL::Cell *cell;
     RTLIL::IdString port;
 };
+
+// Who reads each bit and which bits are marked keep, as of when it was built.
+// Build a new one after anything that changes a cell's ports.
+struct ModuleNets {
+    struct Entry {
+        int order; // the reader's place in the module's cell, then output order
+        Reader reader;
+    };
+    dict<SigBit, std::vector<Entry>> readers_at;
+    pool<SigBit> kept_bits;
+
+    ModuleNets(RTLIL::Module *module, SigMap &sigmap)
+    {
+        int order = 0;
+        for (auto cell : module->cells())
+            for (auto &conn : cell->connections()) {
+                note_reader(sigmap(conn.second), {cell, conn.first}, order);
+                order++;
+            }
+        for (auto wire : module->wires()) {
+            if (wire->port_output) {
+                note_reader(sigmap(wire), {nullptr, wire->name}, order);
+                order++;
+            }
+            if (wire->get_bool_attribute(ID::keep))
+                for (auto bit : sigmap(wire))
+                    if (bit.wire != nullptr)
+                        kept_bits.insert(bit);
+        }
+    }
+
+    // True when a wire marked keep holds a bit of the net.
+    bool net_is_kept(SigMap &sigmap, const SigSpec &net) const
+    {
+        for (auto bit : sigmap(net))
+            if (bit.wire != nullptr && kept_bits.count(bit))
+                return true;
+        return false;
+    }
+
+    // True when a wire marked keep holds a bit of the source's P: that wire
+    // must keep the sum before the register.
+    bool p_is_kept(SigMap &sigmap, RTLIL::Cell *source) const { return net_is_kept(sigmap, source->getPort(ID(P))); }
+
+    // Everything that reads a cell's output port: each cell port that holds one
+    // of its bits, and each module output that does. The port itself is not.
+    std::vector<Reader> readers_of(SigMap &sigmap, RTLIL::Cell *driver, RTLIL::IdString output) const
+    {
+        std::vector<const Entry *> found;
+        for (auto bit : sigmap(driver->getPort(output))) {
+            auto at_bit = readers_at.find(bit);
+            if (bit.wire == nullptr || at_bit == readers_at.end())
+                continue;
+            for (auto &entry : at_bit->second)
+                if (!(entry.reader.cell == driver && entry.reader.port == output))
+                    found.push_back(&entry);
+        }
+        std::sort(found.begin(), found.end(), [](const Entry *x, const Entry *y) { return x->order < y->order; });
+        std::vector<Reader> readers;
+        int last_order = -1;
+        for (auto entry : found)
+            if (entry->order != last_order) {
+                readers.push_back(entry->reader);
+                last_order = entry->order;
+            }
+        return readers;
+    }
+
+  private:
+    void note_reader(const SigSpec &bits, Reader reader, int order)
+    {
+        for (auto bit : bits)
+            if (bit.wire != nullptr)
+                readers_at[bit].push_back({order, reader});
+    }
+};
+
+// How `read` holds `wire`: `bits` low bits are `wire`'s, bit 0 on bit 0, and
+// above them come copies of the top one, constant zeros, or something else.
+enum class Extension { SIGN, ZERO, OTHER };
+struct AlignedRead {
+    int bits;
+    Extension extension;
+};
+
+static AlignedRead aligned_read(const SigSpec &read, const SigSpec &wire)
+{
+    int aligned = 0;
+    while (aligned < GetSize(read) && aligned < GetSize(wire) && read[aligned] == wire[aligned])
+        aligned++;
+    if (aligned == 0)
+        return {0, Extension::OTHER};
+    bool sign_extended = true, zero_extended = true;
+    for (int i = aligned; i < GetSize(read); i++) {
+        sign_extended = sign_extended && read[i] == read[aligned - 1];
+        zero_extended = zero_extended && read[i] == State::S0;
+    }
+    if (sign_extended)
+        return {aligned, Extension::SIGN};
+    return {aligned, zero_extended ? Extension::ZERO : Extension::OTHER};
+}
 
 struct QlDspV4Pass : public Pass {
 
@@ -492,6 +612,7 @@ struct QlDspV4Pass : public Pass {
         mode_name_of.clear();
         finder_refused.clear();
         cascade_stall.clear();
+        grouping_declined.clear();
         registers_moved = 0;
         register_not_moved.clear();
         links_made = 0;
@@ -628,7 +749,7 @@ struct QlDspV4Pass : public Pass {
                 chains_made += GetSize(heads_of(links));
                 longest_chain = std::max(longest_chain, longest_chain_in(links));
                 for (const CascadeLink &link : links)
-                    make_link(module, link);
+                    make_link(module, sigmap, link);
             }
 
             // IN-7 for the P bank: name every result register that ended up in
@@ -759,6 +880,10 @@ struct QlDspV4Pass : public Pass {
             log("ql_dspv4: cascade links refused:\n");
             log_ranked(cascade_stall);
         }
+        if (verbose && !grouping_declined.empty()) {
+            log("ql_dspv4: addend groupings declined:\n");
+            log_ranked(grouping_declined);
+        }
     }
 
     // Larger count first; of equal counts, the reason that sorts later first.
@@ -806,9 +931,11 @@ struct QlDspV4Pass : public Pass {
         return st.add_mul_port == ID(B) ? "MULT_SUB_C" : "MULT_RSUB_C";
     }
 
-    // Every C operand of this module that is another emitted cell's P, bit 0 on
-    // bit 0 and sign-extended above. A zero-extended read goes to
-    // finder_refused. Any other read of a P is not a link and is not recorded.
+    // Every C operand of this module that reads another emitted cell's P, bit 0
+    // on bit 0 and sign-extended above: directly, or through a fabric $add that
+    // also adds k (grouping 2). A zero-extended read goes to finder_refused. Any
+    // other read of a P is not a link and is not recorded. Then a $add on a
+    // plain link's consumer's P is tried as grouping 1.
     std::vector<CascadeLink> find_links(RTLIL::Module *module, SigMap &sigmap)
     {
         std::vector<RTLIL::Cell *> cells;
@@ -822,43 +949,63 @@ struct QlDspV4Pass : public Pass {
             if (bit.wire != nullptr)
                 driver_of_bit_0[bit] = cell;
         }
+        dict<SigBit, RTLIL::Cell *> adder_of_bit_0;
+        for (auto cell : module->cells())
+            if (is_foldable_add(cell)) {
+                SigBit bit = sigmap(cell->getPort(ID::Y))[0];
+                if (bit.wire != nullptr)
+                    adder_of_bit_0[bit] = cell;
+            }
 
         std::vector<CascadeLink> links;
+        pool<RTLIL::Cell *> claimed_adders;
+        const ModuleNets nets(module, sigmap);
         for (auto consumer : cells) {
             const std::string &mode = mode_name_of.at(consumer);
             if (!CASCADE_WORD.count(mode) || !consumer->hasPort(ID(C)))
                 continue;
             SigSpec c = sigmap(consumer->getPort(ID(C)));
             auto driver = driver_of_bit_0.find(c[0]);
-            if (driver == driver_of_bit_0.end())
+            if (driver != driver_of_bit_0.end()) {
+                find_plain_link(module, sigmap, consumer, driver->second, c, links);
                 continue;
-            RTLIL::Cell *source = driver->second;
-            SigSpec p = sigmap(source->getPort(ID(P)));
-
-            int aligned = 0;
-            while (aligned < GetSize(c) && aligned < GetSize(p) && c[aligned] == p[aligned])
-                aligned++;
-            bool sign_extended = true, zero_extended = true;
-            for (int i = aligned; i < GetSize(c); i++) {
-                sign_extended = sign_extended && c[i] == c[aligned - 1];
-                zero_extended = zero_extended && c[i] == State::S0;
             }
-
-            CascadeLink link;
-            link.source = source;
-            link.consumer = consumer;
-            link.sum_bits = aligned;
-            link.consumer_mode = mode;
-            if (sign_extended) {
-                if (verbose)
-                    log("  cascade candidate: %s.%s -> %s (%d-bit sum)\n", log_id(module), log_id(source), log_id(consumer), aligned);
-                links.push_back(link);
-            } else if (zero_extended) {
-                log_refused_link(link, CASCADE_READ_UNSIGNED);
-                finder_refused.push_back({link, CASCADE_READ_UNSIGNED});
-            }
+            auto adder = adder_of_bit_0.find(c[0]);
+            if (adder != adder_of_bit_0.end() && mode == ADDEND_CONSUMER_MODE)
+                find_grouping_2(module, sigmap, nets, consumer, adder->second, c, driver_of_bit_0, links, claimed_adders);
         }
+        find_grouping_1(sigmap, nets, links, claimed_adders);
         return links;
+    }
+
+    // A C that reads the source's P itself.
+    void find_plain_link(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *consumer, RTLIL::Cell *source, const SigSpec &c,
+                         std::vector<CascadeLink> &links)
+    {
+        AlignedRead read = aligned_read(c, sigmap(source->getPort(ID(P))));
+        CascadeLink link;
+        link.source = source;
+        link.consumer = consumer;
+        link.sum_bits = read.bits;
+        link.consumer_mode = mode_name_of.at(consumer);
+        if (read.extension == Extension::SIGN) {
+            if (verbose)
+                log("  cascade candidate: %s.%s -> %s (%d-bit sum)\n", log_id(module), log_id(source), log_id(consumer), read.bits);
+            links.push_back(link);
+        } else if (read.extension == Extension::ZERO)
+            refuse_in_finder(link, CASCADE_READ_UNSIGNED);
+    }
+
+    // An $add the addend folds may index bit 0 of: A, B and Y all have bits.
+    static bool is_foldable_add(RTLIL::Cell *cell)
+    {
+        return cell->type == ID($add) && !cell->getPort(ID::A).empty() && !cell->getPort(ID::B).empty() && !cell->getPort(ID::Y).empty();
+    }
+
+    void refuse_in_finder(const CascadeLink &link, const std::string &reason)
+    {
+        log_refused_link(link, reason);
+        finder_refused.push_back({link, reason});
     }
 
     void log_refused_link(const CascadeLink &link, const std::string &reason)
@@ -890,10 +1037,11 @@ struct QlDspV4Pass : public Pass {
             if (link.consumer->getParam(ID(CREG)).as_bool())
                 registered_links_of[link.source].push_back(&link);
         dict<SigBit, RTLIL::Cell *> not_driving = not_cells_by_output(module, sigmap);
+        ModuleNets nets(module, sigmap);
         for (auto &it : registered_links_of) {
             RTLIL::Cell *source = it.first;
             std::vector<RTLIL::Cell *> fabric_copies;
-            std::string reason = why_register_stays(module, sigmap, not_driving, source, it.second, fabric_copies);
+            std::string reason = why_register_stays(nets, sigmap, not_driving, source, it.second, fabric_copies);
             if (!reason.empty()) {
                 register_not_moved[reason] += GetSize(it.second);
                 if (verbose)
@@ -906,23 +1054,24 @@ struct QlDspV4Pass : public Pass {
             for (auto flop : fabric_copies)
                 remove_fabric_copy(module, flop);
             registers_moved++;
+            nets = ModuleNets(module, sigmap);
         }
     }
 
     // The first of step 0's checks that fails, or "" when all pass. Each
     // check returns on its own line.
-    std::string why_register_stays(RTLIL::Module *module, SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *source,
+    std::string why_register_stays(const ModuleNets &nets, SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *source,
                                    const std::vector<const CascadeLink *> &registered, std::vector<RTLIL::Cell *> &fabric_copies)
     {
         RTLIL::Cell *first = registered[0]->consumer;
         if (source->getParam(ID(PREG)).as_bool())
             return "the source already has a P register";
-        if (p_is_kept(module, sigmap, source))
+        if (nets.p_is_kept(sigmap, source))
             return "the source's P is marked keep";
         pool<RTLIL::Cell *> registered_consumers;
         for (auto link : registered)
             registered_consumers.insert(link->consumer);
-        for (auto &reader : readers_of_p(module, sigmap, source)) {
+        for (auto &reader : nets.readers_of(sigmap, source, ID(P))) {
             if (reader.port == ID(C) && registered_consumers.count(reader.cell))
                 continue;
             if (reader.cell != nullptr && reader.port == ID::D && is_matcher_flop(reader.cell)) {
@@ -960,51 +1109,6 @@ struct QlDspV4Pass : public Pass {
             note(source, pin);
         note(consumer, ID(CEC));
         return GetSize(enables);
-    }
-
-    // True when a wire marked keep holds a bit of the source's P: that wire
-    // must keep the sum before the register.
-    static bool p_is_kept(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *source)
-    {
-        pool<SigBit> p_bits;
-        for (auto bit : sigmap(source->getPort(ID(P))))
-            if (bit.wire != nullptr)
-                p_bits.insert(bit);
-        for (auto wire : module->wires())
-            if (wire->get_bool_attribute(ID::keep))
-                for (auto bit : sigmap(wire))
-                    if (p_bits.count(bit))
-                        return true;
-        return false;
-    }
-
-    // Everything that reads the source's P: each cell port that holds one of
-    // its bits, and each module output that does. The P port itself is not.
-    static std::vector<PReader> readers_of_p(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *source)
-    {
-        pool<SigBit> p_bits;
-        for (auto bit : sigmap(source->getPort(ID(P))))
-            if (bit.wire != nullptr)
-                p_bits.insert(bit);
-        std::vector<PReader> readers;
-        for (auto cell : module->cells())
-            for (auto &conn : cell->connections()) {
-                if (cell == source && conn.first == ID(P))
-                    continue;
-                for (auto bit : sigmap(conn.second))
-                    if (p_bits.count(bit)) {
-                        readers.push_back({cell, conn.first});
-                        break;
-                    }
-            }
-        for (auto wire : module->wires())
-            if (wire->port_output)
-                for (auto bit : sigmap(wire))
-                    if (p_bits.count(bit)) {
-                        readers.push_back({nullptr, wire->name});
-                        break;
-                    }
-        return readers;
     }
 
     // The output of each one-bit $not, after sigmap.
@@ -1136,11 +1240,11 @@ struct QlDspV4Pass : public Pass {
     // The links reachable from a head, each after the link into its source;
     // from the heads in `starts` only, when it is given. A loop has no head,
     // so its links are not in the list.
-    static std::vector<const CascadeLink *> links_from_heads(const std::vector<CascadeLink> &links, const pool<RTLIL::Cell *> *starts)
+    static std::vector<CascadeLink *> links_from_heads(std::vector<CascadeLink> &links, const pool<RTLIL::Cell *> *starts)
     {
         pool<RTLIL::Cell *> heads = heads_of(links);
-        dict<RTLIL::Cell *, std::vector<const CascadeLink *>> links_out_of;
-        for (const CascadeLink &link : links)
+        dict<RTLIL::Cell *, std::vector<CascadeLink *>> links_out_of;
+        for (CascadeLink &link : links)
             links_out_of[link.source].push_back(&link);
         std::vector<RTLIL::Cell *> cells;
         pool<RTLIL::Cell *> added;
@@ -1148,12 +1252,12 @@ struct QlDspV4Pass : public Pass {
             if (heads.count(link.source) && (starts == nullptr || starts->count(link.source)) && added.insert(link.source).second)
                 cells.push_back(link.source);
         // A consumer has one link into it, so each cell is added once.
-        std::vector<const CascadeLink *> order;
+        std::vector<CascadeLink *> order;
         for (size_t i = 0; i < cells.size(); i++) {
             auto out = links_out_of.find(cells[i]);
             if (out == links_out_of.end())
                 continue;
-            for (const CascadeLink *link : out->second) {
+            for (CascadeLink *link : out->second) {
                 order.push_back(link);
                 cells.push_back(link->consumer);
             }
@@ -1163,7 +1267,9 @@ struct QlDspV4Pass : public Pass {
 
     // Rule 1, second check, down each chain from its head. A link stays on C
     // when its RTL sum is too narrow for the source's P range and the consumer
-    // keeps more bits than it reads.
+    // keeps more bits than it reads. A link with an addend also needs the wire
+    // its fold removes to have held its partial sum: in grouping 2 the link
+    // stays on C, in grouping 1 only the fold is declined.
     void drop_narrow_links(SigMap &sigmap, std::vector<CascadeLink> &links, const pool<RTLIL::Cell *> *starts = nullptr)
     {
         pool<const CascadeLink *> refused;
@@ -1171,7 +1277,7 @@ struct QlDspV4Pass : public Pass {
         // head, or sits below a refused link: its own C wire bounds it.
         dict<RTLIL::Cell *, uint64_t> range_of;
         dict<RTLIL::Cell *, bool> full_port_of;
-        for (const CascadeLink *link : links_from_heads(links, starts)) {
+        for (CascadeLink *link : links_from_heads(links, starts)) {
             RTLIL::Cell *source = link->source;
             bool is_full_port = full_port_of.count(source) ? full_port_of.at(source) : p_range_is_full_port(source, nullptr, false);
             uint64_t range = range_of.count(source) ? range_of.at(source) : p_range(sigmap, source, nullptr, 0);
@@ -1182,6 +1288,14 @@ struct QlDspV4Pass : public Pass {
                 refuse_link(*link, has_p_range_formula(source) ? CASCADE_TOO_NARROW : CASCADE_NO_FORMULA);
                 refused.insert(link);
                 continue;
+            }
+            if (link->grouping != 0 && !removed_wire_holds(sigmap, *link, range, is_full_port)) {
+                if (link->grouping == 2) {
+                    refuse_link(*link, ADDEND_WIRE_TOO_NARROW);
+                    refused.insert(link);
+                    continue;
+                }
+                decline_grouping(*link, ADDEND_WIRE_TOO_NARROW);
             }
             range_of[link->consumer] = p_range(sigmap, link->consumer, link, range);
             full_port_of[link->consumer] = p_range_is_full_port(link->consumer, link, is_full_port);
@@ -1371,13 +1485,19 @@ struct QlDspV4Pass : public Pass {
 
     // Move one link from the consumer's C to the dedicated wire. P is left
     // alone: it keeps driving whatever else reads it.
-    void make_link(RTLIL::Module *module, const CascadeLink &link)
+    void make_link(RTLIL::Module *module, SigMap &sigmap, const CascadeLink &link)
     {
         RTLIL::Wire *wire = module->addWire(NEW_ID, DSPV4_P_WIDTH);
         link.source->setPort(ID(PCOUT), wire);
         link.consumer->setPort(ID(PCIN), wire);
-        link.consumer->unsetPort(ID(C));
-        change_mode(link.consumer, CASCADE_WORD.at(link.consumer_mode));
+        if (link.grouping == 0) {
+            link.consumer->unsetPort(ID(C));
+            change_mode(link.consumer, CASCADE_WORD.at(link.consumer_mode));
+            return;
+        }
+        // The finder tries the groupings on this mode only.
+        log_assert(link.consumer_mode == ADDEND_CONSUMER_MODE);
+        make_addend_link(module, sigmap, link);
     }
 
     // Give an emitted cell a new mode, and move it in the tally that the
@@ -3771,6 +3891,242 @@ struct QlDspV4Pass : public Pass {
                     bit_users[bit]++;
     }
 
+    // ---- A per-stage addend k beside a link (MULT_ADD_C_CASC) ----
+    // Kept below emit() and the other NEW_ID sites: those cell names carry
+    // their source line, and the netlist at -chain_max 0 must not change.
+
+    // A $add input that reads an emitted cell's P from bit 0.
+    struct LinkInput {
+        RTLIL::Cell *source;
+        bool on_a;
+        AlignedRead read;
+    };
+
+    // The inputs of `add` that read an emitted cell's P from bit 0, sign- or
+    // zero-extended, in name order of that cell.
+    static std::vector<LinkInput> link_inputs(SigMap &sigmap, RTLIL::Cell *add, const dict<SigBit, RTLIL::Cell *> &driver_of_bit_0)
+    {
+        std::vector<LinkInput> inputs;
+        for (bool on_a : {true, false}) {
+            SigSpec in = sigmap(add->getPort(on_a ? ID::A : ID::B));
+            auto driver = driver_of_bit_0.find(in[0]);
+            if (driver == driver_of_bit_0.end())
+                continue;
+            AlignedRead read = aligned_read(in, sigmap(driver->second->getPort(ID(P))));
+            if (read.extension != Extension::OTHER)
+                inputs.push_back({driver->second, on_a, read});
+        }
+        if (GetSize(inputs) == 2 && name_sorts_first(inputs[1].source, inputs[0].source))
+            std::swap(inputs[0], inputs[1]);
+        return inputs;
+    }
+
+    static bool reads_signed(RTLIL::Cell *add, bool on_a) { return add->getParam(on_a ? ID::A_SIGNED : ID::B_SIGNED).as_bool(); }
+
+    // Grouping 2, a*b + (prev + k): the consumer's C is t, a fabric $add's sum,
+    // and one $add input is prev, another cell's P. The link carries prev and k
+    // moves to C. C must read all of t, and the $add all of prev, from bit 0.
+    void find_grouping_2(RTLIL::Module *module, SigMap &sigmap, const ModuleNets &nets, RTLIL::Cell *consumer, RTLIL::Cell *add, const SigSpec &c,
+                         const dict<SigBit, RTLIL::Cell *> &driver_of_bit_0, std::vector<CascadeLink> &links, pool<RTLIL::Cell *> &claimed_adders)
+    {
+        SigSpec t = sigmap(add->getPort(ID::Y));
+        AlignedRead t_read = aligned_read(c, t);
+        if (t_read.bits < GetSize(t) || t_read.extension == Extension::OTHER)
+            return;
+        std::vector<LinkInput> inputs = link_inputs(sigmap, add, driver_of_bit_0);
+        if (inputs.empty())
+            return;
+        // Of two, the first in name order that the $add reads signed and sign-extended.
+        const LinkInput *in_p = &inputs[0];
+        for (auto &input : inputs)
+            if (input.read.extension == Extension::SIGN && reads_signed(add, input.on_a)) {
+                in_p = &input;
+                break;
+            }
+
+        CascadeLink link;
+        link.source = in_p->source;
+        link.consumer = consumer;
+        link.sum_bits = in_p->read.bits;
+        link.consumer_mode = mode_name_of.at(consumer);
+        if (t_read.extension == Extension::ZERO || in_p->read.extension == Extension::ZERO) {
+            refuse_in_finder(link, CASCADE_READ_UNSIGNED);
+            return;
+        }
+        if (!reads_signed(add, in_p->on_a)) {
+            refuse_in_finder(link, ADDEND_READ_UNSIGNED);
+            return;
+        }
+        std::vector<Reader> t_readers = nets.readers_of(sigmap, add, ID::Y);
+        if (GetSize(t_readers) != 1) {
+            refuse_in_finder(link, ADDEND_OTHER_READER);
+            return;
+        }
+        if (add->get_bool_attribute(ID::keep) || nets.net_is_kept(sigmap, t)) {
+            refuse_in_finder(link, ADDEND_KEPT);
+            return;
+        }
+        link.grouping = 2;
+        link.addend_adder = add;
+        link.removed_bits = GetSize(t);
+        link.addend_bits = signed_width(sigmap(add->getPort(in_p->on_a ? ID::B : ID::A)));
+        if (verbose) {
+            log("  cascade candidate: %s.%s -> %s (%d-bit sum, addend grouping 2)\n", log_id(module), log_id(link.source), log_id(consumer),
+                link.sum_bits);
+            if (GetSize(inputs) == 2)
+                log("  cascade: %s: %s's P is the link, the other input is the addend\n", log_id(add), log_id(link.source));
+        }
+        links.push_back(link);
+        claimed_adders.insert(add);
+    }
+
+    // A plain link whose consumer's P one $add reads: grouping 1's candidate.
+    struct Grouping1Try {
+        CascadeLink *link;
+        RTLIL::IdString port;
+        int p_readers;
+    };
+
+    // Grouping 1, (a*b + prev) + k: a fabric $add reads a plain link's
+    // consumer's P. Folding it puts k on the consumer's C, and the consumer's P
+    // drives the $add's sum. A failed check declines the fold and keeps the
+    // plain link. Each consumer on one $add is tried, in name order, and the
+    // first that passes takes it.
+    void find_grouping_1(SigMap &sigmap, const ModuleNets &nets, std::vector<CascadeLink> &links, const pool<RTLIL::Cell *> &claimed_adders)
+    {
+        std::vector<RTLIL::Cell *> adders;
+        dict<RTLIL::Cell *, std::vector<Grouping1Try>> tries_on;
+        for (CascadeLink &link : links) {
+            if (link.grouping != 0 || link.consumer_mode != ADDEND_CONSUMER_MODE)
+                continue;
+            std::vector<Reader> readers = nets.readers_of(sigmap, link.consumer, ID(P));
+            const Reader *on_adder = nullptr;
+            bool claimed = false;
+            for (auto &reader : readers)
+                if (reader.cell != nullptr && is_foldable_add(reader.cell) && reader.port.in(ID::A, ID::B)) {
+                    claimed = claimed || claimed_adders.count(reader.cell);
+                    if (on_adder == nullptr)
+                        on_adder = &reader;
+                }
+            if (on_adder == nullptr)
+                continue;
+            if (claimed) {
+                if (verbose)
+                    log("  cascade: %s -> %s: grouping 1 skipped, its $add is grouping 2's\n", log_id(link.source), log_id(link.consumer));
+                continue;
+            }
+            if (!tries_on.count(on_adder->cell))
+                adders.push_back(on_adder->cell);
+            tries_on[on_adder->cell].push_back({&link, on_adder->port, GetSize(readers)});
+        }
+        for (auto add : adders) {
+            std::vector<Grouping1Try> &tries = tries_on.at(add);
+            std::sort(tries.begin(), tries.end(),
+                      [](const Grouping1Try &x, const Grouping1Try &y) { return name_sorts_first(x.link->consumer, y.link->consumer); });
+            const Grouping1Try *chosen = nullptr;
+            int chosen_s_bits = 0, passed = 0;
+            for (auto &attempt : tries) {
+                int s_bits = check_grouping_1(sigmap, nets, add, attempt);
+                if (s_bits == 0)
+                    continue;
+                passed++;
+                if (chosen == nullptr) {
+                    chosen = &attempt;
+                    chosen_s_bits = s_bits;
+                }
+            }
+            if (chosen != nullptr)
+                take_grouping_1(sigmap, add, *chosen, chosen_s_bits, passed);
+        }
+    }
+
+    // The finder's grouping-1 checks on one try. Returns the width of s, a*b +
+    // prev, as the $add reads it, or 0 when this consumer cannot take the $add.
+    // A failed check is a counted decline; a read that is not all of s from
+    // bit 0 is no attempt and is not counted.
+    int check_grouping_1(SigMap &sigmap, const ModuleNets &nets, RTLIL::Cell *add, const Grouping1Try &attempt)
+    {
+        CascadeLink &link = *attempt.link;
+        AlignedRead s_read = aligned_read(sigmap(add->getPort(attempt.port)), sigmap(link.consumer->getPort(ID(P))));
+        if (s_read.extension != Extension::SIGN) {
+            if (verbose)
+                log("  cascade: %s -> %s: not grouping 1, %s does not read the whole result\n", log_id(link.source), log_id(link.consumer),
+                    log_id(add));
+            return 0;
+        }
+        const char *reason = nullptr;
+        if (attempt.p_readers != 1)
+            reason = ADDEND_OTHER_READER;
+        else if (!reads_signed(add, attempt.port == ID::A))
+            reason = ADDEND_READ_UNSIGNED;
+        else if (GetSize(add->getPort(ID::Y)) > DSPV4_P_WIDTH)
+            reason = ADDEND_RESULT_TOO_WIDE;
+        else if (link.consumer->getParam(ID(PREG)).as_bool())
+            reason = ADDEND_SUM_REGISTERED;
+        else if (add->get_bool_attribute(ID::keep) || nets.p_is_kept(sigmap, link.consumer))
+            reason = ADDEND_KEPT;
+        if (reason != nullptr) {
+            decline_grouping(link, reason);
+            return 0;
+        }
+        return s_read.bits;
+    }
+
+    void take_grouping_1(SigMap &sigmap, RTLIL::Cell *add, const Grouping1Try &attempt, int s_bits, int passed)
+    {
+        CascadeLink &link = *attempt.link;
+        link.grouping = 1;
+        link.addend_adder = add;
+        link.removed_bits = s_bits;
+        link.addend_bits = signed_width(sigmap(add->getPort(attempt.port == ID::A ? ID::B : ID::A)));
+        if (verbose)
+            log("  cascade: %s -> %s: grouping 1, %s folds%s\n", log_id(link.source), log_id(link.consumer), log_id(add),
+                passed > 1 ? ", first in name order of the cells that can take it" : "");
+    }
+
+    // A grouping-1 check failed. The link stays, as a plain link; only the $add
+    // fold is declined, so it is not counted as a refusal.
+    void decline_grouping(CascadeLink &link, const std::string &reason)
+    {
+        grouping_declined[reason]++;
+        if (verbose)
+            log("  cascade: %s -> %s: grouping 1 declined, %s; plain link kept\n", log_id(link.source), log_id(link.consumer), reason.c_str());
+        link.grouping = 0;
+        link.addend_adder = nullptr;
+        link.addend_bits = 0;
+        link.removed_bits = 0;
+    }
+
+    // The RTL wire an addend fold removes held its partial sum: a*b + prev in
+    // grouping 1, prev + k in grouping 2. The DSP carries 50 bits there.
+    bool removed_wire_holds(SigMap &sigmap, const CascadeLink &link, uint64_t source_range, bool source_is_full_port)
+    {
+        if (source_is_full_port)
+            return link.removed_bits >= DSPV4_P_WIDTH;
+        uint64_t added = link.grouping == 1 ? cell_product_bound(sigmap, link.consumer, P_RANGE_ROWS.at(link.consumer_mode).operands)
+                                            : uint64_t(1) << (link.addend_bits - 1);
+        return link.removed_bits >= bits_for(source_range + added);
+    }
+
+    // The addend k goes on the consumer's C and the $add goes. In grouping 1
+    // the consumer's P drives what the $add's sum drove.
+    void make_addend_link(RTLIL::Module *module, SigMap &sigmap, const CascadeLink &link)
+    {
+        RTLIL::Cell *add = link.addend_adder;
+        RTLIL::Cell *dsp = link.grouping == 1 ? link.consumer : link.source;
+        bool a_is_dsp = sigmap(add->getPort(ID::A))[0] == sigmap(dsp->getPort(ID(P)))[0];
+        RTLIL::SigSpec k = add->getPort(a_is_dsp ? ID::B : ID::A);
+        k.extend_u0(DSPV4_C_WIDTH, reads_signed(add, !a_is_dsp));
+        link.consumer->setPort(ID(C), k);
+        if (link.grouping == 1) {
+            // The finder declined a sum wider than P.
+            RTLIL::SigSpec y = add->getPort(ID::Y);
+            module->connect(y, link.consumer->getPort(ID(P)).extract(0, GetSize(y)));
+        }
+        module->remove(add);
+        change_mode(link.consumer, ADDEND_LINK_MODE);
+    }
+
     // Why operand-register absorption stalled, tallied over the whole run and
     // reported at the end. Without this the only symptom is flops left in
     // fabric, with nothing in the log to say which guard refused them.
@@ -3807,6 +4163,9 @@ struct QlDspV4Pass : public Pass {
     std::vector<std::pair<CascadeLink, std::string>> finder_refused;
     // Links the rules dropped, counted by reason.
     dict<std::string, int> cascade_stall;
+    // Grouping-1 folds given up while the plain link stays, counted by reason.
+    // Not refused links, so not in cascade_stall.
+    dict<std::string, int> grouping_declined;
     // Step 0: link registers moved into a source's P bank, and the reasons the
     // others stayed, one count per link.
     int registers_moved = 0;
