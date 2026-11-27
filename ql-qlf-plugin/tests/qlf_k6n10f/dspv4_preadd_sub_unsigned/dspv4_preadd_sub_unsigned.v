@@ -12,6 +12,10 @@
 //       range already fits without it, which is the only reason this one
 //       still fits 32 instead of needing 33. Read back at the subtract's own
 //       width, like n, so the congruence holds and it is safe to fold.
+//   diffb  17'h1FFFF - a: an all-ones constant is large, not -1. The
+//          difference needs exactly the B side's 18 signed bits, and the
+//          product is read at 18: folds on the B path
+//   diffa  d - 31'h7FFFFFFF: the same at the A side's 32 bits: folds on A
 module dspv4_preadd_sub_unsigned (
     // 9-bit subtract, 35-bit product -- must be refused
     input  [15:0] w_d, input [15:0] w_a, input [17:0] w_b,
@@ -21,7 +25,13 @@ module dspv4_preadd_sub_unsigned (
     output [8:0]  n_p,
     // 32-bit subtract (31-bit subtrahend), 32-bit product -- safe, must fold
     input  [25:0] g_d, input [30:0] g_x, input [16:0] g_b,
-    output [31:0] g_p
+    output [31:0] g_p,
+    // 18-bit subtract of an all-ones constant, 18-bit product -- must fold
+    input  [7:0]  diffb_a, input [19:0] diffb_b,
+    output [17:0] diffb_p,
+    // 32-bit subtract of an all-ones constant, 32-bit product -- must fold
+    input  [25:0] diffa_d, input [7:0] diffa_b,
+    output [31:0] diffa_p
 );
   wire [16:0] w_s = w_d - w_a;
   assign w_p = w_s * w_b;
@@ -31,4 +41,10 @@ module dspv4_preadd_sub_unsigned (
 
   wire [31:0] g_s = g_d - g_x;
   assign g_p = g_s * g_b;
+
+  wire [17:0] diffb_s = 17'h1FFFF - diffb_a;
+  assign diffb_p = diffb_s * diffb_b;
+
+  wire [31:0] diffa_s = diffa_d - 31'h7FFFFFFF;
+  assign diffa_p = diffa_s * diffa_b;
 endmodule

@@ -1,3 +1,5 @@
 ok
 qlf_k6n10f/dspv4_casc_*/*.blif
 full_adder/k6n10f_cells_sim.v
+**/sim/sim.vvp
+**/sim/*_post_synth.v

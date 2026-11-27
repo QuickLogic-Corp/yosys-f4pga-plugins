@@ -68,10 +68,21 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_preg_wrap \
 	qlf_k6n10f/dspv4_preadd_adreg_trunc \
 	qlf_k6n10f/dspv4_preadd_regs \
+	qlf_k6n10f/dspv4_enable_inverter_shared \
+	qlf_k6n10f/dspv4_techmap_refused_stops \
+	qlf_k6n10f/dspv4_techmap_twin_maps \
+	qlf_k6n10f/dspv4_techmap_reason \
+	qlf_k6n10f/dspv4_techmap_refused_drc \
+	qlf_k6n10f/dspv4_techmap_twin_drc_maps \
+	qlf_k6n10f/dspv4_synplify_gnd_cin_folds \
+	qlf_k6n10f/dspv4_synplify_live_cin_keeps_m \
+	qlf_k6n10f/dspv4_enable_tied_high_evicts \
+	qlf_k6n10f/dspv4_enable_tied_high_check \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
 	qlf_k6n10f/dspv4_casc_flags \
+	qlf_k6n10f/dspv4_casc_chain_max_refused \
 	qlf_k6n10f/dspv4_casc_links \
 	qlf_k6n10f/dspv4_casc_refused \
 	qlf_k6n10f/dspv4_casc_addend \
@@ -81,6 +92,7 @@ TESTS = \
 	qlf_k6n10f/dspv4_casc_pcin17 \
 	qlf_k6n10f/dspv4_casc_pcin17_refused \
 	qlf_k6n10f/dspv4_casc_pcin17_loop \
+	qlf_k6n10f/dspv4_casc_loop_no_register \
 	qlf_k6n10f/dspv4_chain_report \
 	qlf_k6n10f/dspv4_chain_report_loop \
 	qlf_k6n10f/dspv4_chain_report_synplify \
@@ -139,7 +151,9 @@ POST_SYNTH_SIM_TESTS = \
      qlf_k6n10f/dspv4_macc_c_order_post_synth_sim \
      qlf_k6n10f/dspv4_macc_c_refused_post_synth_sim \
      qlf_k6n10f/dspv4_mreg_rst_post_synth_sim \
-     qlf_k6n10f/dspv4_preg_rst_post_synth_sim
+     qlf_k6n10f/dspv4_preg_rst_post_synth_sim \
+     qlf_k6n10f/dspv4_preadd_width_post_synth_sim \
+     qlf_k6n10f/dspv4_operand_ext_post_synth_sim
 
 # Synthesis-side copies of cells that dspv2_sim.v and dspv4_leaves_sim.v already model.
 SIM_LIBS_EXCLUDE = QL_DSPV2.v QL_DSP4_leaves.v
@@ -164,7 +178,8 @@ qlf_k6n10f-dspv4_macc_dup_verify = grep -q 'the DSP has no register stage after 
 # QL_DSP4_MULT -- so without these the A/B decision is untested. A refused
 # shape must report MULT, not a PREADD mode: that is what says the guard
 # refused rather than folded something it should not have.
-qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x2' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
+qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x3' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
+qlf_k6n10f-dspv4_preadd_sub_unsigned_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_A x1' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
 qlf_k6n10f-dspv4_preadd_sub_unsigned_verify += && grep -q '1 x  pre-adder: an unsigned subtract wraps where the DSP signs' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
 qlf_k6n10f-dspv4_mult_reg_pad_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_reg_pad/dspv4_mult_reg_pad.log
 qlf_k6n10f-dspv4_mult_add_self_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_add_self/dspv4_mult_add_self.log
@@ -190,16 +205,23 @@ qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_
 qlf_k6n10f-dspv4_preadd_both_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
 # The sum left behind is named, not just absent from the cell.
 qlf_k6n10f-dspv4_preadd_both_verify += && grep -q '1 x  a second pre-adder sum stays in fabric: the cell has one pre-adder' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
-# Squaring is refused, so no pre-adder mode at all.
+qlf_k6n10f-dspv4_preadd_both_verify += && grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
+# Squaring is refused in both blocks, so no pre-adder mode at all. The signed
+# block fits one DSP. The registered one fits only in the second ql_dspv4 call,
+# split over two, with its register copied into the banks (aurora2 #2807).
 qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
-qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 x  pre-adder: it feeds both multiply operands (squaring)' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
-# Every cross-path shape that must fold, 46 blocks, nine modes in no fixed
+qlf_k6n10f-dspv4_preadd_square_verify += && grep -q 'modes inferred: MULT x2' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '2 x  pre-adder: it feeds both multiply operands (squaring)' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 shared operand register(s) copied into a bank rather than moved; 1 became userless' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+qlf_k6n10f-dspv4_preadd_square_verify += && test -s qlf_k6n10f/dspv4_preadd_square/netlist.v
+qlf_k6n10f-dspv4_preadd_square_verify += && ! grep -E -q "'[bh][0-9a-f]*x" qlf_k6n10f/dspv4_preadd_square/netlist.v
+# Every cross-path shape that must fold, 48 blocks, nine modes in no fixed
 # order. No block may be refused, and the four blocks that give up a register
 # stage to the bank depth limit must do it for that reason, not a clock/reset
 # mismatch.
 qlf_k6n10f-dspv4_xpath_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){8}$$' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
-qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_A x14' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
-qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_B x7' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_A x15' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_B x8' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B x6' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B x2' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B_C x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
@@ -222,9 +244,10 @@ qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovl_d_QL_DSP4_PREAD
 qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovlc_d_QL_DSP4_PREADD_I1 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ovlc_a\[15:0\] })'
 qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovlr_d_QL_DSP4_PREADD_I1 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ovlr_a })'
 # ov2 and ov2r: the same two addends, written in opposite order, must land the
-# same operand (the whole signal) off the X side in both cases.
-qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2_a_QL_DSP4_PREADD_I0 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2_a\[7:0\] })'
-qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2r_a_QL_DSP4_PREADD_I0 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2r_a\[7:0\] })'
+# same operand (the whole signal) off the X side in both cases. The instance
+# name suffix comes from autoname and differs by Yosys version.
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2_a_QL_DSP4_[A-Z0-9_]* ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2_a\[7:0\] })'
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2r_a_QL_DSP4_[A-Z0-9_]* ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2r_a\[7:0\] })'
 # Cross-path shapes the pass refuses, and the reason it prints for each: an
 # ALU term with the shared operand left on X, no control word for the ALU
 # direction, a sum that may exceed the multiplier port, a truncated sum, an
@@ -347,6 +370,23 @@ qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_declined,$(casc_flags_dir)/
 qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT x1$$' $(casc_flags_dir)/_declined_reset_call2.log
 qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_report,$(casc_flags_dir)/_declined_reset_call2.log,1,1,2,12)
 qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_no_declined,$(casc_flags_dir)/_declined_reset_call2.log)
+# -chain_max 3 still runs the cascade step: three stages are linked, in one chain.
+qlf_k6n10f-dspv4_casc_flags_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x2$$' $(casc_flags_dir)/_n3.log
+qlf_k6n10f-dspv4_casc_flags_verify += && $(call casc_report,$(casc_flags_dir)/_n3.log,2,1,3,3)
+
+# A -chain_max value that is not a plain non-negative integer is refused by both
+# synth_ql and ql_dspv4: the call fails (refused.log has 12 REFUSED lines and no
+# ACCEPTED one) and the error line naming the value is in the log twice.
+casc_bad_dir = qlf_k6n10f/dspv4_casc_chain_max_refused
+casc_bad_message = test "$$(grep -Fxc -e "ERROR: -chain_max expects a non-negative integer, got '$(1)'." $(casc_bad_dir)/dspv4_casc_chain_max_refused.log)" = 2
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify = test "$$(grep -c '^REFUSED ' $(casc_bad_dir)/refused.log)" = 12
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && ! grep -q '^ACCEPTED ' $(casc_bad_dir)/refused.log
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,twelve)
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,-4)
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,12abc)
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,)
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,1 2)
+qlf_k6n10f-dspv4_casc_chain_max_refused_verify += && $(call casc_bad_message,99999999999)
 # What the finder makes of each block: how many candidate links, and how many
 # reads it refuses itself. casc_found takes the block's log and the two counts.
 casc_found = test "$$(grep -c 'cascade candidate:' $(1))" = $(2) && test "$$(grep -c 'cascade link refused:' $(1))" = $(3)
@@ -407,6 +447,11 @@ qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_re
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_moved,$(casc_links_dir)/_reglink_matcher_copy_cells.log,1)
 qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'not moved' $(casc_links_dir)/_reglink_matcher_copy_cells.log
 qlf_k6n10f-dspv4_casc_links_verify += && test "$$(grep -c 'cascade: fabric copy .* of the link register removed$$' $(casc_links_dir)/_reglink_matcher_copy_cells.log)" = 1
+qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: PREADD_A_MULT_B x1, MULT_ADD x1$$' $(casc_links_dir)/_reglink_enables_ok_cells.log
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_reglink_enables_ok_cells.log,1,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_reglink_enables_ok_cells.log,1,0)
+qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_moved,$(casc_links_dir)/_reglink_enables_ok_cells.log,1)
+qlf_k6n10f-dspv4_casc_links_verify += && ! grep -q 'not moved' $(casc_links_dir)/_reglink_enables_ok_cells.log
 # One source, two consumers: rule 3 keeps one link.
 qlf_k6n10f-dspv4_casc_links_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_links_dir)/_fanout_cells.log
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_fanout_cells.log,2,1)
@@ -510,6 +555,7 @@ qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_found,$(casc_links_dir)/_ch
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_wired,$(casc_links_dir)/_chains_unequal_cells.log,4,0)
 qlf_k6n10f-dspv4_casc_links_verify += && $(call casc_report,$(casc_links_dir)/_chains_unequal_cells.log,4,2,4,12)
 casc_refused_dir = qlf_k6n10f/dspv4_casc_refused
+$(casc_refused_dir)/ok: $(wildcard $(casc_refused_dir)/*.v)
 casc_read_unsigned = cascade link refused: .*: link is read unsigned, and PCIN sign-extends$$
 # How many of a block's refused links carry this reason: the log, the reason,
 # the count. Double quotes, because a reason can hold an apostrophe.
@@ -523,7 +569,9 @@ casc_not_moved = test "$$(grep -c "cascade: register into .* not moved: $(2)$$" 
 casc_other_reader = the source's P has another reader
 casc_has_preg = the source already has a P register
 casc_other_clock = the source is on another clock
+casc_enables = the source would need more than 3 distinct clock enables
 casc_differently = the source's readers register it differently (different CLK, CEC, or RSTN)
+casc_kept_sum = the source's P is marked keep
 casc_loop = links form a loop
 casc_shorter = source already feeds a chain at least as long
 casc_too_long = chain would exceed the device limit
@@ -558,6 +606,12 @@ qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_reglink_clock.log,1,1)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_not_moved,$(casc_refused_dir)/_reglink_clock.log,$(casc_other_clock),1)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_moved,$(casc_refused_dir)/_reglink_clock.log,0)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_refused_dir)/_reglink_kept_sum.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_reglink_kept_sum.log,2,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_reglink_kept_sum.log,$(casc_registered),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_reglink_kept_sum.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_not_moved,$(casc_refused_dir)/_reglink_kept_sum.log,$(casc_kept_sum),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_moved,$(casc_refused_dir)/_reglink_kept_sum.log,0)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1, MULT x1$$' $(casc_refused_dir)/_reglink_two_consumers_diff.log
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_reglink_two_consumers_diff.log,3,2)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_reglink_two_consumers_diff.log,$(casc_registered),2)
@@ -576,6 +630,12 @@ qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_reglink_copy_diff_en.log,1,1)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_not_moved,$(casc_refused_dir)/_reglink_copy_diff_en.log,$(casc_other_reader),1)
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_moved,$(casc_refused_dir)/_reglink_copy_diff_en.log,0)
+qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: PREADD_A_MULT_B x1, MULT_ADD_C x1$$' $(casc_refused_dir)/_reglink_enables.log
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_reglink_enables.log,1,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_reason,$(casc_refused_dir)/_reglink_enables.log,$(casc_registered),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_wired,$(casc_refused_dir)/_reglink_enables.log,0,1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_not_moved,$(casc_refused_dir)/_reglink_enables.log,$(casc_enables),1)
+qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_moved,$(casc_refused_dir)/_reglink_enables.log,0)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_refused_dir)/_unsigned.log
 qlf_k6n10f-dspv4_casc_refused_verify += && $(call casc_found,$(casc_refused_dir)/_unsigned.log,0,1)
 qlf_k6n10f-dspv4_casc_refused_verify += && grep -q '$(casc_read_unsigned)' $(casc_refused_dir)/_unsigned.log
@@ -867,6 +927,7 @@ casc_other_adder_reader = addend adder has another reader
 casc_addend_unsigned = link is read unsigned in addend grouping
 casc_addend_narrow = addend sum wire is too narrow
 casc_addend_wide = addend result is wider than the P port
+casc_addend_registered = consumer registered the sum (PREG), and C is added before the register
 # The OPMODE of each cell that reads PCIN, in text order of the cell's name.
 casc_consumer_opmodes = awk '/^  cell /{if(n!="")print n, i, o; n=$$3; i=0} /connect .PCIN /{i=1} /parameter .OPMODE /{o=$$3} END{if(n!="")print n, i, o}' $(1) | awk '$$2 == 1' | LC_ALL=C sort | awk '{printf "%s ", $$3}'
 casc_addend_dir = qlf_k6n10f/dspv4_casc_addend
@@ -930,6 +991,23 @@ qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& $(call casc_wire
 qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& $(call casc_report,$(casc_addend_dir)/_addend_g1_tie_partial_$(r).log,2,2,2,12))
 qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& $(call casc_declined,$(casc_addend_dir)/_addend_g1_tie_partial_$(r).log,1,$(casc_other_adder_reader)))
 qlf_k6n10f-dspv4_casc_addend_verify += $(foreach r,run1 run2,&& ! grep -q 'cascade links refused' $(casc_addend_dir)/_addend_g1_tie_partial_$(r).log)
+# Grouping 2 on a consumer with PREG: the $add goes.
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT_ADD_C x1$$' $(casc_addend_dir)/_addend_g2_preg.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g2_preg.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g2_preg.log,1,2)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g2_preg.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_no_declined,$(casc_addend_dir)/_addend_g2_preg.log)
+# A signed link and an unsigned k, padded to a signed value: the $add goes and
+# k moves to C, in both groupings.
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT_ADD_C x1$$' $(casc_addend_dir)/_addend_g2_k_padded.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g2_k_padded.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g2_k_padded.log,1,2)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g2_k_padded.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_verify += && grep -q 'modes inferred: MULT_ADD_C_CASC x1, MULT x1$$' $(casc_addend_dir)/_addend_g1_k_padded.log
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_found,$(casc_addend_dir)/_addend_g1_k_padded.log,1,0)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_wired,$(casc_addend_dir)/_addend_g1_k_padded.log,1,1)
+qlf_k6n10f-dspv4_casc_addend_verify += && $(call casc_report,$(casc_addend_dir)/_addend_g1_k_padded.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_addend_verify += $(foreach b,_addend_g2_k_padded _addend_g1_k_padded,&& $(call casc_no_declined,$(casc_addend_dir)/$(b).log))
 # No block here refuses a link.
 qlf_k6n10f-dspv4_casc_addend_verify += && ! grep -q 'cascade link' $(casc_addend_dir)/*.log
 casc_addend_refused_dir = qlf_k6n10f/dspv4_casc_addend_refused
@@ -971,6 +1049,11 @@ qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_unsigned,0,$(casc_addend_unsigned))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_pad,0,$(casc_unsigned))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_unsigned_in_pad,0,$(casc_unsigned))
+# A signed link and an unsigned k: the $add is unsigned, so the link would be
+# zero-extended. Grouping 2 refuses it by the addend guard, and by the finder's
+# zero-extension check on t when t has constant zero bits above the sum.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_k_unsigned,0,$(casc_addend_unsigned))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g2_refusal,_addend_g2_k_unsigned_wide,0,$(casc_unsigned))
 # Grouping 2 read shifted, or with another cell's bits above the wire: no
 # attempt, so no candidate and no reason.
 qlf_k6n10f-dspv4_casc_addend_refused_verify += $(foreach b,_addend_g2_slice _addend_g2_in_slice,&& grep -q 'modes inferred: MULT_ADD_C x2$$' $(casc_addend_refused_dir)/$(b).log)
@@ -990,6 +1073,10 @@ qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_shared,$(casc_other_adder_reader))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_unsigned,$(casc_addend_unsigned))
 qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_wide_y,$(casc_addend_wide))
+# Grouping 1 on a consumer with PREG: k would be registered. The plain link stays.
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_preg,$(casc_addend_registered))
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && ! grep -q 'grouping 1, .* folds' $(casc_addend_refused_dir)/_addend_g1_preg.log
+qlf_k6n10f-dspv4_casc_addend_refused_verify += && $(call casc_g1_decline,_addend_g1_k_unsigned,$(casc_addend_unsigned))
 # Grouping 1 below an accumulator: s must hold the whole 50-bit port, so a
 # 40-bit s declines the fold in rule 1's walk, after the finder took it.
 casc_full_port_log = $(casc_addend_refused_dir)/_addend_g1_full_port.log
@@ -1073,13 +1160,21 @@ qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_pcin17_report,$(casc_pcin1
 qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_pcin17_report,$(casc_pcin17_dir)/_mixed_at_cap_cells.log,1)
 qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_wired,$(casc_pcin17_dir)/_mixed_at_cap_cells.log,2,0)
 # Two readers of one source's P >> 17, one of them heading a plain link. At
-# -chain_max 2 the other reader takes the source's PCOUT; at 3 the first does.
+# -chain_max 2 the other reader takes the source's PCOUT; at 3 x does, the one with the longer chain below it.
 # Either way one PCIN >> 17 link and one plain link.
 qlf_k6n10f-dspv4_casc_pcin17_verify += $(foreach b,_two_readers _two_readers_at_cap,&& test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_pcin17_dir)/$(b).log)" = 1)
 qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_report,$(casc_pcin17_dir)/_two_readers.log,1,1,2,2)
 qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_report,$(casc_pcin17_dir)/_two_readers_at_cap.log,1,1,2,3)
 qlf_k6n10f-dspv4_casc_pcin17_verify += $(foreach b,_two_readers _two_readers_cells _two_readers_at_cap _two_readers_at_cap_cells,&& $(call casc_pcin17_report,$(casc_pcin17_dir)/$(b).log,1))
 qlf_k6n10f-dspv4_casc_pcin17_verify += $(foreach b,_two_readers _two_readers_at_cap,&& $(call casc_wired,$(casc_pcin17_dir)/$(b)_cells.log,2,1))
+# Of two readers of one source's P >> 17, the consumer with the longer chain
+# below it takes the PCOUT, and of equal chains the first in name order.
+qlf_k6n10f-dspv4_casc_pcin17_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT_ADD_C x1, MULT_ADD x1, MULT x1$$' $(casc_pcin17_dir)/_longer_chain_later.log)" = 1
+qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_report,$(casc_pcin17_dir)/_longer_chain_later.log,1,1,2,4)
+qlf_k6n10f-dspv4_casc_pcin17_verify += $(foreach b,_longer_chain_later _longer_chain_later_cells _equal_chains _equal_chains_cells,&& $(call casc_pcin17_report,$(casc_pcin17_dir)/$(b).log,1))
+qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_wired,$(casc_pcin17_dir)/_longer_chain_later_cells.log,2,1)
+qlf_k6n10f-dspv4_casc_pcin17_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT_ADD_C x1, MULT x1$$' $(casc_pcin17_dir)/_equal_chains.log)" = 1
+qlf_k6n10f-dspv4_casc_pcin17_verify += && $(call casc_wired,$(casc_pcin17_dir)/_equal_chains_cells.log,1,1)
 # No PCIN >> 17 link. -no_pcin17: the upper piece stays MULT_ADD_C and reads C.
 # dspv4_casc_pcin17 is the same RTL, with the link made.
 casc_pcin17_refused_dir = qlf_k6n10f/dspv4_casc_pcin17_refused
@@ -1097,6 +1192,18 @@ qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && test "$$(grep -c 'modes inferr
 qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_report,$(casc_pcin17_refused_dir)/_mixed_cap.log,1,1,2,2)
 qlf_k6n10f-dspv4_casc_pcin17_refused_verify += $(foreach b,_mixed_cap _mixed_cap_cells,&& ! grep -q 'PCIN>>17' $(casc_pcin17_refused_dir)/$(b).log)
 qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_wired,$(casc_pcin17_refused_dir)/_mixed_cap_cells.log,1,1)
+# A refused read logs the cause that stops it, once, and makes no link. The
+# zero-extended read is named before the width. casc_pcin17_refused_for takes
+# a block, its reason, and the modes it infers.
+casc_pcin17_refused_for = test "$$(grep -c 'PCIN>>17 refused .*: $(2)$$' $(1))" = 1 && test "$$(grep -c 'PCIN>>17 refused' $(1))" = 1 && test "$$(grep -c 'modes inferred: $(3)$$' $(1))" = 1 && ! grep -q 'PCIN>>17 link' $(1)
+casc_pcin17_unsigned = link is read unsigned, and PCIN>>17 sign-extends
+casc_pcin17_other = link is read with bits above it that are not a sign extension
+casc_pcin17_narrow = RTL sum too narrow ([0-9]* bits) for shifted P range ([0-9]* bits)
+casc_pcin17_one_c_one_mult = MULT_ADD_C x1, MULT x1
+qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_pcin17_refused_for,$(casc_pcin17_refused_dir)/_unsigned_narrow_cells.log,$(casc_pcin17_unsigned),MULT_ADD_C x2)
+qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_pcin17_refused_for,$(casc_pcin17_refused_dir)/_unsigned_wide_cells.log,$(casc_pcin17_unsigned),$(casc_pcin17_one_c_one_mult))
+qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_pcin17_refused_for,$(casc_pcin17_refused_dir)/_signed_narrow_cells.log,$(casc_pcin17_narrow),$(casc_pcin17_one_c_one_mult))
+qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_pcin17_refused_for,$(casc_pcin17_refused_dir)/_other_upper_bits_cells.log,$(casc_pcin17_other),$(casc_pcin17_one_c_one_mult))
 # Loops of PCIN >> 17 reads: each loses one link, with one -verbose line; the
 # cap then counts from the cell that link entered. casc_no_ring follows each
 # PCIN back to the PCOUT driving it and fails if a cell is reached again.
@@ -1113,6 +1220,41 @@ qlf_k6n10f-dspv4_casc_pcin17_loop_verify += $(foreach b,_loop _loop3 _loop3_at_c
 qlf_k6n10f-dspv4_casc_pcin17_loop_verify += $(foreach b,_loop _loop_no_register,&& $(call casc_wired,$(casc_pcin17_loop_dir)/$(b)_cells.log,1,1))
 qlf_k6n10f-dspv4_casc_pcin17_loop_verify += && $(call casc_wired,$(casc_pcin17_loop_dir)/_loop3_cells.log,1,2)
 qlf_k6n10f-dspv4_casc_pcin17_loop_verify += && $(call casc_wired,$(casc_pcin17_loop_dir)/_loop3_at_cap_cells.log,2,1)
+# A pre-subtract stage has no cascade word: it is not a candidate, keeps its C
+# link, and no reason is given, because nothing was refused.
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && grep -q 'modes inferred: PREADD_A_SUB_B_C x1, MULT_ADD_C x1$$' $(casc_preadd_refused_dir)/_preadd_sub_c.log
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_found,$(casc_preadd_refused_dir)/_preadd_sub_c.log,0,0)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_wired,$(casc_preadd_refused_dir)/_preadd_sub_c.log,0,2)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_report,$(casc_preadd_refused_dir)/_preadd_sub_c.log,0,0,0,12)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && ! grep -q 'cascade links refused' $(casc_preadd_refused_dir)/_preadd_sub_c.log
+# The same below a link that is made: one candidate and one PCIN link, into s2.
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && grep -q 'modes inferred: PREADD_A_SUB_B_C x1, PREADD_A_MULT_B_CASC x1, PREADD_A_MULT_B_C x1$$' $(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_found,$(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log,1,0)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_wired,$(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log,1,2)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && $(call casc_report,$(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log,1,1,2,12)
+qlf_k6n10f-dspv4_casc_preadd_refused_verify += && ! grep -q 'cascade links refused' $(casc_preadd_refused_dir)/_preadd_sub_c_after_link.log
+
+# A loop with no register: the link into the cell first in name order is
+# dropped, once, and the rest links. casc_loop_no_register takes a block, its
+# candidate and refused counts, the number of cells that read PCIN and C, the
+# links, the longest chain and the limit. The stopped log also names the head.
+casc_loop_dir = qlf_k6n10f/dspv4_casc_loop_no_register
+$(casc_loop_dir)/ok: $(wildcard $(casc_loop_dir)/*.v)
+casc_loop_head = test "$$(grep -c 'cascade: .* is a head now: its loop lost a link$$' $(1))" = 1
+casc_loop_no_register = $(call casc_found,$(casc_loop_dir)/$(1).log,$(2),$(3)) && $(call casc_reason,$(casc_loop_dir)/$(1).log,$(casc_loop),1) && $(call casc_loop_head,$(casc_loop_dir)/$(1).log) && $(call casc_wired,$(casc_loop_dir)/$(1).log,$(4),$(5)) && $(call casc_report,$(casc_loop_dir)/$(1).log,$(6),1,$(7),$(8)) && $(call casc_report,$(casc_loop_dir)/$(1)_flow.log,$(6),1,$(7),$(8)) && $(call casc_ranked,$(casc_loop_dir)/$(1)_flow.log,1,$(casc_loop))
+qlf_k6n10f-dspv4_casc_loop_no_register_verify = $(call casc_loop_no_register,_ring2,2,1,1,1,1,2,2)
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && $(call casc_loop_no_register,_ring2_swapped,2,1,1,1,1,2,12)
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && $(call casc_loop_no_register,_ring3,3,1,2,1,2,3,12)
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && $(call casc_loop_no_register,_ring2_tail,3,2,1,2,1,2,12)
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && $(call casc_reason,$(casc_loop_dir)/_ring2_tail.log,$(casc_shorter),1)
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_loop_dir)/_ring2.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_flow.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_swapped.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x1, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_swapped_flow.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD x2, MULT_ADD_C x1$$' $(casc_loop_dir)/_ring3.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD x2, MULT_ADD_C x1$$' $(casc_loop_dir)/_ring3_flow.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_tail.log
+qlf_k6n10f-dspv4_casc_loop_no_register_verify += && grep -q 'modes inferred: MULT_ADD_C x2, MULT_ADD x1$$' $(casc_loop_dir)/_ring2_tail_flow.log
 # The chain length line, once per log, with its three numbers.
 chain_length_line = test "$$(grep -c '^ql_dsp4_chain_report: longest DSP chain ' $(1))" = 1 && grep -q '^ql_dsp4_chain_report: longest DSP chain $(2) ($(3) link(s) in $(4) chain(s))$$' $(1)
 # The loop warning, an exact number of times, and once for a named cell.
@@ -1239,15 +1381,18 @@ qlf_k6n10f/rel_ip_blif_noprim_negative = 1
 qlf_k6n10f-rel_ip_blif_noprim_verify = grep -q "primitive 'QL_OTHER_PRIM', which the cell library does not define" qlf_k6n10f/rel_ip_blif_noprim/rel_ip_blif_noprim.log
 
 # Which width lands on which multiply port. Counts cannot tell the two apart.
-qlf_k6n10f-dspv4_preadd_widths_verify = grep -q 'modes inferred: PREADD_B_MULT_A x3, PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_widths/dspv4_preadd_widths.log
+qlf_k6n10f-dspv4_preadd_widths_verify = grep -q 'modes inferred: PREADD_B_MULT_A x4, PREADD_A_MULT_B x2' qlf_k6n10f/dspv4_preadd_widths/dspv4_preadd_widths.log
 # No pre-adder mode anywhere. Asserted this way rather than as a MULT count
 # because the pass runs twice and splits the count between the two lines.
 qlf_k6n10f-dspv4_preadd_refused_verify = ! grep -q 'modes inferred:.*PREADD' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
-qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: it truncates its own sum, which the DSP would not' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '2 x  pre-adder: it truncates its own sum, which the DSP would not' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: its operand signedness differs from the multiply port' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
-qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: its sum may exceed the multiplier port' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '5 x  pre-adder: its sum may exceed the multiplier port' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: the multiply operand pads its sum instead of extending its sign' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  multiply: 19x32 (signed x signed) does not fit the 32x18 ports' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '2 x  multiply: 18x20 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  multiply: 32x8 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  multiply: 19x20 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 
 # Five modes in one design. Counts cannot tell PREADD_A_SUB_B from
 # PREADD_B_SUB_A, and for the reversed-operand shape the mode name is the only
@@ -1256,12 +1401,73 @@ qlf_k6n10f-dspv4_preadd_modes_verify = grep -q 'modes inferred: PREADD_A_SUB_B x
 
 # A refused pre-adder must report MULT, not a PREADD mode -- the cell counts
 # in the .tcl cannot tell a refusal from a fold that never matched.
-qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
-qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '1 x  pre-adder: the multiply reads fewer bits of its registered sum than it produces' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x3' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '2 x  pre-adder: the multiply reads fewer bits of its registered sum than it produces' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '1 x  pre-adder: an unsigned subtract wraps where the DSP signs' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
 
 
-# Thirteen shapes, two paths. Counts cannot tell PREADD_A from PREADD_B; the
+# Fifteen shapes, two paths. Counts cannot tell PREADD_A from PREADD_B; the
 # swap onto B1/B2 is the second B-path word.
-qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x12, PREADD_B_MULT_A x2' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
+qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x12, PREADD_B_MULT_A x3' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
 # The two four-enable cells name the B chain they give up.
 qlf_k6n10f-dspv4_preadd_regs_verify += && grep -q '2 x  B register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
+
+# One inverter per active-low enable signal (aurora2 #2971). The run reads the
+# inverter count after ql_dspv4; here the log must show the cell was inferred
+# and that ql_dsp4_check did not count one enable as several.
+qlf_k6n10f-dspv4_enable_inverter_shared_verify = grep -q 'modes inferred: MULT_ADD_C x1' qlf_k6n10f/dspv4_enable_inverter_shared/dspv4_enable_inverter_shared.log
+qlf_k6n10f-dspv4_enable_inverter_shared_verify += && ! grep -q 'distinct clock enables' qlf_k6n10f/dspv4_enable_inverter_shared/dspv4_enable_inverter_shared.log
+# A QL_DSP4 the techmap refuses stops synthesis (aurora2 #2973). The refused
+# run is expected to fail and its log must name each of the four cells; the twin
+# has the same four cells with the rule satisfied and must map.
+qlf_k6n10f/dspv4_techmap_refused_stops_negative = 1
+qlf_k6n10f-dspv4_techmap_refused_stops_verify = grep -q 'selection is not empty: t:QL_DSP4' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_w$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_y$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_carry$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_carryp$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+# The refused run also says why, for each of the four cells.
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_w: .*It breaks: reserved W encoding (W_SEL = 10)' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_y: .*It breaks: reserved Y encoding (Y_SEL = 10)' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_carry: .*It breaks: CARRYINSEL = 001 is not a carry source' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_carryp: .*It breaks: the carry register (CARRYINSEL = 100) with P fed back' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_twin_maps_verify = true
+
+# ql_dsp4_explain on its own (aurora2 #2973): two rules in one message, and a
+# cell that breaks none of the known rules is reported as unexplained.
+qlf_k6n10f-dspv4_techmap_reason_verify = grep -q 'dspv4_techmap_reason.u_two: .*It breaks: CARRYINSEL = 001 is not a carry source.*; reserved W encoding (W_SEL = 10)' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+qlf_k6n10f-dspv4_techmap_reason_verify += && grep -q 'dspv4_techmap_reason.u_clean: .*No known rule explains it' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+qlf_k6n10f-dspv4_techmap_reason_verify += && ! grep -q 'dspv4_techmap_reason.u_clean: .*It breaks' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+
+# The design rules of the techmap (openphy-turnkey-flow #2173, aurora2 #2973). The
+# refused run is expected to fail and its log must give the rule for each of
+# the eight cells; the twin has cells with the rule satisfied and they must map.
+qlf_k6n10f/dspv4_techmap_refused_drc_negative = 1
+qlf_k6n10f-dspv4_techmap_refused_drc_verify = grep -q 'selection is not empty: t:QL_DSP4' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simd11: .*It breaks: USE_SIMD = 11, a segmentation that does not exist' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simdwxy: .*It breaks: SIMD with more than one of W, X and Y selected' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simdrss: .*It breaks: SIMD with USE_RSS' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simdcarry: .*It breaks: SIMD with a carry-in from CCIN or the carry register' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_uwithoutv: .*It breaks: X = U without Y = V' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_zres: .*It breaks: reserved Z encoding (Z_SEL = 111)' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_maccext: .*It breaks: MACC_EXT (Z_SEL = 100) with ALUMODE != 00' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_ce4: .*It breaks: 4 clock-enable nets on the registers in use' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_ce4open: .*It breaks: 4 clock-enable nets on the registers in use' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_twin_drc_maps_verify = true
+# GND and VCC cells become constants before the DSP-V4 techmap (aurora2 #2970).
+# A carry-in on a GND cell folds the lone MREG; a live carry-in keeps the M banks.
+qlf_k6n10f-dspv4_synplify_gnd_cin_folds_verify = true
+qlf_k6n10f-dspv4_synplify_live_cin_keeps_m_verify = true
+
+# A tied-high clock enable counts against the crossbar's three inputs (aurora2
+# #2972). The evict block must give up exactly one port, B, and the keep block
+# none; the cells that remain must not trip the check pass.
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify = grep -q '1 x  B register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify += && ! grep -q 'distinct clock enables' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+# The shared block gives up D and keeps B: B and C hold the same tied-high net, so
+# giving up B frees no slot. B is given up once, by the evict block, not twice.
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify += && grep -q '1 x  D register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify += && ! grep -q '2 x  B register chain given up' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+# The check pass: the four-net cell warns, the three-net cell does not.
+qlf_k6n10f-dspv4_enable_tied_high_check_verify = grep -q 'u_warns.u: 4 distinct clock enables' qlf_k6n10f/dspv4_enable_tied_high_check/dspv4_enable_tied_high_check.log
+qlf_k6n10f-dspv4_enable_tied_high_check_verify += && ! grep -q 'u_fits.u: [0-9]* distinct clock enables' qlf_k6n10f/dspv4_enable_tied_high_check/dspv4_enable_tied_high_check.log
