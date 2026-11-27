@@ -19,3 +19,15 @@ select -assert-count 1 t:QL_DSP4_PREADD
 # 19-bit sum about 19, and the wider one is the one worth absorbing -- so a
 # bound between them fails if the pass took the narrower side.
 select -assert-max 12 t:adder_carry
+
+yosys cd
+design -reset
+read_verilog dspv4_preadd_both.v
+hierarchy -top dspv4_preadd_both_tie
+$PASS_NAME -family qlf_k6n10f -top dspv4_preadd_both_tie -dspv4 -no_abc9 -lib_path $LIB/
+
+yosys cd dspv4_preadd_both_tie
+check -assert
+# The difference on A was absorbed, not the sum on B.
+select -assert-count 1 t:QL_DSP4_PRESUB
+select -assert-count 0 t:QL_DSP4_PREADD

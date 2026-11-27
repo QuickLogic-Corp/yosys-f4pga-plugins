@@ -19,16 +19,16 @@ $PASS_NAME -family qlf_k6n10f -top dspv4_preadd_regs -dspv4 -no_abc9 -lib_path $
 
 yosys cd dspv4_preadd_regs
 check -assert
-# Fourteen shapes, every one of them folded.
-select -assert-count 14 t:QL_DSP4_PREADD
-select -assert-count 14 t:QL_DSP4_MULT
+# Fifteen shapes, every one of them folded.
+select -assert-count 15 t:QL_DSP4_PREADD
+select -assert-count 15 t:QL_DSP4_MULT
 # No carry chain anywhere is what "the pre-adder survived" means.
 select -assert-count 0 t:adder_carry
 # Banks. D holds one stage and A two, so the six shapes whose two-deep chain
 # arrived on D swap their operands: dr_p2, dr_p5, as_p, ce_p and ic_p put the
 # chain in A1 and A2, and bs_p puts it in B1 and B2 on the B path. Without the
 # swap D would hold 10, A1 none, and six outer stages would sit in fabric.
-select -assert-count 5 t:QL_DSP4_AD_DFFR_32
+select -assert-count 6 t:QL_DSP4_AD_DFFR_32
 select -assert-count 7 t:QL_DSP4_D_DFFRE_27
 select -assert-count 5 t:QL_DSP4_A1_DFFRE_32
 select -assert-count 6 t:QL_DSP4_A2_DFFRE_32

@@ -48,7 +48,7 @@ jobs:
   # built against the same Yosys it pins. The other plugins in this repo are
   # inherited from upstream F4PGA and don't build against that Yosys.
   Run-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
@@ -59,7 +59,7 @@ jobs:
 
     env:
       # Keep in sync with aurora2's yosys-and-plugins/yosys-gh submodule pin.
-      YOSYS_VERSION: v0.55
+      YOSYS_VERSION: v0.70
       # Outside the checkout, and free of '..' (actions/cache rejects it).
       YOSYS_PREFIX: /home/runner/yosys-install
 
@@ -72,7 +72,7 @@ jobs:
     - name: Install
       run: |
         sudo apt-get update
-        sudo apt-get install build-essential bison flex \
+        sudo apt-get install build-essential cmake bison flex \
           libreadline-dev gawk tcl-dev libffi-dev git graphviz xdot \
           pkg-config python3 libboost-system-dev libboost-python-dev \
           libboost-filesystem-dev zlib1g-dev iverilog
@@ -91,7 +91,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.YOSYS_PREFIX }}
-        key: yosys-${{ env.YOSYS_VERSION }}-${{ hashFiles('.github/yosys-patches/*.patch') }}-${{ runner.os }}-ubuntu-22.04
+        key: yosys-${{ env.YOSYS_VERSION }}-${{ hashFiles('.github/yosys-patches/*.patch') }}-${{ runner.os }}-ubuntu-24.04
 
     - name: Install Yosys
       run: |
@@ -106,7 +106,7 @@ jobs:
       uses: actions/cache/save@v4
       with:
         path: ${{ env.YOSYS_PREFIX }}
-        key: yosys-${{ env.YOSYS_VERSION }}-${{ hashFiles('.github/yosys-patches/*.patch') }}-${{ runner.os }}-ubuntu-22.04
+        key: yosys-${{ env.YOSYS_VERSION }}-${{ hashFiles('.github/yosys-patches/*.patch') }}-${{ runner.os }}-ubuntu-24.04
 
     - name: Build and test plugins
       run: |

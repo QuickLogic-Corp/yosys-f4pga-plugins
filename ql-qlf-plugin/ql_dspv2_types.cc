@@ -337,8 +337,11 @@ struct QlDSPV2TypesPass : public Pass {
 
     static void set_param_bit(RTLIL::Cell *cell, const RTLIL::IdString &param, int bit_index, RTLIL::State state = RTLIL::State::S0)
     {
-        RTLIL::Const val = cell->getParam(param);
-        val.bits()[bit_index] = state;
+        const RTLIL::Const &old = cell->getParam(param);
+        std::vector<RTLIL::State> bits = old.to_bits();
+        bits[bit_index] = state;
+        RTLIL::Const val(bits);
+        val.flags = old.flags;
         cell->setParam(param, val);
     }
 
