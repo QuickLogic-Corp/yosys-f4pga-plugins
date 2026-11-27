@@ -21,6 +21,7 @@
 #include "kernel/register.h"
 #include "kernel/rtlil.h"
 #include "kernel/sigtools.h"
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 
@@ -72,6 +73,14 @@ bool check_equivalence(const std::string &fname)
 }
 
 struct SynthQuickLogicPass : public ScriptPass {
+
+    // QoR option defaults and limits; the help text, clear_flags() and the checks all read these.
+    static constexpr int kMinOptionWidth = 1;
+    static constexpr int kSmallMulWidthOff = 0;
+    static constexpr int kDefaultSmallMulWidth = 2;
+    static constexpr int kMaxSmallMulWidth = 8;
+    static constexpr int kDefaultCmp2lutWidth = 4;
+    static constexpr int kMaxCarryMinWidth = 128;
 
     SynthQuickLogicPass() : ScriptPass(STR(PASS_NAME), "Synthesis for QuickLogic FPGAs") {}
 
@@ -141,6 +150,27 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("        By default use adder cells in output netlist.\n");
         log("        Specifying this switch turns it off.\n");
         log("\n");
+        log("    -carry_min_width <N>\n");
+        log("        Map adders and compares ($alu) narrower than N bits to LUT logic\n");
+        log("        instead of adder_carry; wider ones keep the carry chain.\n");
+        log("        Off by default (every $alu uses adder_carry, unless -no_adder).\n");
+        log("\n");
+        log("    -cmp2lut_width <N>\n");
+        log("        Compares (<, <=, >, >=) of a signal with a constant on up to N bits\n");
+        log("        become one LUT rather than carry logic (cmp2lut LUT_WIDTH).\n");
+        log("        Default: %d. At most the LUT size: 6 for qlf_k6n10 and qlf_k6n10f,\n", kDefaultCmp2lutWidth);
+        log("        4 for qlf_k4n8 and pp3.\n");
+        log("\n");
+        log("    -small_mul_width <N>\n");
+        log("        Before DSP mapping, build multiplies with an operand of at most N bits\n");
+        log("        from logic instead of a DSP. Default: %d. %d turns it off.\n", kDefaultSmallMulWidth, kSmallMulWidthOff);
+        log("\n");
+        log("    -no_keep_syn_preserve\n");
+        log("        By default flip-flops driving a syn_preserve signal are marked keep, so\n");
+        log("        register copies made for fanout are not merged.\n");
+        log("        Specifying this switch turns it off. (-keep_syn_preserve is accepted\n");
+        log("        and does nothing.)\n");
+        log("\n");
         log("    -no_bram\n");
         log("        By default use Block RAM in output netlist.\n");
         log("        Specifying this switch turns it off.\n");
@@ -208,7 +238,8 @@ struct SynthQuickLogicPass : public ScriptPass {
     }
 
     string top_opt, edif_file, blif_file, clocks_file, family, currmodule, verilog_file, use_dsp_cfg_params, lib_path, mince_num, custom_abc_script,
-      de;
+      de, carry_min_width, cmp2lut_width, small_mul_width;
+    bool keepSynPreserve;
     bool nodsp;
     bool inferAdder;
     bool inferBram;
@@ -257,6 +288,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         lib_path = "+/quicklogic/";
         mince_num = "";
         de = "";
+        carry_min_width = "";
+        cmp2lut_width = std::to_string(kDefaultCmp2lutWidth);
+        small_mul_width = std::to_string(kDefaultSmallMulWidth);
+        keepSynPreserve = true;
         rel_ip_blif_files.clear();
     }
 
@@ -351,6 +386,9 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-custom_abc_script", &custom_abc_script},
           {"-mince_num", &mince_num},
           {"-de", &de},
+          {"-carry_min_width", &carry_min_width},
+          {"-cmp2lut_width", &cmp2lut_width},
+          {"-small_mul_width", &small_mul_width},
         };
         const SwitchOption switch_options[] = {
           {"-no_dsp", &nodsp, true},
@@ -368,6 +406,8 @@ struct SynthQuickLogicPass : public ScriptPass {
           {"-dspv4", &dspv4, true},
           {"-no_tdpram", &notdpram, true},
           {"-synplify", &synplify, true},
+          {"-keep_syn_preserve", &keepSynPreserve, true},
+          {"-no_keep_syn_preserve", &keepSynPreserve, false},
         };
 
         size_t argidx;
@@ -426,6 +466,18 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (family != "pp3" && family != "qlf_k4n8" && family != "qlf_k6n10" && family != "qlf_k6n10f")
             log_cmd_error("Invalid family specified: '%s'\n", family.c_str());
+
+        auto check_int = [](const char *opt, const std::string &value, int lo, int hi) {
+            bool digits = !value.empty() && value.size() <= std::to_string(hi).size() && std::all_of(value.begin(), value.end(), ::isdigit);
+            if (!digits || std::stoi(value) < lo || std::stoi(value) > hi)
+                log_cmd_error("%s needs a whole number from %d to %d, got '%s'\n", opt, lo, hi, value.c_str());
+        };
+        // cmp2lut makes one $lut; wider than the family's LUT, ABC splits it again.
+        const int lut_size = (family == "qlf_k4n8" || family == "pp3") ? 4 : 6;
+        check_int("-cmp2lut_width", cmp2lut_width, kMinOptionWidth, lut_size);
+        check_int("-small_mul_width", small_mul_width, kSmallMulWidthOff, kMaxSmallMulWidth);
+        if (!carry_min_width.empty())
+            check_int("-carry_min_width", carry_min_width, kMinOptionWidth, kMaxCarryMinWidth);
 
         // DSP-V4 reaches hardware two ways, and both end at the same techmap:
         //   -dspv4 -synplify : Synplify infers QL_DSPV2, ql_dspv2_to_dspv4
@@ -890,6 +942,10 @@ struct SynthQuickLogicPass : public ScriptPass {
             } else {
                 run("proc");
                 run("flatten");
+                if (help_mode || keepSynPreserve) {
+                    // Register copies made for fanout carry syn_preserve; opt_merge would fold them.
+                    run("setattr -set keep 1 a:syn_preserve %ci1 t:$*dff* %i", "(unless -no_keep_syn_preserve)");
+                }
                 if (help_mode || family == "pp3") {
                     run("tribuf -logic", "                   (for pp3)");
                 }
@@ -920,6 +976,14 @@ struct SynthQuickLogicPass : public ScriptPass {
         }
 
         if (check_label("map_dsp", "(skip if -no_dsp)")) {
+            if (help_mode || std::stoi(small_mul_width) != kSmallMulWidthOff) {
+                // A multiply with a 1- or 2-bit operand (e.g. `sel * CONST` in an index) is a
+                // few gates; on a DSP it hides that logic from ABC. Wider ones stay on the DSP.
+                const std::string label = "(unless -small_mul_width " + std::to_string(kSmallMulWidthOff) + ")";
+                run("techmap -map +/techmap.v t:$mul r:A_WIDTH<=" + small_mul_width + " %i t:$mul r:B_WIDTH<=" + small_mul_width + " %i %u", label);
+                run("opt_expr", label);
+                run("opt_clean", label);
+            }
             if (help_mode || family == "qlf_k6n10") {
                 if (help_mode || !nodsp) {
                     run("memory_dff", "                      (for qlf_k6n10)");
@@ -1156,7 +1220,7 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("coarse")) {
             // if (!synplify) {
-            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=4");
+            run("techmap -map +/cmp2lut.v -D LUT_WIDTH=" + cmp2lut_width, "(unless -cmp2lut_width)");
             if (!noOpt) {
                 run("opt_expr");
                 run("opt_clean");
@@ -1233,6 +1297,12 @@ struct SynthQuickLogicPass : public ScriptPass {
 
         if (check_label("map_gates")) {
             // if (!synplify) {
+            if (help_mode || (inferAdder && !carry_min_width.empty())) {
+                // Narrow adders and compares go to LUT logic, where ABC can fold them;
+                // a short adder_carry chain is an opaque box to ABC.
+                run("techmap -map +/techmap.v t:$alu r:Y_WIDTH<" + (help_mode ? std::string("<N>") : carry_min_width) + " %i",
+                    "(if -carry_min_width)");
+            }
             if (help_mode || (inferAdder && (family == "qlf_k4n8" || family == "qlf_k6n10" || family == "qlf_k6n10f"))) {
                 run("techmap -map +/techmap.v -map " + lib_path + family + "/arith_map.v", "(unless -no_adder)");
             } else {
