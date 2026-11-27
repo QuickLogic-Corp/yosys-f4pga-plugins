@@ -459,6 +459,82 @@ struct Reader {
     RTLIL::IdString port;
 };
 
+// Who reads each bit and which bits are marked keep, as of when it was built.
+// Build a new one after anything that changes a cell's ports.
+struct ModuleNets {
+    struct Entry {
+        int order; // the reader's place in the module's cell, then output order
+        Reader reader;
+    };
+    dict<SigBit, std::vector<Entry>> readers_at;
+    pool<SigBit> kept_bits;
+
+    ModuleNets(RTLIL::Module *module, SigMap &sigmap)
+    {
+        int order = 0;
+        for (auto cell : module->cells())
+            for (auto &conn : cell->connections()) {
+                note_reader(sigmap(conn.second), {cell, conn.first}, order);
+                order++;
+            }
+        for (auto wire : module->wires()) {
+            if (wire->port_output) {
+                note_reader(sigmap(wire), {nullptr, wire->name}, order);
+                order++;
+            }
+            if (wire->get_bool_attribute(ID::keep))
+                for (auto bit : sigmap(wire))
+                    if (bit.wire != nullptr)
+                        kept_bits.insert(bit);
+        }
+    }
+
+    // True when a wire marked keep holds a bit of the net.
+    bool net_is_kept(SigMap &sigmap, const SigSpec &net) const
+    {
+        for (auto bit : sigmap(net))
+            if (bit.wire != nullptr && kept_bits.count(bit))
+                return true;
+        return false;
+    }
+
+    // True when a wire marked keep holds a bit of the source's P: that wire
+    // must keep the sum before the register.
+    bool p_is_kept(SigMap &sigmap, RTLIL::Cell *source) const { return net_is_kept(sigmap, source->getPort(ID(P))); }
+
+    // Everything that reads a cell's output port: each cell port that holds one
+    // of its bits, and each module output that does. The port itself is not.
+    std::vector<Reader> readers_of(SigMap &sigmap, RTLIL::Cell *driver, RTLIL::IdString output) const
+    {
+        std::vector<const Entry *> found;
+        for (auto bit : sigmap(driver->getPort(output))) {
+            auto at_bit = readers_at.find(bit);
+            if (bit.wire == nullptr || at_bit == readers_at.end())
+                continue;
+            for (auto &entry : at_bit->second)
+                if (!(entry.reader.cell == driver && entry.reader.port == output))
+                    found.push_back(&entry);
+        }
+        std::sort(found.begin(), found.end(), [](const Entry *x, const Entry *y) { return x->order < y->order; });
+        std::vector<Reader> readers;
+        int last_order = -1;
+        for (auto entry : found)
+            if (entry->order != last_order) {
+                readers.push_back(entry->reader);
+                last_order = entry->order;
+            }
+        return readers;
+    }
+
+  private:
+    void note_reader(const SigSpec &bits, Reader reader, int order)
+    {
+        for (auto bit : bits)
+            if (bit.wire != nullptr)
+                readers_at[bit].push_back({order, reader});
+    }
+};
+
 // How `read` holds `wire`: `bits` low bits are `wire`'s, bit 0 on bit 0, and
 // above them come copies of the top one, constant zeros, or something else.
 enum class Extension { SIGN, ZERO, OTHER };
@@ -919,6 +995,7 @@ struct QlDspV4Pass : public Pass {
 
         std::vector<CascadeLink> links;
         pool<RTLIL::Cell *> claimed_adders;
+        const ModuleNets nets(module, sigmap);
         for (auto consumer : cells) {
             const std::string &mode = mode_name_of.at(consumer);
             if (!CASCADE_WORD.count(mode) || !consumer->hasPort(ID(C)))
@@ -931,9 +1008,9 @@ struct QlDspV4Pass : public Pass {
             }
             auto adder = adder_of_bit_0.find(c[0]);
             if (adder != adder_of_bit_0.end() && mode == ADDEND_CONSUMER_MODE)
-                find_grouping_2(module, sigmap, consumer, adder->second, c, driver_of_bit_0, links, claimed_adders);
+                find_grouping_2(module, sigmap, nets, consumer, adder->second, c, driver_of_bit_0, links, claimed_adders);
         }
-        find_grouping_1(module, sigmap, links, claimed_adders);
+        find_grouping_1(sigmap, nets, links, claimed_adders);
         return links;
     }
 
@@ -996,10 +1073,11 @@ struct QlDspV4Pass : public Pass {
             if (link.consumer->getParam(ID(CREG)).as_bool())
                 registered_links_of[link.source].push_back(&link);
         dict<SigBit, RTLIL::Cell *> not_driving = not_cells_by_output(module, sigmap);
+        ModuleNets nets(module, sigmap);
         for (auto &it : registered_links_of) {
             RTLIL::Cell *source = it.first;
             std::vector<RTLIL::Cell *> fabric_copies;
-            std::string reason = why_register_stays(module, sigmap, not_driving, source, it.second, fabric_copies);
+            std::string reason = why_register_stays(nets, sigmap, not_driving, source, it.second, fabric_copies);
             if (!reason.empty()) {
                 register_not_moved[reason] += GetSize(it.second);
                 if (verbose)
@@ -1012,23 +1090,24 @@ struct QlDspV4Pass : public Pass {
             for (auto flop : fabric_copies)
                 remove_fabric_copy(module, flop);
             registers_moved++;
+            nets = ModuleNets(module, sigmap);
         }
     }
 
     // The first of step 0's checks that fails, or "" when all pass. Each
     // check returns on its own line.
-    std::string why_register_stays(RTLIL::Module *module, SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *source,
+    std::string why_register_stays(const ModuleNets &nets, SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *source,
                                    const std::vector<const CascadeLink *> &registered, std::vector<RTLIL::Cell *> &fabric_copies)
     {
         RTLIL::Cell *first = registered[0]->consumer;
         if (source->getParam(ID(PREG)).as_bool())
             return "the source already has a P register";
-        if (p_is_kept(module, sigmap, source))
+        if (nets.p_is_kept(sigmap, source))
             return "the source's P is marked keep";
         pool<RTLIL::Cell *> registered_consumers;
         for (auto link : registered)
             registered_consumers.insert(link->consumer);
-        for (auto &reader : readers_of(module, sigmap, source, ID(P))) {
+        for (auto &reader : nets.readers_of(sigmap, source, ID(P))) {
             if (reader.port == ID(C) && registered_consumers.count(reader.cell))
                 continue;
             if (reader.cell != nullptr && reader.port == ID::D && is_matcher_flop(reader.cell)) {
@@ -1066,54 +1145,6 @@ struct QlDspV4Pass : public Pass {
             note(source, pin);
         note(consumer, ID(CEC));
         return GetSize(enables);
-    }
-
-    // True when a wire marked keep holds a bit of the net.
-    static bool net_is_kept(RTLIL::Module *module, SigMap &sigmap, const SigSpec &net)
-    {
-        pool<SigBit> net_bits;
-        for (auto bit : sigmap(net))
-            if (bit.wire != nullptr)
-                net_bits.insert(bit);
-        for (auto wire : module->wires())
-            if (wire->get_bool_attribute(ID::keep))
-                for (auto bit : sigmap(wire))
-                    if (net_bits.count(bit))
-                        return true;
-        return false;
-    }
-
-    // True when a wire marked keep holds a bit of the source's P: that wire
-    // must keep the sum before the register.
-    static bool p_is_kept(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *source) { return net_is_kept(module, sigmap, source->getPort(ID(P))); }
-
-    // Everything that reads a cell's output port: each cell port that holds one
-    // of its bits, and each module output that does. The port itself is not.
-    static std::vector<Reader> readers_of(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *driver, RTLIL::IdString output)
-    {
-        pool<SigBit> driven_bits;
-        for (auto bit : sigmap(driver->getPort(output)))
-            if (bit.wire != nullptr)
-                driven_bits.insert(bit);
-        std::vector<Reader> readers;
-        for (auto cell : module->cells())
-            for (auto &conn : cell->connections()) {
-                if (cell == driver && conn.first == output)
-                    continue;
-                for (auto bit : sigmap(conn.second))
-                    if (driven_bits.count(bit)) {
-                        readers.push_back({cell, conn.first});
-                        break;
-                    }
-            }
-        for (auto wire : module->wires())
-            if (wire->port_output)
-                for (auto bit : sigmap(wire))
-                    if (driven_bits.count(bit)) {
-                        readers.push_back({nullptr, wire->name});
-                        break;
-                    }
-        return readers;
     }
 
     // The output of each one-bit $not, after sigmap.
@@ -3952,7 +3983,7 @@ struct QlDspV4Pass : public Pass {
     // Grouping 2, a*b + (prev + k): the consumer's C is t, a fabric $add's sum,
     // and one $add input is prev, another cell's P. The link carries prev and k
     // moves to C. C must read all of t, and the $add all of prev, from bit 0.
-    void find_grouping_2(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *consumer, RTLIL::Cell *add, const SigSpec &c,
+    void find_grouping_2(RTLIL::Module *module, SigMap &sigmap, const ModuleNets &nets, RTLIL::Cell *consumer, RTLIL::Cell *add, const SigSpec &c,
                          const dict<SigBit, RTLIL::Cell *> &driver_of_bit_0, std::vector<CascadeLink> &links, pool<RTLIL::Cell *> &claimed_adders)
     {
         SigSpec t = sigmap(add->getPort(ID::Y));
@@ -3983,12 +4014,12 @@ struct QlDspV4Pass : public Pass {
             refuse_in_finder(link, ADDEND_READ_UNSIGNED);
             return;
         }
-        std::vector<Reader> t_readers = readers_of(module, sigmap, add, ID::Y);
+        std::vector<Reader> t_readers = nets.readers_of(sigmap, add, ID::Y);
         if (GetSize(t_readers) != 1) {
             refuse_in_finder(link, ADDEND_OTHER_READER);
             return;
         }
-        if (add->get_bool_attribute(ID::keep) || net_is_kept(module, sigmap, t)) {
+        if (add->get_bool_attribute(ID::keep) || nets.net_is_kept(sigmap, t)) {
             refuse_in_finder(link, ADDEND_KEPT);
             return;
         }
@@ -4018,14 +4049,14 @@ struct QlDspV4Pass : public Pass {
     // drives the $add's sum. A failed check declines the fold and keeps the
     // plain link. Each consumer on one $add is tried, in name order, and the
     // first that passes takes it.
-    void find_grouping_1(RTLIL::Module *module, SigMap &sigmap, std::vector<CascadeLink> &links, const pool<RTLIL::Cell *> &claimed_adders)
+    void find_grouping_1(SigMap &sigmap, const ModuleNets &nets, std::vector<CascadeLink> &links, const pool<RTLIL::Cell *> &claimed_adders)
     {
         std::vector<RTLIL::Cell *> adders;
         dict<RTLIL::Cell *, std::vector<Grouping1Try>> tries_on;
         for (CascadeLink &link : links) {
             if (link.grouping != 0 || link.consumer_mode != ADDEND_CONSUMER_MODE)
                 continue;
-            std::vector<Reader> readers = readers_of(module, sigmap, link.consumer, ID(P));
+            std::vector<Reader> readers = nets.readers_of(sigmap, link.consumer, ID(P));
             const Reader *on_adder = nullptr;
             bool claimed = false;
             for (auto &reader : readers)
@@ -4052,7 +4083,7 @@ struct QlDspV4Pass : public Pass {
             const Grouping1Try *chosen = nullptr;
             int chosen_s_bits = 0, passed = 0;
             for (auto &attempt : tries) {
-                int s_bits = check_grouping_1(module, sigmap, add, attempt);
+                int s_bits = check_grouping_1(sigmap, nets, add, attempt);
                 if (s_bits == 0)
                     continue;
                 passed++;
@@ -4070,7 +4101,7 @@ struct QlDspV4Pass : public Pass {
     // prev, as the $add reads it, or 0 when this consumer cannot take the $add.
     // A failed check is a counted decline; a read that is not all of s from
     // bit 0 is no attempt and is not counted.
-    int check_grouping_1(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *add, const Grouping1Try &attempt)
+    int check_grouping_1(SigMap &sigmap, const ModuleNets &nets, RTLIL::Cell *add, const Grouping1Try &attempt)
     {
         CascadeLink &link = *attempt.link;
         AlignedRead s_read = aligned_read(sigmap(add->getPort(attempt.port)), sigmap(link.consumer->getPort(ID(P))));
@@ -4089,7 +4120,7 @@ struct QlDspV4Pass : public Pass {
             reason = ADDEND_RESULT_TOO_WIDE;
         else if (link.consumer->getParam(ID(PREG)).as_bool())
             reason = ADDEND_SUM_REGISTERED;
-        else if (add->get_bool_attribute(ID::keep) || p_is_kept(module, sigmap, link.consumer))
+        else if (add->get_bool_attribute(ID::keep) || nets.p_is_kept(sigmap, link.consumer))
             reason = ADDEND_KEPT;
         if (reason != nullptr) {
             decline_grouping(link, reason);
