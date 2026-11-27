@@ -21,11 +21,14 @@ TESTS = \
 	shreg \
 	full_adder \
 	fp_owner \
+	fp_owner_bram_merge \
 	fp_owner_clash \
 	fp_owner_dspv4 \
 	fp_owner_flat \
 	fp_owner_hdlname \
+	fp_owner_rel_ip \
 	fp_owner_sweep \
+	fp_owner_synplify \
 	qlf_k6n10f/dsp_mult \
 	qlf_k6n10f/dsp_simd \
 	qlf_k6n10f/dsp_macc \

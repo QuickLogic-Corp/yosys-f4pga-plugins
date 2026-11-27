@@ -23,3 +23,14 @@ set leaves [regexp -all -line -- {"type": "QL_DSP4_[A-Z0-9_]+", "owners": \[\["u
 set all_leaves [regexp -all -line -- {"type": "QL_DSP4_[A-Z0-9_]+"} $table]
 if {$all_leaves == 0} { error "no DSP-V4 leaf in the owner table" }
 if {$leaves != $all_leaves} { error "$leaves of $all_leaves DSP-V4 leaves are owned by u_mac" }
+
+# LUTs keep their owner through the DSP-V4 rewrite, and every LUT the table names is in the
+# final BLIF under that name.
+set fh [open fp_owner_dspv4.blif r]
+set blif [read $fh]
+close $fh
+set luts [regexp -all -inline -line -- {"name": "([^"]+)", "type": "\$lut", "owners": \[\["u_cmp"\]\]} $table]
+if {[llength $luts] == 0} { error "no LUT owned by u_cmp in the owner table" }
+foreach {row name} $luts {
+    if {[string first ".cname $name\n" $blif] < 0} { error "LUT $name of the table is not in the final BLIF" }
+}
