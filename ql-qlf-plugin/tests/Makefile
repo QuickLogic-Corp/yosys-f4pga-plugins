@@ -68,6 +68,16 @@ TESTS = \
 	qlf_k6n10f/dspv4_preadd_preg_wrap \
 	qlf_k6n10f/dspv4_preadd_adreg_trunc \
 	qlf_k6n10f/dspv4_preadd_regs \
+	qlf_k6n10f/dspv4_enable_inverter_shared \
+	qlf_k6n10f/dspv4_techmap_refused_stops \
+	qlf_k6n10f/dspv4_techmap_twin_maps \
+	qlf_k6n10f/dspv4_techmap_reason \
+	qlf_k6n10f/dspv4_techmap_refused_drc \
+	qlf_k6n10f/dspv4_techmap_twin_drc_maps \
+	qlf_k6n10f/dspv4_synplify_gnd_cin_folds \
+	qlf_k6n10f/dspv4_synplify_live_cin_keeps_m \
+	qlf_k6n10f/dspv4_enable_tied_high_evicts \
+	qlf_k6n10f/dspv4_enable_tied_high_check \
 	qlf_k6n10f/dspv4_preadd_adreg_rst \
 	qlf_k6n10f/dspv4_preadd_adreg_evict \
 	qlf_k6n10f/dspv4_leftover_reasons \
@@ -130,7 +140,9 @@ POST_SYNTH_SIM_TESTS = \
      qlf_k6n10f/dspv4_macc_c_order_post_synth_sim \
      qlf_k6n10f/dspv4_macc_c_refused_post_synth_sim \
      qlf_k6n10f/dspv4_mreg_rst_post_synth_sim \
-     qlf_k6n10f/dspv4_preg_rst_post_synth_sim
+     qlf_k6n10f/dspv4_preg_rst_post_synth_sim \
+     qlf_k6n10f/dspv4_preadd_width_post_synth_sim \
+     qlf_k6n10f/dspv4_operand_ext_post_synth_sim
 
 # Synthesis-side copies of cells that dspv2_sim.v and dspv4_leaves_sim.v already model.
 SIM_LIBS_EXCLUDE = QL_DSPV2.v QL_DSP4_leaves.v
@@ -155,7 +167,8 @@ qlf_k6n10f-dspv4_macc_dup_verify = grep -q 'the DSP has no register stage after 
 # QL_DSP4_MULT -- so without these the A/B decision is untested. A refused
 # shape must report MULT, not a PREADD mode: that is what says the guard
 # refused rather than folded something it should not have.
-qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x2' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
+qlf_k6n10f-dspv4_preadd_sub_unsigned_verify = grep -q 'modes inferred:.*PREADD_A_SUB_B x3' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
+qlf_k6n10f-dspv4_preadd_sub_unsigned_verify += && grep -q 'modes inferred:.*PREADD_B_SUB_A x1' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
 qlf_k6n10f-dspv4_preadd_sub_unsigned_verify += && grep -q '1 x  pre-adder: an unsigned subtract wraps where the DSP signs' qlf_k6n10f/dspv4_preadd_sub_unsigned/dspv4_preadd_sub_unsigned.log
 qlf_k6n10f-dspv4_mult_reg_pad_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_reg_pad/dspv4_mult_reg_pad.log
 qlf_k6n10f-dspv4_mult_add_self_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_mult_add_self/dspv4_mult_add_self.log
@@ -181,16 +194,23 @@ qlf_k6n10f-dspv4_preadd_sub_fused_verify += && grep -q 'modes inferred:.*PREADD_
 qlf_k6n10f-dspv4_preadd_both_verify = grep -q 'modes inferred: PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
 # The sum left behind is named, not just absent from the cell.
 qlf_k6n10f-dspv4_preadd_both_verify += && grep -q '1 x  a second pre-adder sum stays in fabric: the cell has one pre-adder' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
-# Squaring is refused, so no pre-adder mode at all.
+qlf_k6n10f-dspv4_preadd_both_verify += && grep -q 'modes inferred: PREADD_A_SUB_B x1' qlf_k6n10f/dspv4_preadd_both/dspv4_preadd_both.log
+# Squaring is refused in both blocks, so no pre-adder mode at all. The signed
+# block fits one DSP. The registered one fits only in the second ql_dspv4 call,
+# split over two, with its register copied into the banks (aurora2 #2807).
 qlf_k6n10f-dspv4_preadd_square_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
-qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 x  pre-adder: it feeds both multiply operands (squaring)' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
-# Every cross-path shape that must fold, 46 blocks, nine modes in no fixed
+qlf_k6n10f-dspv4_preadd_square_verify += && grep -q 'modes inferred: MULT x2' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '2 x  pre-adder: it feeds both multiply operands (squaring)' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+qlf_k6n10f-dspv4_preadd_square_verify += && grep -q '1 shared operand register(s) copied into a bank rather than moved; 1 became userless' qlf_k6n10f/dspv4_preadd_square/dspv4_preadd_square.log
+qlf_k6n10f-dspv4_preadd_square_verify += && test -s qlf_k6n10f/dspv4_preadd_square/netlist.v
+qlf_k6n10f-dspv4_preadd_square_verify += && ! grep -E -q "'[bh][0-9a-f]*x" qlf_k6n10f/dspv4_preadd_square/netlist.v
+# Every cross-path shape that must fold, 48 blocks, nine modes in no fixed
 # order. No block may be refused, and the four blocks that give up a register
 # stage to the bank depth limit must do it for that reason, not a clock/reset
 # mismatch.
 qlf_k6n10f-dspv4_xpath_verify = grep -E -q 'modes inferred: [^,]+(, [^,]+){8}$$' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
-qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_A x14' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
-qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_B x7' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_A x15' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
+qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*XPATH_B x8' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_MULT_B x6' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B x2' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
 qlf_k6n10f-dspv4_xpath_verify += && grep -q 'modes inferred:.*PREADD_A_SUB_B_C x1' qlf_k6n10f/dspv4_xpath/dspv4_xpath.log
@@ -213,9 +233,10 @@ qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovl_d_QL_DSP4_PREAD
 qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovlc_d_QL_DSP4_PREADD_I1 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ovlc_a\[15:0\] })'
 qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ovlr_d_QL_DSP4_PREADD_I1 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ovlr_a })'
 # ov2 and ov2r: the same two addends, written in opposite order, must land the
-# same operand (the whole signal) off the X side in both cases.
-qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2_a_QL_DSP4_PREADD_I0 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2_a\[7:0\] })'
-qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2r_a_QL_DSP4_PREADD_I0 ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2r_a\[7:0\] })'
+# same operand (the whole signal) off the X side in both cases. The instance
+# name suffix comes from autoname and differs by Yosys version.
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2_a_QL_DSP4_[A-Z0-9_]* ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2_a\[7:0\] })'
+qlf_k6n10f-dspv4_xpath_verify += && grep -A3 'QL_DSP4_PREADD ov2r_a_QL_DSP4_[A-Z0-9_]* ' qlf_k6n10f/dspv4_xpath/netlist.v | grep -q 'ov2r_a\[7:0\] })'
 # Cross-path shapes the pass refuses, and the reason it prints for each: an
 # ALU term with the shared operand left on X, no control word for the ALU
 # direction, a sum that may exceed the multiplier port, a truncated sum, an
@@ -915,15 +936,18 @@ qlf_k6n10f/rel_ip_blif_noprim_negative = 1
 qlf_k6n10f-rel_ip_blif_noprim_verify = grep -q "primitive 'QL_OTHER_PRIM', which the cell library does not define" qlf_k6n10f/rel_ip_blif_noprim/rel_ip_blif_noprim.log
 
 # Which width lands on which multiply port. Counts cannot tell the two apart.
-qlf_k6n10f-dspv4_preadd_widths_verify = grep -q 'modes inferred: PREADD_B_MULT_A x3, PREADD_A_MULT_B x1' qlf_k6n10f/dspv4_preadd_widths/dspv4_preadd_widths.log
+qlf_k6n10f-dspv4_preadd_widths_verify = grep -q 'modes inferred: PREADD_B_MULT_A x4, PREADD_A_MULT_B x2' qlf_k6n10f/dspv4_preadd_widths/dspv4_preadd_widths.log
 # No pre-adder mode anywhere. Asserted this way rather than as a MULT count
 # because the pass runs twice and splits the count between the two lines.
 qlf_k6n10f-dspv4_preadd_refused_verify = ! grep -q 'modes inferred:.*PREADD' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
-qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: it truncates its own sum, which the DSP would not' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '2 x  pre-adder: it truncates its own sum, which the DSP would not' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: its operand signedness differs from the multiply port' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
-qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: its sum may exceed the multiplier port' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '5 x  pre-adder: its sum may exceed the multiplier port' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  pre-adder: the multiply operand pads its sum instead of extending its sign' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  multiply: 19x32 (signed x signed) does not fit the 32x18 ports' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '2 x  multiply: 18x20 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  multiply: 32x8 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
+qlf_k6n10f-dspv4_preadd_refused_verify += && grep -q '1 x  multiply: 19x20 (unsigned x unsigned) does not fit the 32x18 ports; an unsigned operand needs a spare bit' qlf_k6n10f/dspv4_preadd_refused/dspv4_preadd_refused.log
 
 # Five modes in one design. Counts cannot tell PREADD_A_SUB_B from
 # PREADD_B_SUB_A, and for the reversed-operand shape the mode name is the only
@@ -932,12 +956,73 @@ qlf_k6n10f-dspv4_preadd_modes_verify = grep -q 'modes inferred: PREADD_A_SUB_B x
 
 # A refused pre-adder must report MULT, not a PREADD mode -- the cell counts
 # in the .tcl cannot tell a refusal from a fold that never matched.
-qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x1' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
-qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '1 x  pre-adder: the multiply reads fewer bits of its registered sum than it produces' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+qlf_k6n10f-dspv4_preadd_adreg_trunc_verify = grep -q 'modes inferred: MULT x3' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '2 x  pre-adder: the multiply reads fewer bits of its registered sum than it produces' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
+qlf_k6n10f-dspv4_preadd_adreg_trunc_verify += && grep -q '1 x  pre-adder: an unsigned subtract wraps where the DSP signs' qlf_k6n10f/dspv4_preadd_adreg_trunc/dspv4_preadd_adreg_trunc.log
 
 
-# Thirteen shapes, two paths. Counts cannot tell PREADD_A from PREADD_B; the
+# Fifteen shapes, two paths. Counts cannot tell PREADD_A from PREADD_B; the
 # swap onto B1/B2 is the second B-path word.
-qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x12, PREADD_B_MULT_A x2' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
+qlf_k6n10f-dspv4_preadd_regs_verify = grep -q 'modes inferred: PREADD_A_MULT_B x12, PREADD_B_MULT_A x3' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
 # The two four-enable cells name the B chain they give up.
 qlf_k6n10f-dspv4_preadd_regs_verify += && grep -q '2 x  B register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_preadd_regs/dspv4_preadd_regs.log
+
+# One inverter per active-low enable signal (aurora2 #2971). The run reads the
+# inverter count after ql_dspv4; here the log must show the cell was inferred
+# and that ql_dsp4_check did not count one enable as several.
+qlf_k6n10f-dspv4_enable_inverter_shared_verify = grep -q 'modes inferred: MULT_ADD_C x1' qlf_k6n10f/dspv4_enable_inverter_shared/dspv4_enable_inverter_shared.log
+qlf_k6n10f-dspv4_enable_inverter_shared_verify += && ! grep -q 'distinct clock enables' qlf_k6n10f/dspv4_enable_inverter_shared/dspv4_enable_inverter_shared.log
+# A QL_DSP4 the techmap refuses stops synthesis (aurora2 #2973). The refused
+# run is expected to fail and its log must name each of the four cells; the twin
+# has the same four cells with the rule satisfied and must map.
+qlf_k6n10f/dspv4_techmap_refused_stops_negative = 1
+qlf_k6n10f-dspv4_techmap_refused_stops_verify = grep -q 'selection is not empty: t:QL_DSP4' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_w$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_y$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_carry$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'dspv4_techmap_refused_stops/u_carryp$$' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+# The refused run also says why, for each of the four cells.
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_w: .*It breaks: reserved W encoding (W_SEL = 10)' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_y: .*It breaks: reserved Y encoding (Y_SEL = 10)' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_carry: .*It breaks: CARRYINSEL = 001 is not a carry source' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_refused_stops_verify += && grep -q 'refused_stops.u_carryp: .*It breaks: the carry register (CARRYINSEL = 100) with P fed back' qlf_k6n10f/dspv4_techmap_refused_stops/dspv4_techmap_refused_stops.log
+qlf_k6n10f-dspv4_techmap_twin_maps_verify = true
+
+# ql_dsp4_explain on its own (aurora2 #2973): two rules in one message, and a
+# cell that breaks none of the known rules is reported as unexplained.
+qlf_k6n10f-dspv4_techmap_reason_verify = grep -q 'dspv4_techmap_reason.u_two: .*It breaks: CARRYINSEL = 001 is not a carry source.*; reserved W encoding (W_SEL = 10)' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+qlf_k6n10f-dspv4_techmap_reason_verify += && grep -q 'dspv4_techmap_reason.u_clean: .*No known rule explains it' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+qlf_k6n10f-dspv4_techmap_reason_verify += && ! grep -q 'dspv4_techmap_reason.u_clean: .*It breaks' qlf_k6n10f/dspv4_techmap_reason/dspv4_techmap_reason.log
+
+# The design rules of the techmap (openphy-turnkey-flow #2173, aurora2 #2973). The
+# refused run is expected to fail and its log must give the rule for each of
+# the eight cells; the twin has cells with the rule satisfied and they must map.
+qlf_k6n10f/dspv4_techmap_refused_drc_negative = 1
+qlf_k6n10f-dspv4_techmap_refused_drc_verify = grep -q 'selection is not empty: t:QL_DSP4' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simd11: .*It breaks: USE_SIMD = 11, a segmentation that does not exist' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simdwxy: .*It breaks: SIMD with more than one of W, X and Y selected' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simdrss: .*It breaks: SIMD with USE_RSS' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_simdcarry: .*It breaks: SIMD with a carry-in from CCIN or the carry register' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_uwithoutv: .*It breaks: X = U without Y = V' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_zres: .*It breaks: reserved Z encoding (Z_SEL = 111)' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_maccext: .*It breaks: MACC_EXT (Z_SEL = 100) with ALUMODE != 00' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_ce4: .*It breaks: 4 clock-enable nets on the registers in use' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_refused_drc_verify += && grep -q 'refused_drc.u_ce4open: .*It breaks: 4 clock-enable nets on the registers in use' qlf_k6n10f/dspv4_techmap_refused_drc/dspv4_techmap_refused_drc.log
+qlf_k6n10f-dspv4_techmap_twin_drc_maps_verify = true
+# GND and VCC cells become constants before the DSP-V4 techmap (aurora2 #2970).
+# A carry-in on a GND cell folds the lone MREG; a live carry-in keeps the M banks.
+qlf_k6n10f-dspv4_synplify_gnd_cin_folds_verify = true
+qlf_k6n10f-dspv4_synplify_live_cin_keeps_m_verify = true
+
+# A tied-high clock enable counts against the crossbar's three inputs (aurora2
+# #2972). The evict block must give up exactly one port, B, and the keep block
+# none; the cells that remain must not trip the check pass.
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify = grep -q '1 x  B register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify += && ! grep -q 'distinct clock enables' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+# The shared block gives up D and keeps B: B and C hold the same tied-high net, so
+# giving up B frees no slot. B is given up once, by the evict block, not twice.
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify += && grep -q '1 x  D register chain given up: the cell would need more than 3 clock enables' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+qlf_k6n10f-dspv4_enable_tied_high_evicts_verify += && ! grep -q '2 x  B register chain given up' qlf_k6n10f/dspv4_enable_tied_high_evicts/dspv4_enable_tied_high_evicts.log
+# The check pass: the four-net cell warns, the three-net cell does not.
+qlf_k6n10f-dspv4_enable_tied_high_check_verify = grep -q 'u_warns.u: 4 distinct clock enables' qlf_k6n10f/dspv4_enable_tied_high_check/dspv4_enable_tied_high_check.log
+qlf_k6n10f-dspv4_enable_tied_high_check_verify += && ! grep -q 'u_fits.u: [0-9]* distinct clock enables' qlf_k6n10f/dspv4_enable_tied_high_check/dspv4_enable_tied_high_check.log

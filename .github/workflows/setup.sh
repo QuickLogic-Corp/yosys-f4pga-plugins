@@ -49,7 +49,12 @@ else
     for p in .github/yosys-patches/*.patch; do
         git -C "${RUNNER_TEMP}/yosys-src" apply --verbose "${PWD}/${p}"
     done
-    make -C "${RUNNER_TEMP}/yosys-src" -j`nproc` CONFIG=gcc PREFIX="${YOSYS_PREFIX}" install
+    # Yosys >= 0.67 builds with CMake only. Slang and unit tests are off, as in aurora2.
+    cmake -S "${RUNNER_TEMP}/yosys-src" -B "${RUNNER_TEMP}/yosys-build" \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${YOSYS_PREFIX}" \
+        -DYOSYS_WITHOUT_SLANG=ON -DYOSYS_ENABLE_UNIT_TESTS=OFF
+    cmake --build "${RUNNER_TEMP}/yosys-build" -j`nproc`
+    cmake --install "${RUNNER_TEMP}/yosys-build"
 fi
 end_section
 
