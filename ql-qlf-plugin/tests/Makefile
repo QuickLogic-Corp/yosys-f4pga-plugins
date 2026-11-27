@@ -586,7 +586,7 @@ casc_too_long = chain would exceed the device limit
 casc_unsigned = link is read unsigned, and PCIN sign-extends
 # The chain report: its count line, once, with the links, the chains, the cells
 # in the longest chain and the limit; and one line of one of its lists.
-casc_report = test "$$(grep -c '^ql_dspv4: cascade: [0-9]* PCIN link' $(1))" = 1 && grep -q '^ql_dspv4: cascade: $(2) PCIN link(s) in $(3) chain(s), longest $(4) (limit $(5))$$' $(1)
+casc_report = test "$$(grep -c '^ql_dspv4: cascade: [0-9]* PCIN link' $(1))" = 1 && grep -q '^ql_dspv4: cascade: $(2) PCIN link(s) in $(3) chain(s), longest plain chain $(4) (limit $(5))$$' $(1)
 casc_ranked = grep -q "^ *$(2) x  $(3)$$" $(1)
 # Step 0's report line, once, with the number of registers moved.
 casc_moved_report = test "$$(grep -c '^ql_dspv4: cascade: [0-9]* link register(s) moved' $(1))" = 1 && grep -q "^ql_dspv4: cascade: $(2) link register(s) moved to the source's PREG$$" $(1)
@@ -1300,7 +1300,7 @@ qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c 'modes inferred: MUL
 qlf_k6n10f-dspv4_chain_report_verify += && $(call casc_pcin17_report,$(chain_report_dir)/_pcin17.log,1)
 qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c '^ql_dspv4: cascade: .*longest' $(chain_report_dir)/_pcin17.log)" = 0
 qlf_k6n10f-dspv4_chain_report_verify += && $(call casc_wired,$(chain_report_dir)/_pcin17_cells.log,1,0)
-# Here ql_dspv4: cascade: says longest 2 and ql_dsp4_chain_report: says 3,
+# Here ql_dspv4: cascade: says longest plain chain 2 and ql_dsp4_chain_report: says 3,
 # the cells the column holds.
 qlf_k6n10f-dspv4_chain_report_verify += $(foreach l,_mixed_at_cap _mixed_at_cap_cells,&& $(call chain_length_line,$(chain_report_dir)/$(l).log,3,2,1))
 qlf_k6n10f-dspv4_chain_report_verify += && test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT_ADD x1, MULT x1$$' $(chain_report_dir)/_mixed_at_cap.log)" = 1

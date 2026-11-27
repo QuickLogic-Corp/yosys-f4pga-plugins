@@ -828,7 +828,8 @@ struct QlDspV4Pass : public Pass {
     {
         for (auto &it : finder_refused)
             cascade_stall[it.second]++;
-        log("ql_dspv4: cascade: %d PCIN link(s) in %d chain(s), longest %d (limit %d)\n", links_made, chains_made, longest_chain, chain_max);
+        log("ql_dspv4: cascade: %d PCIN link(s) in %d chain(s), longest plain chain %d (limit %d)\n", links_made, chains_made, longest_chain,
+            chain_max);
         if (registers_moved > 0)
             log("ql_dspv4: cascade: %d link register(s) moved to the source's PREG\n", registers_moved);
         if (!register_not_moved.empty()) {
