@@ -917,6 +917,8 @@ struct QlDspV4Pass : public Pass {
         RTLIL::Cell *first = registered[0]->consumer;
         if (source->getParam(ID(PREG)).as_bool())
             return "the source already has a P register";
+        if (p_is_kept(module, sigmap, source))
+            return "the source's P is marked keep";
         pool<RTLIL::Cell *> registered_consumers;
         for (auto link : registered)
             registered_consumers.insert(link->consumer);
@@ -958,6 +960,22 @@ struct QlDspV4Pass : public Pass {
             note(source, pin);
         note(consumer, ID(CEC));
         return GetSize(enables);
+    }
+
+    // True when a wire marked keep holds a bit of the source's P: that wire
+    // must keep the sum before the register.
+    static bool p_is_kept(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *source)
+    {
+        pool<SigBit> p_bits;
+        for (auto bit : sigmap(source->getPort(ID(P))))
+            if (bit.wire != nullptr)
+                p_bits.insert(bit);
+        for (auto wire : module->wires())
+            if (wire->get_bool_attribute(ID::keep))
+                for (auto bit : sigmap(wire))
+                    if (p_bits.count(bit))
+                        return true;
+        return false;
     }
 
     // Everything that reads the source's P: each cell port that holds one of

@@ -45,6 +45,19 @@ module _reglink_clock (
     always @(posedge clk2) s1_r <= s1;
 endmodule
 
+// The sum before the link register is a kept wire: moving the register into
+// the source would make that wire hold the registered value.
+module _reglink_kept_sum (
+    input                clk,
+    input  signed [17:0] a0, b0, a1, b1, a2, b2,
+    output signed [37:0] y
+);
+    reg signed [36:0] s1_r;
+    assign y = a2 * b2 + s1_r;
+    (* keep *) wire signed [36:0] s1 = a1 * b1 + a0 * b0;
+    always @(posedge clk) s1_r <= s1;
+endmodule
+
 // Two consumers, each with its own register on another enable. Both
 // registers reset, so the RTL and the netlist start alike.
 module _reglink_two_consumers_diff (
