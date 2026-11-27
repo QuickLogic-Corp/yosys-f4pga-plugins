@@ -1604,13 +1604,15 @@ struct QlDspV4Pass : public Pass {
         {
             auto distinct_enables = [&]() {
                 std::vector<SigSpec> seen;
+                // A tied-high enable is not free: it takes one of the crossbar's
+                // three inputs like a signal does. Every constant is the same
+                // net, so all of them together count once.
                 auto note = [&](const SigSpec &sig) {
-                    if (sig.is_fully_const())
-                        return; // a tied enable needs no signal
+                    SigSpec net = sig.is_fully_const() ? SigSpec(State::S1) : sig;
                     for (auto &t : seen)
-                        if (t == sig)
+                        if (t == net)
                             return;
-                    seen.push_back(sig);
+                    seen.push_back(net);
                 };
                 if (na > 0)
                     note(ca.en);
@@ -1620,8 +1622,8 @@ struct QlDspV4Pass : public Pass {
                     note(cc.en);
                 if (nd > 0)
                     note(cd.en);
-                if (ff_cell != nullptr && ff_cell->hasPort(ID(EN)))
-                    note(ff_cell->getPort(ID(EN)));
+                if (ff_cell != nullptr)
+                    note(ff_cell->hasPort(ID(EN)) ? ff_cell->getPort(ID(EN)) : SigSpec(State::S1));
                 return GetSize(seen);
             };
             // Narrowest first: B (18), D (27), A (32), C (50). P (50) is not a
@@ -1642,6 +1644,15 @@ struct QlDspV4Pass : public Pass {
                     break;
                 if (*e.n == 0)
                     continue;
+                // Giving up a port whose enable another port shares, or whose
+                // enable is a constant another port also uses, frees no slot.
+                int before = distinct_enables(), kept_n = *e.n;
+                *e.n = 0;
+                if (distinct_enables() >= before) {
+                    *e.n = kept_n;
+                    continue;
+                }
+                *e.n = kept_n;
                 log_debug("  %s: %s registers left in fabric -- the cell would "
                           "need more than %d distinct clock enables, and %s is "
                           "the narrowest port at %d bits\n",
@@ -1850,12 +1861,8 @@ struct QlDspV4Pass : public Pass {
             // Clock enable. CEP is active-high (the leaf is `else if (E) Q <= D`),
             // so an active-low $dffe enable has to be inverted rather than
             // wired straight through.
-            if (ff_cell->hasPort(ID(EN))) {
-                SigSpec en = ff_cell->getPort(ID(EN));
-                if (!ff_cell->getParam(ID(EN_POLARITY)).as_bool())
-                    en = module->Not(NEW_ID, en);
-                cell->setPort(ID(CEP), en);
-            }
+            if (ff_cell->hasPort(ID(EN)))
+                cell->setPort(ID(CEP), resolve(module, ff_cell->getPort(ID(EN)), !ff_cell->getParam(ID(EN_POLARITY)).as_bool()));
 
             // Synchronous reset. The accumulator bank takes .R(ACCRSTN) -- its
             // own pin, separate from the RSTN the operand banks use -- and the
@@ -2542,8 +2549,21 @@ struct QlDspV4Pass : public Pass {
     };
 
     // Resolve a chain's control to a wire, inverting once if the source was the
-    // opposite polarity from what the leaf wants.
-    static SigSpec resolve(RTLIL::Module *module, const SigSpec &sig, bool invert) { return invert ? module->Not(NEW_ID, sig) : sig; }
+    // opposite polarity from what the leaf wants. One inverter per signal: asking
+    // again for the same signal returns the first inverter's output, so four
+    // registers held by one `if (!stall)` reach their four CE pins through one
+    // net, not four. Anything that counts nets, ql_dsp4_check and the DSP-V4
+    // techmap's clock-enable limit among them, then sees one enable.
+    SigSpec resolve(RTLIL::Module *module, const SigSpec &sig, bool invert)
+    {
+        if (!invert)
+            return sig;
+        SigSpec signal = sigmapper(sig);
+        auto found = inverted.find(signal);
+        if (found != inverted.end())
+            return found->second;
+        return inverted[signal] = module->Not(NEW_ID, sig);
+    }
 
     // Two SigSpecs describe the same value.
     static bool same(const SigSpec &a, const SigSpec &b) { return a == b; }
@@ -2943,6 +2963,7 @@ struct QlDspV4Pass : public Pass {
         bit_driver.clear();
         absorbed.clear();
         shared_claimed.clear();
+        inverted.clear();
         sigmapper.set(module);
         for (auto cell : module->cells()) {
             if (cell->hasPort(ID::D) && cell->hasPort(ID::Q))
@@ -3019,6 +3040,8 @@ struct QlDspV4Pass : public Pass {
     int walk_end_exhausted = 0;
 
     SigMap sigmapper;
+    // The inverter already made for each signal in this module, see resolve().
+    dict<SigSpec, SigSpec> inverted;
     dict<SigBit, int> bit_users;
     // Which cell drives each bit -- used only to explain why an absorption
     // stalled, so the log can distinguish an unfixable async-reset driver from a
@@ -3233,7 +3256,7 @@ struct QlDsp4CheckPass : public Pass {
                         continue;
                     SigSpec ce = sigmap(cell->getPort(u.ce));
                     if (ce.is_fully_const())
-                        continue; // a tied enable needs no routed signal
+                        ce = SigSpec(State::S1); // a tied enable takes a crossbar input too; all of them are one net
                     bool seen = false;
                     for (auto &p : used)
                         if (p.first == ce) {
@@ -3257,7 +3280,7 @@ struct QlDsp4CheckPass : public Pass {
                             "ports, but the tile crossbar feeds all five CE pins from "
                             "only 3 signals. Keep the widest (%s) inside the DSP and "
                             "move %s back to fabric, or drive the extra ports from an "
-                            "enable already in use.\n",
+                            "enable already in use. A tied-high enable counts as one.\n",
                             log_id(module), log_id(cell), GetSize(used), kept.c_str(), dropped.c_str());
             }
         }
@@ -3281,5 +3304,128 @@ struct QlDsp4CheckPass : public Pass {
     }
 
 } QlDsp4CheckPass;
+
+// Why the DSP-V4 techmap may refuse a QL_DSP4. The techmap leaves a cell it
+// refuses as it is and says nothing, so these repeat its UNSUPPORTED and DRC_FAIL
+// rules (dsp4_logical_map.v), read from the cell's parameters and, for the
+// enable limit, its enable pins. Keep the two in step.
+// A refusal that matches none of them is reported as unexplained, so a rule
+// added to the techmap without a message shows up instead of staying silent.
+static std::string dspv4_binary(int value, int bits)
+{
+    std::string text;
+    for (int bit = bits - 1; bit >= 0; bit--)
+        text += ((value >> bit) & 1) ? '1' : '0';
+    return text;
+}
+
+static std::vector<std::string> dspv4_refusal_reasons(RTLIL::Cell *cell, const SigMap &sigmap)
+{
+    auto parameter = [&](RTLIL::IdString id, int fallback) { return cell->hasParam(id) ? cell->getParam(id).as_int() : fallback; };
+    int opmode = parameter(ID(OPMODE), 0b000000101);
+    int inmode = parameter(ID(INMODE), 0);
+    int carryinsel = parameter(ID(CARRYINSEL), 0);
+    int alumode = parameter(ID(ALUMODE), 0);
+    int use_simd = parameter(ID(USE_SIMD), 0);
+    bool use_rss = parameter(ID(USE_RSS), 0) != 0;
+    int w_sel = (opmode >> 7) & 3, z_sel = (opmode >> 4) & 7, y_sel = (opmode >> 2) & 3, x_sel = opmode & 3;
+    bool uses_p = w_sel == 1 || x_sel == 2 || z_sel == 2 || z_sel == 6;
+    bool simd = use_simd != 0;
+    int operands = (w_sel == 1 || w_sel == 3) + (x_sel != 0) + (y_sel == 1 || y_sel == 3); // the multiplier counts as two
+
+    std::vector<std::string> reasons;
+    // The techmap's UNSUPPORTED rules.
+    if (carryinsel != 0 && carryinsel != 2 && carryinsel != 4)
+        reasons.push_back(stringf("CARRYINSEL = %s is not a carry source (only 000, 010 and 100 are)", dspv4_binary(carryinsel, 3).c_str()));
+    if (carryinsel == 4 && uses_p)
+        reasons.push_back("the carry register (CARRYINSEL = 100) with P fed back");
+    if (w_sel == 2)
+        reasons.push_back("reserved W encoding (W_SEL = 10)");
+    if (y_sel == 2)
+        reasons.push_back("reserved Y encoding (Y_SEL = 10)");
+
+    // The techmap's design rules (DRC_FAIL).
+    if (use_simd == 3)
+        reasons.push_back("USE_SIMD = 11, a segmentation that does not exist");
+    if (simd && operands > 1)
+        reasons.push_back("SIMD with more than one of W, X and Y selected (the multiplier counts as two): the lanes carry into each other");
+    if (simd && use_rss)
+        reasons.push_back("SIMD with USE_RSS: the RSS reads the result as one value");
+    if (simd && carryinsel != 0)
+        reasons.push_back("SIMD with a carry-in from CCIN or the carry register (CARRYINSEL != 000): it enters every lane");
+    if ((x_sel == 1) != (y_sel == 1))
+        reasons.push_back("X = U without Y = V, or Y = V without X = U: U and V make a product only together");
+    if (z_sel == 7)
+        reasons.push_back("reserved Z encoding (Z_SEL = 111)");
+    if (z_sel == 4 && alumode != 0)
+        reasons.push_back("MACC_EXT (Z_SEL = 100) with ALUMODE != 00: the 100-bit MACC only adds");
+
+    // More enable nets than the tile's crossbar carries. The techmap counts the
+    // enables of the register banks it builds, by net. A constant is a net too.
+    struct EnableBank {
+        bool used;
+        RTLIL::IdString pin;
+    };
+    const EnableBank banks[] = {
+      {parameter(ID(AREG1), 0) || (inmode & 1) || parameter(ID(A_COUT_SEL), 0), ID(CEA)},
+      {parameter(ID(BREG1), 0) || ((inmode >> 4) & 1) || parameter(ID(B_COUT_SEL), 0), ID(CEB)},
+      {parameter(ID(CREG), 0) != 0, ID(CEC)},
+      {parameter(ID(DREG), 0) != 0, ID(CED)},
+      {parameter(ID(COUTREG), 0) || parameter(ID(PREG), 0) || uses_p || carryinsel == 4, ID(CEP)},
+    };
+    std::vector<SigSpec> nets;
+    for (auto &bank : banks) {
+        if (!bank.used)
+            continue;
+        // An open pin is connection id 0 in the techmap, the same as a constant 0.
+        SigSpec net = cell->hasPort(bank.pin) ? sigmap(cell->getPort(bank.pin)) : SigSpec(State::S0);
+        if (std::find(nets.begin(), nets.end(), net) == nets.end())
+            nets.push_back(net);
+    }
+    if (GetSize(nets) > 3)
+        reasons.push_back(stringf("%d clock-enable nets on the registers in use, and the tile's crossbar carries three", GetSize(nets)));
+    return reasons;
+}
+
+struct QlDsp4ExplainPass : public Pass {
+    QlDsp4ExplainPass() : Pass("ql_dsp4_explain", "say why the DSP-V4 techmap left a QL_DSP4 as it is") {}
+
+    void help() override
+    {
+        log("\n");
+        log("    ql_dsp4_explain [selection]\n");
+        log("\n");
+        log("Run after the DSP-V4 techmap. A QL_DSP4 still in the design is one the\n");
+        log("techmap refused. Warn for each one with the rules it breaks, read from its\n");
+        log("parameters. A cell that breaks none of the known rules is reported as\n");
+        log("unexplained.\n");
+        log("\n");
+    }
+
+    void execute(std::vector<std::string> args, RTLIL::Design *design) override
+    {
+        log_header(design, "Executing QL_DSP4_EXPLAIN pass.\n");
+        extra_args(args, 1, design);
+
+        for (auto module : design->selected_modules()) {
+            SigMap sigmap(module);
+            for (auto cell : module->selected_cells()) {
+                if (cell->type != ID(QL_DSP4))
+                    continue;
+                std::vector<std::string> reasons = dspv4_refusal_reasons(cell, sigmap);
+                if (reasons.empty()) {
+                    log_warning("%s.%s: the DSP-V4 techmap left this QL_DSP4 as it is. No known rule explains it: "
+                                "a rule in dsp4_logical_map.v has no message in ql_dsp4_explain.\n",
+                                log_id(module), log_id(cell));
+                    continue;
+                }
+                std::string joined;
+                for (auto &reason : reasons)
+                    joined += (joined.empty() ? "" : "; ") + reason;
+                log_warning("%s.%s: the DSP-V4 techmap left this QL_DSP4 as it is. It breaks: %s.\n", log_id(module), log_id(cell), joined.c_str());
+            }
+        }
+    }
+} QlDsp4ExplainPass;
 
 PRIVATE_NAMESPACE_END
