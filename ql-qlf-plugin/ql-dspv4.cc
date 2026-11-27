@@ -339,6 +339,7 @@ static bool dspv4_flop_attrs_block(RTLIL::Cell *ff)
 // cell takes once it reads PCIN instead.
 static const std::map<std::string, std::string> CASCADE_WORD = {
   {"MULT_ADD_C", "MULT_ADD"},
+  {"PREADD_A_MULT_B_C", "PREADD_A_MULT_B_CASC"},
 };
 
 static const char *const CASCADE_READ_UNSIGNED = "link is read unsigned, and PCIN sign-extends";
