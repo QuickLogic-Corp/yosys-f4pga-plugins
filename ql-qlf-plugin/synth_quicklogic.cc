@@ -876,6 +876,8 @@ struct SynthQuickLogicPass : public ScriptPass {
                 // Full behavioural QL_DSPV2.v is only used by the dspv2->dspv1
                 // translation path.
                 run("read_verilog " + family_path + "/QL_DSPV2.v");
+                // It also defines VCC and GND as modules; ql_cell_lib keeps their cells out of the owner tree.
+                run("setattr -mod -set ql_cell_lib 1 VCC GND");
             }
             if (dspv4 && family == "qlf_k6n10f") {
                 // V4 path: read the QL_DSP4 base-cell primitive (the conversion

@@ -509,7 +509,7 @@ static void record_tree(RTLIL::Design *design, RTLIL::Module *top)
     std::function<void(RTLIL::Module *, const Owner &)> walk = [&](RTLIL::Module *module, const Owner &prefix) {
         for (auto cell : module->cells()) {
             RTLIL::Module *child = design->module(cell->type);
-            if (child == nullptr || child->get_blackbox_attribute())
+            if (child == nullptr || child->get_blackbox_attribute() || child->has_attribute(ID(ql_cell_lib)))
                 continue;
             Owner path = prefix;
             path.push_back(RTLIL::unescape_id(cell->name));

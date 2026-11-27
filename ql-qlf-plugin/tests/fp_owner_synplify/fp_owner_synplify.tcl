@@ -1,5 +1,6 @@
 # ql_fp_owner with -synplify: a hierarchical Synplify netlist of LUTn and dffre primitives.
-# Each primitive is owned by the user instance that holds it, and the table says synplify.
+# Each primitive is owned by the user instance that holds it, the tree lists only user
+# instances, and the table says synplify.
 yosys -import
 if { [info procs quicklogic_eqn] == {} } { plugin -i ql-qlf }
 yosys -import
@@ -28,3 +29,5 @@ foreach {name type owners} {
 foreach path {{["u_a"]} {["u_b"]}} {
     if {[string first "\"path\": $path, \"module\": \"leaf\"" $table] < 0} { error "instance $path missing from the tree" }
 }
+# Synplify's VCC and GND cells are primitives, not RTL instances.
+if {[regexp -- {"module": "(VCC|GND)"} $table]} { error "a VCC or GND cell is listed as an RTL instance" }
