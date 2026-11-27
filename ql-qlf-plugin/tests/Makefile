@@ -1180,6 +1180,18 @@ qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && test "$$(grep -c 'modes inferr
 qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_report,$(casc_pcin17_refused_dir)/_mixed_cap.log,1,1,2,2)
 qlf_k6n10f-dspv4_casc_pcin17_refused_verify += $(foreach b,_mixed_cap _mixed_cap_cells,&& ! grep -q 'PCIN>>17' $(casc_pcin17_refused_dir)/$(b).log)
 qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_wired,$(casc_pcin17_refused_dir)/_mixed_cap_cells.log,1,1)
+# A refused read logs the cause that stops it, once, and makes no link. The
+# zero-extended read is named before the width. casc_pcin17_refused_for takes
+# a block, its reason, and the modes it infers.
+casc_pcin17_refused_for = test "$$(grep -c 'PCIN>>17 refused .*: $(2)$$' $(1))" = 1 && test "$$(grep -c 'PCIN>>17 refused' $(1))" = 1 && test "$$(grep -c 'modes inferred: $(3)$$' $(1))" = 1 && ! grep -q 'PCIN>>17 link' $(1)
+casc_pcin17_unsigned = link is read unsigned, and PCIN>>17 sign-extends
+casc_pcin17_other = link is read with bits above it that are not a sign extension
+casc_pcin17_narrow = RTL sum too narrow ([0-9]* bits) for shifted P range ([0-9]* bits)
+casc_pcin17_one_c_one_mult = MULT_ADD_C x1, MULT x1
+qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_pcin17_refused_for,$(casc_pcin17_refused_dir)/_unsigned_narrow_cells.log,$(casc_pcin17_unsigned),MULT_ADD_C x2)
+qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_pcin17_refused_for,$(casc_pcin17_refused_dir)/_unsigned_wide_cells.log,$(casc_pcin17_unsigned),$(casc_pcin17_one_c_one_mult))
+qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_pcin17_refused_for,$(casc_pcin17_refused_dir)/_signed_narrow_cells.log,$(casc_pcin17_narrow),$(casc_pcin17_one_c_one_mult))
+qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_pcin17_refused_for,$(casc_pcin17_refused_dir)/_other_upper_bits_cells.log,$(casc_pcin17_other),$(casc_pcin17_one_c_one_mult))
 # Loops of PCIN >> 17 reads: each loses one link, with one -verbose line; the
 # cap then counts from the cell that link entered. casc_no_ring follows each
 # PCIN back to the PCOUT driving it and fails if a cell is reached again.

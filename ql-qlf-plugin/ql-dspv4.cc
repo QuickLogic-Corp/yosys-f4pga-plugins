@@ -332,6 +332,8 @@ static const std::map<std::string, std::string> PCIN17_WORD = {
 };
 
 static const char *const CASCADE_READ_UNSIGNED = "link is read unsigned, and PCIN sign-extends";
+static const char *const CASCADE_PCIN17_READ_UNSIGNED = "link is read unsigned, and PCIN>>17 sign-extends";
+static const char *const CASCADE_PCIN17_READ_OTHER = "link is read with bits above it that are not a sign extension";
 static const char *const CASCADE_REGISTERED = "consumer registered the link (CREG), and PCIN has no register";
 static const char *const CASCADE_TOO_NARROW = "RTL sum is too narrow for the source's P range";
 static const char *const CASCADE_NO_FORMULA = "source mode has no P range formula; the full port is assumed";
@@ -4184,19 +4186,32 @@ struct QlDspV4Pass : public Pass {
                 continue;
             }
             SigSpec p = sigmap(source->getPort(ID(P)));
-            int read_bits = aligned_read(c, p.extract(17, GetSize(p) - 17)).bits;
-            int shifted_range = pcin17_shifted_range(sigmap, source);
-            if (shifted_range > 0 && read_bits < shifted_range) {
-                if (verbose)
-                    log("  PCIN>>17 refused %s.%s -> %s: RTL sum too narrow (%d bits) for shifted P range (%d bits)\n", log_id(module),
-                        log_id(source), log_id(consumer), read_bits, shifted_range);
+            AlignedRead read = aligned_read(c, p.extract(17, GetSize(p) - 17));
+            // A zero-extended read stays refused at any width, so it is named before the width.
+            if (read.extension == Extension::ZERO) {
+                log_pcin17_refused(module, source, consumer, CASCADE_PCIN17_READ_UNSIGNED);
                 continue;
             }
-            if (!is_pcin17_read(c, p))
+            int shifted_range = pcin17_shifted_range(sigmap, source);
+            if (shifted_range > 0 && read.bits < shifted_range) {
+                if (verbose)
+                    log("  PCIN>>17 refused %s.%s -> %s: RTL sum too narrow (%d bits) for shifted P range (%d bits)\n", log_id(module),
+                        log_id(source), log_id(consumer), read.bits, shifted_range);
                 continue;
+            }
+            if (!is_pcin17_read(c, p)) {
+                log_pcin17_refused(module, source, consumer, CASCADE_PCIN17_READ_OTHER);
+                continue;
+            }
             candidates.push_back({source, consumer, mode});
         }
         return pcin17_links_within_cap(module, break_pcin17_loops(module, candidates), plain_chain_cells);
+    }
+
+    void log_pcin17_refused(RTLIL::Module *module, RTLIL::Cell *source, RTLIL::Cell *consumer, const char *reason)
+    {
+        if (verbose)
+            log("  PCIN>>17 refused %s.%s -> %s: %s\n", log_id(module), log_id(source), log_id(consumer), reason);
     }
 
     // A loop of candidates loses one link, the one rule 2 picks for plain

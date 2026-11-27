@@ -84,3 +84,10 @@ select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i %ci1:+\[C\] w:p0 %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i %co1:+\[PCOUT\] w:* %i
 select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000000101 %i
 select -assert-count 0 t:QL_DSP4 r:OPMODE=9'b000000101 %i %co1:+\[PCOUT\] w:* %i
+
+# ---- A refused read gives the reason that stops it. ------------------------
+
+stopped_block _unsigned_narrow {-chain_max 4}
+stopped_block _unsigned_wide {-chain_max 4}
+stopped_block _signed_narrow {-chain_max 4}
+stopped_block _other_upper_bits {-chain_max 4}
