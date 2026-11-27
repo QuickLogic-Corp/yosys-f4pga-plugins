@@ -83,6 +83,11 @@
 //   ov2r    a[7:0] + a, the same two addends the other way round. Which one is
 //           kept off X must not depend on which came first in the RTL: same
 //           cell as ov2, PREADD_A_MULT_B_C, D = a
+//   ones28  (26'h3FFFFFF + a) * a, unsigned, a 16. An all-ones constant is
+//           large, not -1: the sum needs 28 signed bits, too many for the B
+//           side: XPATH_B
+//   ones18  (a + 16'hFFFF) * a, unsigned, a 16: the sum needs exactly the B
+//           side's 18 signed bits: XPATH_A
 //
 // One shape is not a block here yet: mreg, m <= (d + a) * a; p = m + c. A
 // pre-adder-fed multiply with an M register does not fuse its ALU term:
@@ -137,7 +142,9 @@ module dspv4_xpath (
     input signed [15:0] ovlr_d, input signed [16:0] ovlr_a, output signed [33:0] ovlr_p,
     input signed [15:0] sub_d, input signed [15:0] sub_a, output signed [33:0] sub_p,
     input signed [15:0] ov2_a, input signed [31:0] ov2_c, output signed [34:0] ov2_p,
-    input signed [15:0] ov2r_a, input signed [31:0] ov2r_c, output signed [34:0] ov2r_p
+    input signed [15:0] ov2r_a, input signed [31:0] ov2r_c, output signed [34:0] ov2r_p,
+    input [15:0] ones28_a, output [42:0] ones28_p,
+    input [15:0] ones18_a, output [33:0] ones18_p
 );
   assign na_p = (na_d + na_a) * na_a;
   assign wd_p = (wd_d + wd_a) * wd_a;
@@ -265,4 +272,6 @@ module dspv4_xpath (
 
   assign ov2_p = (ov2_a + $signed(ov2_a[7:0])) * ov2_a + ov2_c;
   assign ov2r_p = ($signed(ov2r_a[7:0]) + ov2r_a) * ov2r_a + ov2r_c;
+  assign ones28_p = (26'h3FFFFFF + ones28_a) * ones28_a;
+  assign ones18_p = (ones18_a + 16'hFFFF) * ones18_a;
 endmodule

@@ -1,6 +1,6 @@
 # dspv4_preadd_widths -- (d + a) * b at every width the pre-adder accepts.
 #
-# Four shapes, one design, because all four fold. The A/B split is in the
+# Six shapes, one design, because all six fold. The A/B split is in the
 # mode line asserted from tests/Makefile: counts cannot tell PREADD_A_MULT_B
 # from PREADD_B_MULT_A, and which path a width lands on is the point here.
 yosys -import
@@ -18,9 +18,9 @@ $PASS_NAME -family qlf_k6n10f -top dspv4_preadd_widths -dspv4 -no_abc9 -lib_path
 
 yosys cd dspv4_preadd_widths
 check -assert
-select -assert-count 4 t:QL_DSP4_PREADD
+select -assert-count 6 t:QL_DSP4_PREADD
 select -assert-count 0 t:QL_DSP4_PRESUB
-select -assert-count 4 t:QL_DSP4_MULT
+select -assert-count 6 t:QL_DSP4_MULT
 # Nothing left in fabric is what "the pre-adder folded" means.
 select -assert-count 0 t:adder_carry
 select -assert-count 0 t:\$mul

@@ -1167,6 +1167,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // V4 path: convert the generic QL_DSPV2 cells into
                             // monolithic QL_DSP4 base cells (per-cell + cascade-pair
                             // fusion) in place of the V2 mode-subtype specialization.
+                            // Synplify ties pins off with GND and VCC cells. The DSP-V4
+                            // techmap reads constant pins, so make these constants first.
+                            // Otherwise a carry-in on GND looks live and the lone MREG
+                            // fold never fires (aurora2 #2970).
+                            if (synplify)
+                                run("techmap -map " + lib_path + family + "/synplify_map.v t:GND t:VCC");
                             run("ql_dspv2_to_dspv4");
                             // Last point where the control word is still readable as
                             // parameters, and where every producer's cells are
@@ -1179,6 +1185,12 @@ struct SynthQuickLogicPass : public ScriptPass {
                             // pre-adder / rss / bit-sliced registers) so the netlist
                             // packs onto the DSPV4 tile. Pure Verilog techmap.
                             run("techmap -map " + lib_path + family + "/dsp4_logical_map.v");
+                            // The techmap leaves a QL_DSP4 it refuses as it is, with no
+                            // message, and that cell would reach the BLIF with no model
+                            // for it. Say why, then stop here, while the cell is still in
+                            // the design.
+                            run("ql_dsp4_explain");
+                            run("select -assert-none t:QL_DSP4");
                             run("opt_clean -purge");
                         } else {
                             run("ql_dspv2_types");
