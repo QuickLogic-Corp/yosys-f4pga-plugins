@@ -1,5 +1,6 @@
 #include "kernel/sigtools.h"
 #include "kernel/yosys.h"
+#include "ql-chain-max.h"
 
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
@@ -308,6 +309,7 @@ static const char *const ADDEND_OTHER_READER = "addend adder has another reader"
 static const char *const ADDEND_READ_UNSIGNED = "link is read unsigned in addend grouping";
 static const char *const ADDEND_RESULT_TOO_WIDE = "addend result is wider than the P port";
 static const char *const ADDEND_WIRE_TOO_NARROW = "addend sum wire is too narrow";
+static const char *const ADDEND_SUM_REGISTERED = "consumer registered the sum (PREG), and C is added before the register";
 
 // A per-stage addend k beside a link: the one mode that can take one, and the
 // mode that reads PCIN and C together.
@@ -543,7 +545,7 @@ struct QlDspV4Pass : public Pass {
                 continue;
             }
             if (a_Args[argidx] == "-chain_max" && argidx + 1 < a_Args.size()) {
-                chain_max = atoi(a_Args[++argidx].c_str());
+                chain_max = parse_chain_max(a_Args[++argidx]);
                 continue;
             }
             if (a_Args[argidx] == "-no_pcin17") {
@@ -978,6 +980,8 @@ struct QlDspV4Pass : public Pass {
         RTLIL::Cell *first = registered[0]->consumer;
         if (source->getParam(ID(PREG)).as_bool())
             return "the source already has a P register";
+        if (p_is_kept(module, sigmap, source))
+            return "the source's P is marked keep";
         pool<RTLIL::Cell *> registered_consumers;
         for (auto link : registered)
             registered_consumers.insert(link->consumer);
@@ -998,7 +1002,43 @@ struct QlDspV4Pass : public Pass {
                 return "the source's P has another reader";
         if (source->hasPort(ID(CLK)) && sigmap(source->getPort(ID(CLK))) != sigmap(first->getPort(ID(CLK))))
             return "the source is on another clock";
+        if (enables_after_move(sigmap, not_driving, source, first) > DSPV4_MAX_CE_SIGNALS)
+            return stringf("the source would need more than %d distinct clock enables", DSPV4_MAX_CE_SIGNALS);
         return "";
+    }
+
+    // The distinct clock enables on the source's CE pins once its P bank takes
+    // the consumer's CEC. A tied pin needs no signal.
+    static int enables_after_move(SigMap &sigmap, const dict<SigBit, RTLIL::Cell *> &not_driving, RTLIL::Cell *source, RTLIL::Cell *consumer)
+    {
+        std::vector<std::pair<bool, SigSpec>> enables;
+        auto note = [&](RTLIL::Cell *cell, RTLIL::IdString pin) {
+            if (sigmap(cell->getPort(pin)).is_fully_const())
+                return;
+            auto written = as_written(sigmap, not_driving, cell, pin);
+            if (std::find(enables.begin(), enables.end(), written) == enables.end())
+                enables.push_back(written);
+        };
+        for (auto pin : {ID(CEA), ID(CEB), ID(CEC), ID(CED)})
+            note(source, pin);
+        note(consumer, ID(CEC));
+        return GetSize(enables);
+    }
+
+    // True when a wire marked keep holds a bit of the source's P: that wire
+    // must keep the sum before the register.
+    static bool p_is_kept(RTLIL::Module *module, SigMap &sigmap, RTLIL::Cell *source)
+    {
+        pool<SigBit> p_bits;
+        for (auto bit : sigmap(source->getPort(ID(P))))
+            if (bit.wire != nullptr)
+                p_bits.insert(bit);
+        for (auto wire : module->wires())
+            if (wire->get_bool_attribute(ID::keep))
+                for (auto bit : sigmap(wire))
+                    if (p_bits.count(bit))
+                        return true;
+        return false;
     }
 
     // Everything that reads a cell's output port: each cell port that holds one
@@ -1223,15 +1263,15 @@ struct QlDspV4Pass : public Pass {
     }
 
     // Rule 2: a loop of links has no head, and could not be placed. Each loop
-    // loses one link whose source has a P register; of several, the one into
-    // the cell first in name order. The cell it entered is then a head, so
-    // rule 1's width walk runs again from the new heads.
+    // loses one link whose source has a P register, or any link if none has;
+    // of several, the one into the cell first in name order. The cell it
+    // entered is then a head, so rule 1's width walk runs again from the new
+    // heads.
     void break_loops(SigMap &sigmap, std::vector<CascadeLink> &links)
     {
         pool<RTLIL::Cell *> heads_before = heads_of(links);
         pool<const CascadeLink *> cut;
-        // Plain links are opt-in (-chain_max), so a loop with no register asserts.
-        for (const CascadeLink *dropped : links_that_break_loops(links, false)) {
+        for (const CascadeLink *dropped : links_that_break_loops(links)) {
             cut.insert(dropped);
             refuse_link(*dropped, CASCADE_LOOP);
         }
@@ -1252,7 +1292,7 @@ struct QlDspV4Pass : public Pass {
     // comes back to the link's consumer has found a loop. Returns the link to
     // drop from each loop, once per loop, in the order the loops are found.
     // Plain and PCIN>>17 links alike: a consumer has one link into it.
-    template <typename Link> static std::vector<const Link *> links_that_break_loops(const std::vector<Link> &links, bool allow_unregistered_loop)
+    template <typename Link> static std::vector<const Link *> links_that_break_loops(const std::vector<Link> &links)
     {
         dict<RTLIL::Cell *, const Link *> link_into;
         for (const Link &link : links)
@@ -1269,7 +1309,7 @@ struct QlDspV4Pass : public Pass {
                 if (cell == start.consumer) {
                     for (const Link *link : walked)
                         on_a_cut_loop.insert(link);
-                    cut.push_back(loop_link_to_drop(walked, allow_unregistered_loop));
+                    cut.push_back(loop_link_to_drop(walked));
                     break;
                 }
                 auto in = link_into.find(cell);
@@ -1286,8 +1326,8 @@ struct QlDspV4Pass : public Pass {
     // the cell first in name order. No CREG link is left by now (rule 1, or
     // the PCIN>>17 finder), so a loop's register is a PREG. A loop with no
     // register at all, a combinational loop in the RTL, drops the link into the
-    // cell first in name order when that is allowed, and asserts otherwise.
-    template <typename Link> static const Link *loop_link_to_drop(const std::vector<const Link *> &loop, bool allow_unregistered_loop)
+    // cell first in name order.
+    template <typename Link> static const Link *loop_link_to_drop(const std::vector<const Link *> &loop)
     {
         const Link *chosen = nullptr;
         for (const Link *link : loop) {
@@ -1296,11 +1336,10 @@ struct QlDspV4Pass : public Pass {
             if (chosen == nullptr || name_sorts_first(link->consumer, chosen->consumer))
                 chosen = link;
         }
-        if (chosen == nullptr && allow_unregistered_loop)
+        if (chosen == nullptr)
             for (const Link *link : loop)
                 if (chosen == nullptr || name_sorts_first(link->consumer, chosen->consumer))
                     chosen = link;
-        log_assert(chosen != nullptr);
         return chosen;
     }
 
@@ -3976,6 +4015,8 @@ struct QlDspV4Pass : public Pass {
             reason = ADDEND_READ_UNSIGNED;
         else if (GetSize(add->getPort(ID::Y)) > DSPV4_P_WIDTH)
             reason = ADDEND_RESULT_TOO_WIDE;
+        else if (link.consumer->getParam(ID(PREG)).as_bool())
+            reason = ADDEND_SUM_REGISTERED;
         if (reason != nullptr) {
             decline_grouping(link, reason);
             return 0;
@@ -4109,8 +4150,8 @@ struct QlDspV4Pass : public Pass {
     std::vector<Pcin17Link> break_pcin17_loops(RTLIL::Module *module, const std::vector<Pcin17Link> &candidates)
     {
         pool<const Pcin17Link *> dropped;
-        // PCIN>>17 links are on by default, so a loop with no register must not stop the run.
-        for (const Pcin17Link *link : links_that_break_loops(candidates, true)) {
+        // A loop with no register drops the link into the cell first in name order.
+        for (const Pcin17Link *link : links_that_break_loops(candidates)) {
             dropped.insert(link);
             if (verbose)
                 log("  PCIN>>17 refused %s.%s -> %s: %s\n", log_id(module), log_id(link->source), log_id(link->consumer), CASCADE_LOOP);

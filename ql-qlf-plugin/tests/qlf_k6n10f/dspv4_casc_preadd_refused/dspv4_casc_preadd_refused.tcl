@@ -62,3 +62,21 @@ select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i r:INMODE=5'b00100 %i r
 select -assert-count 0 t:QL_DSP4 r:OPMODE=9'b110010101 %i
 select -assert-count 1 t:\$add
 select -assert-count 1 t:\$add %co1:+\[Y\] t:QL_DSP4 r:INMODE=5'b00100 %i %ci1:+\[C\] %i
+
+# ---- Pre-subtract stages: no cascade word, so the C link stays. -------------
+# PREADD_A_SUB_B_C is OPMODE 000110101 with INMODE 01100.
+
+stopped_block _preadd_sub_c
+select -assert-count 2 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i r:INMODE=5'b01100 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i r:INMODE=5'b00000 %i
+select -assert-count 0 t:QL_DSP4 r:OPMODE=9'b000010101 %i
+select -assert-count 0 t:QL_DSP4 r:OPMODE=9'b110010101 %i
+select -assert-count 1 t:QL_DSP4 r:INMODE=5'b01100 %i %ci1:+\[C\] w:s1 %i
+
+stopped_block _preadd_sub_c_after_link
+select -assert-count 3 t:QL_DSP4
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000010101 %i r:INMODE=5'b00100 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i r:INMODE=5'b00100 %i
+select -assert-count 1 t:QL_DSP4 r:OPMODE=9'b000110101 %i r:INMODE=5'b01100 %i
+select -assert-count 1 t:QL_DSP4 r:INMODE=5'b01100 %i %ci1:+\[C\] w:s2 %i
