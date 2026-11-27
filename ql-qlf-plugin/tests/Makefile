@@ -1214,6 +1214,7 @@ qlf_k6n10f-dspv4_casc_pcin17_refused_verify += && $(call casc_pcin17_refused_for
 # cap then counts from the cell that link entered. casc_no_ring follows each
 # PCIN back to the PCOUT driving it and fails if a cell is reached again.
 casc_pcin17_loop_dir = qlf_k6n10f/dspv4_casc_pcin17_loop
+$(casc_pcin17_loop_dir)/ok: $(wildcard $(casc_pcin17_loop_dir)/*.v)
 casc_pcin17_loop_refused = test "$$(grep -c 'PCIN>>17 refused .*: $(casc_loop)$$' $(1))" = 1
 casc_no_ring = awk '/^  cell /{n=$$3} /connect .PCIN /{pcin[n]=$$3} /connect .PCOUT /{driver[$$3]=n} END{for (c in pcin) {x=c; for (k=0; k<100 && (x in pcin) && (pcin[x] in driver); k++) {x=driver[pcin[x]]; if (x==c) exit 1}}}' $(1)
 qlf_k6n10f-dspv4_casc_pcin17_loop_verify = test "$$(grep -c 'modes inferred: MULT_ADD_PCIN17 x1, MULT_ADD_C x1$$' $(casc_pcin17_loop_dir)/_loop.log)" = 1
