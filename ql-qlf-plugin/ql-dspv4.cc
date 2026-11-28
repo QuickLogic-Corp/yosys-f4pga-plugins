@@ -356,6 +356,10 @@ struct QlDspV4Pass : public Pass {
         log("        Report each inferred cell. Use -debug as well for the\n");
         log("        shapes that were not fused and why.\n");
         log("\n");
+        log("    -owner_names\n");
+        log("        name each QL_DSP4 inside the RTL instance of its multiply and carry\n");
+        log("        the multiply's ql_owner (synth_quicklogic -owner_table).\n");
+        log("\n");
     }
 
     bool replace_existing_pass() const override { return true; }
@@ -367,6 +371,7 @@ struct QlDspV4Pass : public Pass {
     void clear_flags() override
     {
         verbose = false;
+        owner_names = false;
         left_soft = 0;
         absorbed_regs = 0;
         absorb_stall.clear();
@@ -390,6 +395,10 @@ struct QlDspV4Pass : public Pass {
         for (argidx = 1; argidx < a_Args.size(); argidx++) {
             if (a_Args[argidx] == "-verbose") {
                 verbose = true;
+                continue;
+            }
+            if (a_Args[argidx] == "-owner_names") {
+                owner_names = true;
                 continue;
             }
             break;
@@ -1391,9 +1400,9 @@ struct QlDspV4Pass : public Pass {
         }
 
         const Dspv4Mode &m = dspv4_mode(mode_name);
-        RTLIL::Cell *cell = module->addCell(dspv4_cell_name(module, st.mul), ID(QL_DSP4));
+        RTLIL::Cell *cell = module->addCell(owner_names ? dspv4_cell_name(module, st.mul) : NEW_ID, ID(QL_DSP4));
         dspv4_apply_mode(cell, m);
-        if (st.mul->has_attribute(ID(ql_owner)))
+        if (owner_names && st.mul->has_attribute(ID(ql_owner)))
             cell->set_string_attribute(ID(ql_owner), st.mul->get_string_attribute(ID(ql_owner)));
 
         // C is the adder operand that is neither the product nor the
@@ -3101,6 +3110,7 @@ struct QlDspV4Pass : public Pass {
     std::vector<RTLIL::Cell *> pending_removal;
 
     bool verbose = false;
+    bool owner_names = false;
     int left_soft = 0;
     int absorbed_regs = 0;
 
