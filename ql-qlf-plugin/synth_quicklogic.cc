@@ -121,12 +121,12 @@ struct SynthQuickLogicPass : public ScriptPass {
         log("\n");
         log("    -owner_front_end <name>\n");
         log("        the front end named in the owner table: yosys (default), verific or\n");
-        log("        synplify (the default with -synplify).\n");
+        log("        synplify (the default with -synplify). Needs -owner_table.\n");
         log("\n");
         log("    -no_iname\n");
-        log("        with -owner_table, write .cname for .subckt cells only (flip-flops, BRAMs,\n");
-        log("        DSPs), not for LUTs, so VPR names each LUT after its output net. LUT names\n");
-        log("        in the owner table and in VPR can then differ.\n");
+        log("        write .cname for .subckt cells only (flip-flops, BRAMs, DSPs), not for\n");
+        log("        LUTs, so VPR names each LUT after its output net. LUT names in the owner\n");
+        log("        table and in VPR can then differ. Needs -owner_table.\n");
         log("\n");
         log("    -rel_ip_blif <file>\n");
         log("        link a pre-synthesized IP netlist (extended BLIF with relative-placement\n");
@@ -507,6 +507,10 @@ struct SynthQuickLogicPass : public ScriptPass {
         finalize_options(design);
         if (!owner_table.empty() && blif_file.empty())
             log_cmd_error("-owner_table needs -blif: the table describes the BLIF\n");
+        if (owner_table.empty() && no_iname)
+            log_cmd_error("-no_iname needs -owner_table: without it the BLIF has no .cname lines\n");
+        if (owner_table.empty() && !owner_front_end.empty())
+            log_cmd_error("-owner_front_end needs -owner_table: it names the front end in the table\n");
         if (owner_front_end.empty())
             owner_front_end = synplify ? "synplify" : "yosys";
 
