@@ -58,8 +58,10 @@ struct QlSDPBramMergeWorker {
 
     RTLIL::Module *module;
     dict<MergeableGroupKeyType, pool<RTLIL::Cell *>> mergeable_groups;
+    // Set with -owner_names (synth_quicklogic -owner_table): carry the owners and keep the memory's name.
+    bool owner_names;
 
-    QlSDPBramMergeWorker(RTLIL::Module *module) : module(module)
+    QlSDPBramMergeWorker(RTLIL::Module *module, bool owner_names) : module(module), owner_names(owner_names)
     {
         for (RTLIL::Cell *cell : module->selected_cells()) {
             if (cell->type != split_cell_type)
@@ -146,6 +148,12 @@ struct QlSDPBramMergeWorker {
         for (auto attr : bram2->attributes)
             if (!merged->has_attribute(attr.first))
                 merged->attributes.insert(attr);
+        if (!owner_names) {
+            // Remove the old cells
+            module->remove(bram1);
+            module->remove(bram2);
+            return;
+        }
         merge_owners(merged, bram1, bram2);
 
         // memory_libmap names each BRAM after its memory (core.u_mem.mem.0.0, or
@@ -178,10 +186,14 @@ struct QlSDPBramMergePass : public Pass {
     {
         //   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
         log("\n");
-        log("    ql_sdpbram_merge [selection]\n");
+        log("    ql_sdpbram_merge [options] [selection]\n");
         log("\n");
         log("    This pass identifies k6n10f 18K BRAM cells and packs pairs of them together\n");
         log("    into a TDP36K cell operating in split mode\n");
+        log("\n");
+        log("    -owner_names\n");
+        log("        keep the first memory's cell name on the merged cell and carry both\n");
+        log("        ql_owner attributes (synth_quicklogic -owner_table).\n");
         log("\n");
     }
 
@@ -191,11 +203,19 @@ struct QlSDPBramMergePass : public Pass {
     {
         log_header(design, "Executing QL_SDPBRAM_MERGE pass.\n");
 
-        size_t argidx = 1;
+        bool owner_names = false;
+        size_t argidx;
+        for (argidx = 1; argidx < args.size(); argidx++) {
+            if (args[argidx] == "-owner_names") {
+                owner_names = true;
+                continue;
+            }
+            break;
+        }
         extra_args(args, argidx, design);
 
         for (RTLIL::Module *module : design->selected_modules()) {
-            QlSDPBramMergeWorker worker(module);
+            QlSDPBramMergeWorker worker(module, owner_names);
             worker.merge_bram_groups();
         }
     }
@@ -212,8 +232,10 @@ struct QlTDPBramMergeWorker {
 
     RTLIL::Module *module;
     dict<MergeableGroupKeyType, pool<RTLIL::Cell *>> mergeable_groups;
+    // Set with -owner_names (synth_quicklogic -owner_table): carry the owners and keep the memory's name.
+    bool owner_names;
 
-    QlTDPBramMergeWorker(RTLIL::Module *module) : module(module)
+    QlTDPBramMergeWorker(RTLIL::Module *module, bool owner_names) : module(module), owner_names(owner_names)
     {
         for (RTLIL::Cell *cell : module->selected_cells()) {
             if (cell->type != split_cell_type)
@@ -306,6 +328,12 @@ struct QlTDPBramMergeWorker {
         for (auto attr : bram2->attributes)
             if (!merged->has_attribute(attr.first))
                 merged->attributes.insert(attr);
+        if (!owner_names) {
+            // Remove the old cells
+            module->remove(bram1);
+            module->remove(bram2);
+            return;
+        }
         merge_owners(merged, bram1, bram2);
 
         // memory_libmap names each BRAM after its memory (core.u_mem.mem.0.0, or
@@ -338,10 +366,14 @@ struct QlTDPBramMergePass : public Pass {
     {
         //   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
         log("\n");
-        log("    ql_tdpbram_merge [selection]\n");
+        log("    ql_tdpbram_merge [options] [selection]\n");
         log("\n");
         log("    This pass identifies k6n10f 18K BRAM cells and packs pairs of them together\n");
         log("    into a TDP36K cell operating in split mode\n");
+        log("\n");
+        log("    -owner_names\n");
+        log("        keep the first memory's cell name on the merged cell and carry both\n");
+        log("        ql_owner attributes (synth_quicklogic -owner_table).\n");
         log("\n");
     }
 
@@ -351,11 +383,19 @@ struct QlTDPBramMergePass : public Pass {
     {
         log_header(design, "Executing QL_TDPBRAM_MERGE pass.\n");
 
-        size_t argidx = 1;
+        bool owner_names = false;
+        size_t argidx;
+        for (argidx = 1; argidx < args.size(); argidx++) {
+            if (args[argidx] == "-owner_names") {
+                owner_names = true;
+                continue;
+            }
+            break;
+        }
         extra_args(args, argidx, design);
 
         for (RTLIL::Module *module : design->selected_modules()) {
-            QlTDPBramMergeWorker worker(module);
+            QlTDPBramMergeWorker worker(module, owner_names);
             worker.merge_bram_groups();
         }
     }
