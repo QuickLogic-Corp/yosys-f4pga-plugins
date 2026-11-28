@@ -1617,7 +1617,7 @@ struct SynthQuickLogicPass : public ScriptPass {
                 // cell, so the owner table and VPR use the same names. Without it, VPR
                 // names each atom after its output net, as before the owner table.
                 bool rel_flow = !rel_ip_blif_files.empty();
-                const char *blif_flags = rel_flow       ? "-param -attr -iattr -blackbox"
+                const char *blif_flags = rel_flow         ? "-param -attr -iattr -blackbox"
                                          : !owner_names() ? "-param"
                                          : no_iname       ? "-param -cname"
                                                           : "-param -cname -iname";
